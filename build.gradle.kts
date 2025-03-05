@@ -62,7 +62,7 @@ dependencies {
 	runtimeOnly("org.springframework.boot:spring-boot-docker-compose")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.2")
-	implementation("io.github.cdimascio:dotenv-java:3.2.0")
+	implementation("io.github.cdimascio:dotenv-java:3.0.0")
 
 
 	//jwt 토큰 관련 라이브러리
