@@ -38,3 +38,7 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+# 환경 변수 파일을 Git에서 무시하기
+.env
+.env.*
