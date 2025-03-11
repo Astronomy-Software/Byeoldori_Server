@@ -10,10 +10,14 @@ group = "com.project"
 version = "0.0.1-SNAPSHOT"
 
 java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(23)
-	}
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
 }
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+	kotlinOptions.jvmTarget = "21"
+}
+
 
 configurations {
 	compileOnly {
@@ -42,9 +46,7 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0")
-	implementation("org.springdoc:springdoc-openapi-kotlin:1.8.0")
-	implementation("org.springdoc:springdoc-openapi-data-rest:1.8.0")
-	implementation("org.springdoc:springdoc-openapi-security:1.8.0")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:2.7.0")
 	compileOnly("org.projectlombok:lombok")
 	runtimeOnly("com.mysql:mysql-connector-j")
 	runtimeOnly("org.postgresql:postgresql")
@@ -69,6 +71,9 @@ dependencies {
 	implementation ("io.jsonwebtoken:jjwt-api:0.12.3")
 	implementation ("io.jsonwebtoken:jjwt-impl:0.12.3")
 	implementation ("io.jsonwebtoken:jjwt-jackson:0.12.3")
+
+	testImplementation("org.mockito:mockito-core:4.11.0")
+	testImplementation("org.mockito:mockito-junit-jupiter:4.11.0")
 }
 
 kotlin {
