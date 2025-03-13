@@ -17,7 +17,9 @@ class SecurityConfig {
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
                     "/v3/api-docs",
-                    "/webjars/**"
+                    "/webjars/**",
+                    // 이곳에 인바운드 설정을 해주어야한다. controller 작성시마다.
+                    "/weather/**"
                 ).permitAll()  // Swagger URL을 허용
                 it.anyRequest().authenticated()
             }
