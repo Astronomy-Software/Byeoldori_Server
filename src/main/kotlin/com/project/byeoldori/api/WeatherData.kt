@@ -15,12 +15,11 @@ class WeatherData(
     // AuthKey ".env"에서 가져옴
     private val weatherApiKey: String by lazy { weatherApiProperties.key }
     // 실황 조회
-    fun fetchLiveWeather(tmfc: String, tmef: String, vars: String): Mono<String> {
+    fun fetchLiveWeather(tmfc: String, vars: String): Mono<String> {
         return weatherApiClient.get()
             .uri { builder ->
                 builder.path("/cgi-bin/url/nph-dfs_odam_grd")
                     .queryParam("tmfc", tmfc)
-                    .queryParam("tmef", tmef)
                     .queryParam("vars", vars)
                     .queryParam("authKey", weatherApiKey)
                     .build()
