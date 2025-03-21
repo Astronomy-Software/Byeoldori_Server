@@ -12,7 +12,7 @@ services:
 
   mongo:
     image: mongo:6.0
-    container_name: mongodbd
+    container_name: mongodb
     restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: root

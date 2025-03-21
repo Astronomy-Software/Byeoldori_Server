@@ -1,13 +1,15 @@
-package com.project.byeoldori.domain.midforecast
+package com.project.byeoldori.entity
 
 import jakarta.persistence.*
+import org.hibernate.annotations.CreationTimestamp
+import java.time.LocalDateTime
 
 @Entity
 @Table(name = "mid_forecast")
 data class MidForecast(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
+    val id: Long = 0,
 
     @Column(nullable = false)
     val regId: String,
@@ -40,5 +42,8 @@ data class MidForecast(
     val wf: String,
 
     @Column(nullable = false)
-    val rnSt: Int
+    val rnSt: Int,
+
+    @CreationTimestamp // 저장 시점이 자동으로 입력
+    val createdAt: LocalDateTime? = null
 )

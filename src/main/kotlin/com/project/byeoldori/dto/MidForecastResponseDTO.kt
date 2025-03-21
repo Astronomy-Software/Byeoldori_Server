@@ -1,4 +1,4 @@
-package com.project.byeoldori.domain.midforecast
+package com.project.byeoldori.dto
 
 data class MidForecastResponseDTO(
     val regId: String,
