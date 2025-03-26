@@ -4,8 +4,9 @@ import com.project.byeoldori.api.WeatherData
 import com.project.byeoldori.dto.*
 import com.project.byeoldori.service.ForeCastService
 import com.project.byeoldori.service.UltraGridForecastService
-import com.project.byeoldori.service.MidForecastService
 import com.project.byeoldori.service.ShortGridForecastService
+import com.project.byeoldori.service.MidForecastService
+import com.project.byeoldori.service.MidTempForecastService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import org.slf4j.LoggerFactory
@@ -21,6 +22,7 @@ class WeatherController(
     private val ultraForecastService: UltraGridForecastService,
     private val shortForecastService: ShortGridForecastService,
     private val foreCastService: ForeCastService
+    private val midTempForecastService: MidTempForecastService,
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -56,24 +58,24 @@ class WeatherController(
             .map { ResponseEntity.ok(it) }
     }
 
-    @Operation(summary = "중기 육상 예보 조회 및 저장", description = "기상청 중기 육상 예보 데이터를 호출 후 DB에 저장하고 응답합니다.")
+    @Operation(summary = "중기 육상 예보 조회 및 저장", description = "기상청 중기 육상 예보 데이터를 호출 후 DB에 저장합니다.")
     @GetMapping("/mid-land")
     fun getAndSaveMidLandForecast(): Mono<ResponseEntity<String>> {
         return midForecastService.fetchParseSaveAndRespond()
             .map { ResponseEntity.ok(it) } // 원본 데이터 응답
     }
 
-    @Operation(summary = "중기 육상 예보 전체 조회", description = "DB에 저장된 중기 육상 예보 데이터를 모두 조회합니다.")
+    @Operation(summary = "저장된 중기 육상 예보 전체 조회", description = "DB에 저장된 중기 육상 예보 데이터를 모두 조회합니다.")
     @GetMapping("/mid-land/all")
     fun getAllMidLandForecasts(): ResponseEntity<List<MidForecastResponseDTO>> {
         val forecasts = midForecastService.findAll()
         return ResponseEntity.ok(forecasts)
     }
 
-    @Operation(summary = "중기 기온 예보 조회", description = "기상청 중기 기온 예보 데이터를 호출합니다.")
+    @Operation(summary = "중기 기온 예보 조회", description = "기상청 중기 기온 예보 데이터를 호출 후 DB에 저장합니다.")
     @GetMapping("/mid-temp")
     fun getMidTemperatureForecast(): Mono<ResponseEntity<String>> {
-        return weatherData.fetchMidTemperatureForecast()
+        return midTempForecastService.fetchParseSaveAndRespond()
             .map { ResponseEntity.ok(it) }
     }
 
@@ -126,5 +128,11 @@ class WeatherController(
     ): ForecastResponseDTO {
         logger.info("ForecastData 호출 lat $lat, long $long")
         return foreCastService.getForecastDataByLocation(lat,long)
+        
+    @Operation(summary = "저장된 중기 기온 예보 전체 조회", description = "DB에 저장된 중기 기온 예보 데이터를 모두 조회합니다.")
+    @GetMapping("/mid-temp/all")
+    fun getAllMidTempForecasts(): ResponseEntity<List<MidTempForecastResponseDTO>> {
+        val forecasts = midTempForecastService.findAll()
+        return ResponseEntity.ok(forecasts)
     }
 }
