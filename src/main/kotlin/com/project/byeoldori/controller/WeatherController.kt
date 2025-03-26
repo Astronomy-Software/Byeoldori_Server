@@ -1,10 +1,13 @@
 package com.project.byeoldori.controller
 
 import com.project.byeoldori.api.WeatherData
+import com.project.byeoldori.dto.MidCombinedForecastDTO
 import com.project.byeoldori.dto.MidForecastResponseDTO
 import com.project.byeoldori.dto.MidTempForecastResponseDTO
+import com.project.byeoldori.service.MidCombinedForecastService
 import com.project.byeoldori.service.MidForecastService
 import com.project.byeoldori.service.MidTempForecastService
+
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.http.ResponseEntity
@@ -17,6 +20,7 @@ class WeatherController(
     private val weatherData: WeatherData,
     private val midForecastService: MidForecastService,
     private val midTempForecastService: MidTempForecastService,
+    private val midCombinedForecastService: MidCombinedForecastService
 ) {
 
     @Operation(summary = "실시간 날씨 조회", description = "기상청 실황 날씨 데이터를 호출합니다.")
@@ -77,5 +81,19 @@ class WeatherController(
     fun getAllMidTempForecasts(): ResponseEntity<List<MidTempForecastResponseDTO>> {
         val forecasts = midTempForecastService.findAll()
         return ResponseEntity.ok(forecasts)
+    }
+
+    @Operation(summary = "중기 육상 + 기온 예보 조회", description = "기상청 중기 육상 + 예보 데이터를 호출 후 DB에 저장합니다.")
+    @PostMapping("/mid-combined")
+    fun fetchAndSaveMidCombinedForecastFromApi(): ResponseEntity<String> {
+        val result = midCombinedForecastService.fetchAndSaveFromApi()
+        return ResponseEntity.ok(result)
+    }
+
+    @Operation(summary = "저장된 중기 예보 전체 조회", description = "DB에 저장된 병합된 중기 육상 및 기온 데이터를 모두 조회합니다.")
+    @GetMapping("/mid-combined/all")
+    fun getAllSavedForecasts(): ResponseEntity<List<MidCombinedForecastDTO>> {
+        val dtoList = midCombinedForecastService.findAll()
+        return ResponseEntity.ok(dtoList)
     }
 }

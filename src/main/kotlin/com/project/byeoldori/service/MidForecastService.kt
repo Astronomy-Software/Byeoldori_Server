@@ -37,7 +37,6 @@ class MidForecastService(
 
     @Transactional
     fun saveAll(midForecastList: List<MidForecast>): List<MidForecastResponseDTO> {
-        // 중복 체크 (tmFc + tmEf + regId 기준)
         val filteredList = midForecastList.filter { forecast ->
             !midForecastRepository.existsByTmFcAndTmEfAndRegId(
                 forecast.tmFc,

@@ -24,7 +24,7 @@ class MidForecastParser {
                     pre = columns[7],
                     conf = columns[8],
                     wf = columns[9].replace("\"", ""), // 큰따옴표 제거
-                    rnSt = columns[10].toIntOrNull() ?: -1 // 예외 처리
+                    rnSt = columns[10].toIntOrNull() ?: -999 // 예외 처리
                 )
             }
             .toList()

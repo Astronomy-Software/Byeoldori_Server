@@ -30,10 +30,10 @@ data class MidTempForecast(
     val c: String,
 
     @Column(nullable = false)
-    val min: String,
+    val min: Int,
 
     @Column(nullable = false)
-    val max: String,
+    val max: Int,
 
     @Column(nullable = false)
     val minL: String,
