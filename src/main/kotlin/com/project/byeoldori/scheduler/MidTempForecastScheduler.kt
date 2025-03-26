@@ -1,9 +1,9 @@
 package com.project.byeoldori.scheduler
 
 import com.project.byeoldori.api.WeatherData
+import com.project.byeoldori.parser.MidTempForecastParser
+import com.project.byeoldori.service.MidTempForecastService
 import com.project.byeoldori.config.RetryProperties
-import com.project.byeoldori.parser.MidForecastParser
-import com.project.byeoldori.service.MidForecastService
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -11,11 +11,12 @@ import reactor.core.publisher.Mono
 import java.util.*
 import kotlin.concurrent.schedule
 
+
 @Component
-class MidForecastScheduler(
+class MidTempForecastScheduler(
     private val weatherData: WeatherData,
-    private val midForecastParser: MidForecastParser,
-    private val midForecastService: MidForecastService,
+    private val midTempForecastParser: MidTempForecastParser,
+    private val midTempForecastService: MidTempForecastService,
     private val retryProperties: RetryProperties
 ) {
 
@@ -24,39 +25,36 @@ class MidForecastScheduler(
     private val maxRetryAttempts = retryProperties.attempts
     private val retryDelayMillis = retryProperties.delay * 1000L
 
-    // 매일 06시 정각 실행
     @Scheduled(cron = "0 0 6 * * *")
     fun fetchAt06AM() {
-        fetchAndSaveMidForecastWithRetry("06시 스케줄")
+        fetchAndSaveMidTempForecastWithRetry("06시 스케줄")
     }
 
-    // 매일 18시 정각 실행
     @Scheduled(cron = "0 0 18 * * *")
     fun fetchAt06PM() {
-        fetchAndSaveMidForecastWithRetry("18시 스케줄")
+        fetchAndSaveMidTempForecastWithRetry("18시 스케줄")
     }
 
-    // 매시간 정각 삭제
     @Scheduled(cron = "0 0 * * * *")
     fun deleteOldData() {
-        logger.info("24시간 지난 데이터 삭제 작업 시작")
-        midForecastService.deleteOldForecasts()
+        logger.info("[중기 기온 예보] 24시간 지난 데이터 삭제 시작")
+        midTempForecastService.deleteOldForecasts()
     }
 
-    private fun fetchAndSaveMidForecastWithRetry(tag: String, attempt: Int = 1) {
-        logger.info("[$tag][$attempt/$maxRetryAttempts] 중기 예보 호출 및 저장 시도 시작")
+    private fun fetchAndSaveMidTempForecastWithRetry(tag: String, attempt: Int = 1) {
+        logger.info("[$tag][$attempt/$maxRetryAttempts][중기 기온 예보] 호출 및 저장 시도 시작")
 
-        weatherData.fetchMidLandForecast()
+        weatherData.fetchMidTemperatureForecast()
             .flatMap { response ->
-                val midForecastList = midForecastParser.parse(response)
+                val forecastList = midTempForecastParser.parse(response)
 
-                if (midForecastList.isEmpty()) {
-                    logger.warn("[$tag][$attempt] 수신된 데이터가 비어있음 → 재시도 준비")
+                if (forecastList.isEmpty()) {
+                    logger.warn("[$tag][$attempt] 수신된 기온 예보 데이터가 비어있음 → 재시도 예정")
                     retryFetch(tag, attempt)
                     Mono.empty<Void>()
                 } else {
-                    val savedForecasts = midForecastService.saveAll(midForecastList)
-                    logger.info("[$tag][$attempt] ${savedForecasts.size}건 저장 완료")
+                    val savedForecasts = midTempForecastService.saveAll(forecastList)
+                    logger.info("[$tag][$attempt] 중기 기온 예보 ${savedForecasts.size}건 저장 완료!")
                     Mono.empty<Void>()
                 }
             }
@@ -67,10 +65,10 @@ class MidForecastScheduler(
         if (currentAttempt < maxRetryAttempts) {
             logger.info("[$tag][$currentAttempt] ${retryDelayMillis / 60000}분 후 재시도 예정")
             Timer().schedule(retryDelayMillis) {
-                fetchAndSaveMidForecastWithRetry(tag, currentAttempt + 1)
+                fetchAndSaveMidTempForecastWithRetry(tag, currentAttempt + 1)
             }
         } else {
-            logger.error("[$tag] 최대 재시도 횟수($maxRetryAttempts) 초과 → 중단")
+            logger.error("[$tag] 최대 재시도 횟수($maxRetryAttempts) 초과 → 재시도 중단")
         }
     }
 }
