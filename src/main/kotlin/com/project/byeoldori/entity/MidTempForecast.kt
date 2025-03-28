@@ -36,16 +36,16 @@ data class MidTempForecast(
     val max: Int,
 
     @Column(nullable = false)
-    val minL: String,
+    val minL: Int,
 
     @Column(nullable = false)
-    val minH: String,
+    val minH: Int,
 
     @Column(nullable = false)
-    val maxL: String,
+    val maxL: Int,
 
     @Column(nullable = false)
-    val maxH: String,
+    val maxH: Int,
 
     @CreationTimestamp
     val createdAt: LocalDateTime? = null

@@ -5,8 +5,8 @@ import com.project.byeoldori.dto.MidCombinedForecastDTO
 import com.project.byeoldori.entity.MidCombinedForecast
 import com.project.byeoldori.entity.MidForecast
 import com.project.byeoldori.entity.MidTempForecast
-import com.project.byeoldori.parser.MidForecastParser
-import com.project.byeoldori.parser.MidTempForecastParser
+import com.project.byeoldori.utiles.MidForecastParser
+import com.project.byeoldori.utiles.MidTempForecastParser
 import com.project.byeoldori.region.RegionMapper
 import com.project.byeoldori.repository.MidCombinedForecastRepository
 import org.slf4j.LoggerFactory

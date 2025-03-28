@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.project.byeoldori.api.WeatherData
 import com.project.byeoldori.dto.MidForecastResponseDTO
 import com.project.byeoldori.entity.MidForecast
-import com.project.byeoldori.parser.MidForecastParser
+import com.project.byeoldori.utiles.MidForecastParser
 import com.project.byeoldori.repository.MidForecastRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service

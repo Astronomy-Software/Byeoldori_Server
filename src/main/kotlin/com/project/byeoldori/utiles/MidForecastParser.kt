@@ -1,4 +1,4 @@
-package com.project.byeoldori.parser
+package com.project.byeoldori.utiles
 
 import com.project.byeoldori.entity.MidForecast
 import org.springframework.stereotype.Component

@@ -4,7 +4,7 @@
     import com.project.byeoldori.api.WeatherData
     import com.project.byeoldori.dto.MidTempForecastResponseDTO
     import com.project.byeoldori.entity.MidTempForecast
-    import com.project.byeoldori.parser.MidTempForecastParser
+    import com.project.byeoldori.utiles.MidTempForecastParser
     import com.project.byeoldori.repository.MidTempForecastRepository
     import org.slf4j.LoggerFactory
     import org.springframework.stereotype.Service

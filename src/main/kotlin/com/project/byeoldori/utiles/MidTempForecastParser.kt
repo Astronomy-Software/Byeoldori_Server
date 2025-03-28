@@ -1,4 +1,4 @@
-package com.project.byeoldori.parser
+package com.project.byeoldori.utiles
 
 import com.project.byeoldori.entity.MidTempForecast
 import org.springframework.stereotype.Component
@@ -22,10 +22,10 @@ class MidTempForecastParser {
                     c = columns[5],
                     min = columns[6].toIntOrNull() ?: -999,
                     max = columns[7].toIntOrNull() ?: -999,
-                    minL = columns[8],
-                    minH = columns[9],
-                    maxL = columns[10],
-                    maxH = columns[11]
+                    minL = columns[8].toIntOrNull() ?: -999,
+                    minH = columns[9].toIntOrNull() ?: -999,
+                    maxL = columns[10].toIntOrNull() ?: -999,
+                    maxH = columns[11].toIntOrNull() ?: -999
                 )
             }
             .toList()
