@@ -33,4 +33,13 @@ object RegionMapper {
 
     // 도 코드로 시 리스트를 가져오는 헬퍼 메서드
     fun getSiListByDo(doRegId: String): List<String>? = doToSiMap[doRegId]
+
+    /** 격자 좌표 (x, y) → 시 지역 코드, 나중에 정식 좌표 매핑 테이블로 대체
+    fun getSiByGrid(x: Int, y: Int): String? {
+        return when {
+            x in 58..60 && y in 125..127 -> "11B10101" // 서울 종로구
+            x in 67..69 && y in 122..124 -> "11C10301" // 대전 유성구
+            else -> null
+        }
+    } */
 }

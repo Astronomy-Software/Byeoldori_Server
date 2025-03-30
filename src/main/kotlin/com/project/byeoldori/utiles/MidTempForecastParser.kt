@@ -17,15 +17,8 @@ class MidTempForecastParser {
                     regId = columns[0],
                     tmFc = columns[1],
                     tmEf = columns[2],
-                    modCode = columns[3],
-                    stn = columns[4],
-                    c = columns[5],
                     min = columns[6].toIntOrNull() ?: -999,
-                    max = columns[7].toIntOrNull() ?: -999,
-                    minL = columns[8].toIntOrNull() ?: -999,
-                    minH = columns[9].toIntOrNull() ?: -999,
-                    maxL = columns[10].toIntOrNull() ?: -999,
-                    maxH = columns[11].toIntOrNull() ?: -999
+                    max = columns[7].toIntOrNull() ?: -999
                 )
             }
             .toList()

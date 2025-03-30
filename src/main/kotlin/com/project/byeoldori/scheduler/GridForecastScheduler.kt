@@ -24,6 +24,7 @@ class GridForecastScheduler(
     private val midForecastService: MidForecastService,
     private val midTempForecastParser: MidTempForecastParser,
     private val midTempForecastService: MidTempForecastService,
+    private val midCombinedForecastService: MidCombinedForecastService
 
     ) {
     // TODO : 스케쥴러 하나로 병합
@@ -99,6 +100,17 @@ class GridForecastScheduler(
                 }
             }
         )
+    }
+
+    // 중기 육상,기온 예보를 자동 병합 후 저장하는 스케줄러 추가
+    @Scheduled(cron = "0 7 6,18 * * *")
+    fun clockForMidCombinedForecast() {
+        logger.info("중기 병합 예보 병합 및 저장 중...")
+
+        val landList = midForecastService.findAllEntity()
+        val tempList = midTempForecastService.findAllEntity()
+        val combinedList = midCombinedForecastService.mergeForecasts(landList, tempList)
+        midCombinedForecastService.saveAll(combinedList)
     }
 
     // 매 정각마다 24시간 지난 중기 육상 예보 삭제

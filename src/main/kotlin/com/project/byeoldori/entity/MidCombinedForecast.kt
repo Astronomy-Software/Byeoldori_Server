@@ -31,7 +31,6 @@ data class MidCombinedForecast(
 
     val sky: String?,
     val pre: String?,
-    val wf: String?,
     val rnSt: Int?,
 
     val min: Int?,

@@ -71,17 +71,16 @@ class MidForecastService(
         midForecastRepository.deleteByCreatedAtBefore(cutoffTime)
     }
 
-    private fun MidForecast.toResponseDTO() = MidForecastResponseDTO(
+    fun findAllEntity(): List<MidForecast> {
+        return midForecastRepository.findAll()
+    }
+
+    fun MidForecast.toResponseDTO() = MidForecastResponseDTO(
         regId = regId,
         tmFc = tmFc,
         tmEf = tmEf,
-        modCode = modCode,
-        stn = stn,
-        c = c,
         sky = sky,
         pre = pre,
-        conf = conf,
-        wf = wf,
         rnSt = rnSt
     )
 }

@@ -38,7 +38,7 @@ class MidCombinedForecastService(
         return "기상청 API에서 데이터 수집 후 병합 및 저장 완료 (${combinedList.size}건)"
     }
 
-    private fun mergeForecasts(
+    fun mergeForecasts(
         landList: List<MidForecast>,
         tempList: List<MidTempForecast>
     ): List<MidCombinedForecast> {
@@ -69,7 +69,6 @@ class MidCombinedForecastService(
                 siRegId = temp.regId,
                 sky = matchingLand.sky,
                 pre = matchingLand.pre,
-                wf = matchingLand.wf,
                 rnSt = matchingLand.rnSt,
                 min = temp.min,
                 max = temp.max
@@ -103,7 +102,6 @@ class MidCombinedForecastService(
                 siRegId = forecast.siRegId,
                 sky = forecast.sky,
                 pre = forecast.pre,
-                wf = forecast.wf,
                 rnSt = forecast.rnSt,
                 min = forecast.min,
                 max = forecast.max

@@ -20,26 +20,11 @@ data class MidForecast(
     @Column(nullable = false)
     val tmEf: String,
 
-    @Column(nullable = false, name = "mod_code")
-    val modCode: String,
-
-    @Column(nullable = false)
-    val stn: String,
-
-    @Column(nullable = false)
-    val c: String,
-
     @Column(nullable = false)
     val sky: String,
 
     @Column(nullable = false)
     val pre: String,
-
-    @Column(nullable = false)
-    val conf: String,
-
-    @Column(nullable = false)
-    val wf: String,
 
     @Column(nullable = false)
     val rnSt: Int,

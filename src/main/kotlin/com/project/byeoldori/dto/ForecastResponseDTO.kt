@@ -39,13 +39,8 @@ data class MidForecastResponseDTO(
     val regId: String,
     val tmFc: String,
     val tmEf: String,
-    val modCode: String,
-    val stn: String,
-    val c: String,
     val sky: String,
     val pre: String,
-    val conf: String,
-    val wf: String,
     val rnSt: Int
 )
 
@@ -53,15 +48,8 @@ data class MidTempForecastResponseDTO(
     val regId: String,
     val tmFc: String,
     val tmEf: String,
-    val modCode: String,
-    val stn: String,
-    val c: String,
     val min: Int,
     val max: Int,
-    val minL: Int,
-    val minH: Int,
-    val maxL: Int,
-    val maxH: Int
 )
 
 data class MidCombinedForecastDTO(
@@ -71,9 +59,8 @@ data class MidCombinedForecastDTO(
     val doRegId: String,
     val siRegId: String,
 
-    val sky: String?, // 하늘 상태 코드 WB01(맑음), WB02(구름조금), WB03(구름많음), WB04(흐림)
+    val sky: String?, // 하늘 상태 코드 WB01(맑음), WB02(구름조금), WB03(구름많음), WB04(흐림) -> 프론트에서 매핑?
     val pre: String?, // 강수 유무 코드 WB09(비),WB11(비/눈),WB13(눈/비),WB12(눈)
-    val wf: String?,
     val rnSt: Int?,
 
     val min: Int?,

@@ -20,20 +20,20 @@ class ForeCastService(
 
         // 1) 위경도 -> 격자x 좌표 변환
         val (x, y) = latLonToGrid(latitude, longitude)
+        val siRegId = getNearestSiRegIdByLocation(latitude, longitude) // 위경도로 매핑, 임시 방식 적용
+        // val siRegId = RegionMapper.getSiByGrid(x, y) ?: "UNKNOWN" 이건 격자 좌표로 매핑, 좌표와 시지역코드 매핑 시켜줘야함
+        val doRegId = RegionMapper.getDoBySi(siRegId) ?: "UNKNOWN"
 
+        // 2) 초단기, 단기 예보
         val ultraForecast: List<UltraForecastResponseDTO> = ultraGridForecastService.getAllUltraTMEFDataForCell(x, y)
         val shortForecast: List<ShortForecastResponseDTO> = shortGridForecastService.getAllShortTMEFDataForCell(x, y)
 
-        // 3) 시/도 코드 추정
-        val siRegId = getNearestSiRegIdByLocation(latitude, longitude)
-        val doRegId = RegionMapper.getDoBySi(siRegId) ?: "UNKNOWN"
-
-        // 4) 중기 예보 필터링
+        // 3) 중기 예보 필터링
         val midForecast = midForecastService.findAll().filter { it.regId == doRegId }
         val midTempForecast = midTempForecastService.findAll().filter { it.regId == siRegId }
         val midCombinedForecast = midCombinedForecastService.findAll().filter { it.siRegId == siRegId }
 
-        // 5) 모든 예보를 DTO로 묶어서 반환
+        // 4) 모든 예보를 DTO로 묶어서 반환
         return ForecastResponseDTO(
             ultraForecastResponse = ultraForecast,
             shortForecastResponse = shortForecast,
