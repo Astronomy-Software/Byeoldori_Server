@@ -125,6 +125,14 @@ class GridForecastScheduler(
         midTempForecastService.deleteOldForecasts()
     }
 
+    // 매 정각마다 24시간 지난 중기 통합 예보 삭제
+    @Scheduled(cron = "0 0 * * * *")
+    fun deleteOldMidCombinedForecasts() {
+        logger.info("24시간 지난 중기 병합 예보 삭제 시작")
+        midCombinedForecastService.deleteOldForecasts()
+    }
+
+
     fun getTMFCTimeUltra(): String {
         val current = LocalDateTime.now()
         val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")

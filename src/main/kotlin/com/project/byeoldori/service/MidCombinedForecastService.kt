@@ -12,6 +12,7 @@ import com.project.byeoldori.repository.MidCombinedForecastRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 @Service
 class MidCombinedForecastService(
@@ -90,6 +91,12 @@ class MidCombinedForecastService(
         } else {
             logger.info("신규 저장할 병합 예보 데이터가 없습니다.")
         }
+    }
+
+    @Transactional
+    fun deleteOldForecasts() {
+        val cutoffTime = LocalDateTime.now().minusHours(24)
+        combinedForecastRepository.deleteByCreatedAtBefore(cutoffTime)
     }
 
     fun findAll(): List<MidCombinedForecastDTO> {
