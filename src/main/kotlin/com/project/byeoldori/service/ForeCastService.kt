@@ -11,12 +11,9 @@ import org.springframework.stereotype.Service
 class ForeCastService(
     private val ultraGridForecastService: UltraGridForecastService,
     private val shortGridForecastService: ShortGridForecastService,
-    private val midForecastService: MidForecastService,
-    private val midTempForecastService: MidTempForecastService,
     private val midCombinedForecastService: MidCombinedForecastService
 ) {
     fun getForecastDataByLocation(latitude: Double, longitude: Double): ForecastResponseDTO {
-        //TODO : midforecast 정보 반환하는것 추가하고 더미데이터 삭제
 
         // 1) 위경도 -> 격자x 좌표 변환
         val (x, y) = latLonToGrid(latitude, longitude)
@@ -29,16 +26,12 @@ class ForeCastService(
         val shortForecast: List<ShortForecastResponseDTO> = shortGridForecastService.getAllShortTMEFDataForCell(x, y)
 
         // 3) 중기 예보 필터링
-        val midForecast = midForecastService.findAll().filter { it.regId == doRegId }
-        val midTempForecast = midTempForecastService.findAll().filter { it.regId == siRegId }
         val midCombinedForecast = midCombinedForecastService.findAll().filter { it.siRegId == siRegId }
 
         // 4) 모든 예보를 DTO로 묶어서 반환
         return ForecastResponseDTO(
             ultraForecastResponse = ultraForecast,
             shortForecastResponse = shortForecast,
-            midForecastResponseDTO = midForecast,
-            midTempForecastResponseDTO = midTempForecast,
             midCombinedForecastDTO = midCombinedForecast
         )
     }

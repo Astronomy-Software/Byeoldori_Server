@@ -27,9 +27,7 @@ class GridForecastScheduler(
     private val midCombinedForecastService: MidCombinedForecastService
 
     ) {
-    // TODO : 스케쥴러 하나로 병합
     // 단 , 이파일에서 getTMFCTimeUltra 이런친구들은 외부로 보내도됨.
-    // TODO : 다시실행하는 로직 초단기 , 단기에 적용
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     private val maxRetryAttempts = retryProperties.attempts

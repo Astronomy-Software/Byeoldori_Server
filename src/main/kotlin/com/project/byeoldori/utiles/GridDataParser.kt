@@ -1,7 +1,6 @@
 package com.project.byeoldori.utiles
 
 object GridDataParser {
-    // TODO : Utiles 안에 Parser 파일만들어서 Parsing진행하는 친구들 모아주기
     /**
      * 쉼표로 구분된 전체 데이터를 149개씩 그룹화하여 2차원 리스트로 변환합니다.
      * 각 값이 "-99.00"이면 null, 그 외에는 Double로 변환합니다.

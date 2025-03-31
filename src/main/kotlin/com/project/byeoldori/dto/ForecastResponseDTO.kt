@@ -3,8 +3,6 @@ package com.project.byeoldori.dto
 data class ForecastResponseDTO(
     val ultraForecastResponse : List<UltraForecastResponseDTO>,
     val shortForecastResponse : List<ShortForecastResponseDTO>,
-    val midForecastResponseDTO : List<MidForecastResponseDTO>,
-    val midTempForecastResponseDTO : List<MidTempForecastResponseDTO>,
     val midCombinedForecastDTO : List<MidCombinedForecastDTO>
 )
 
@@ -66,4 +64,3 @@ data class MidCombinedForecastDTO(
     val min: Int?,
     val max: Int?
 )
-    // TODO : DTO 병합 - mid 내용들 여기로 추가
