@@ -21,31 +21,10 @@ data class MidTempForecast(
     val tmEf: String,
 
     @Column(nullable = false)
-    val modCode: String,
+    val min: Int,
 
     @Column(nullable = false)
-    val stn: String,
-
-    @Column(nullable = false)
-    val c: String,
-
-    @Column(nullable = false)
-    val min: String,
-
-    @Column(nullable = false)
-    val max: String,
-
-    @Column(nullable = false)
-    val minL: String,
-
-    @Column(nullable = false)
-    val minH: String,
-
-    @Column(nullable = false)
-    val maxL: String,
-
-    @Column(nullable = false)
-    val maxH: String,
+    val max: Int,
 
     @CreationTimestamp
     val createdAt: LocalDateTime? = null

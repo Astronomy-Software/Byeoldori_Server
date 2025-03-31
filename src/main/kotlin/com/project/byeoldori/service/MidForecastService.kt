@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.project.byeoldori.api.WeatherData
 import com.project.byeoldori.dto.MidForecastResponseDTO
 import com.project.byeoldori.entity.MidForecast
-import com.project.byeoldori.parser.MidForecastParser
+import com.project.byeoldori.utiles.MidForecastParser
 import com.project.byeoldori.repository.MidForecastRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -37,7 +37,6 @@ class MidForecastService(
 
     @Transactional
     fun saveAll(midForecastList: List<MidForecast>): List<MidForecastResponseDTO> {
-        // 중복 체크 (tmFc + tmEf + regId 기준)
         val filteredList = midForecastList.filter { forecast ->
             !midForecastRepository.existsByTmFcAndTmEfAndRegId(
                 forecast.tmFc,
@@ -72,17 +71,16 @@ class MidForecastService(
         midForecastRepository.deleteByCreatedAtBefore(cutoffTime)
     }
 
-    private fun MidForecast.toResponseDTO() = MidForecastResponseDTO(
+    fun findAllEntity(): List<MidForecast> {
+        return midForecastRepository.findAll()
+    }
+
+    fun MidForecast.toResponseDTO() = MidForecastResponseDTO(
         regId = regId,
         tmFc = tmFc,
         tmEf = tmEf,
-        modCode = modCode,
-        stn = stn,
-        c = c,
         sky = sky,
         pre = pre,
-        conf = conf,
-        wf = wf,
         rnSt = rnSt
     )
 }

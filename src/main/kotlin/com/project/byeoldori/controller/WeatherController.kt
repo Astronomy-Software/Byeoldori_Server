@@ -2,11 +2,7 @@ package com.project.byeoldori.controller
 
 import com.project.byeoldori.api.WeatherData
 import com.project.byeoldori.dto.*
-import com.project.byeoldori.service.ForeCastService
-import com.project.byeoldori.service.UltraGridForecastService
-import com.project.byeoldori.service.ShortGridForecastService
-import com.project.byeoldori.service.MidForecastService
-import com.project.byeoldori.service.MidTempForecastService
+import com.project.byeoldori.service.*
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import org.slf4j.LoggerFactory
@@ -21,8 +17,9 @@ class WeatherController(
     private val midForecastService: MidForecastService,
     private val ultraForecastService: UltraGridForecastService,
     private val shortForecastService: ShortGridForecastService,
-    private val foreCastService: ForeCastService
+    private val foreCastService: ForeCastService,
     private val midTempForecastService: MidTempForecastService,
+    private val midCombinedForecastService: MidCombinedForecastService,
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -127,12 +124,20 @@ class WeatherController(
         @RequestParam long: Double,
     ): ForecastResponseDTO {
         logger.info("ForecastData 호출 lat $lat, long $long")
-        return foreCastService.getForecastDataByLocation(lat,long)
-        
-    @Operation(summary = "저장된 중기 기온 예보 전체 조회", description = "DB에 저장된 중기 기온 예보 데이터를 모두 조회합니다.")
-    @GetMapping("/mid-temp/all")
-    fun getAllMidTempForecasts(): ResponseEntity<List<MidTempForecastResponseDTO>> {
-        val forecasts = midTempForecastService.findAll()
-        return ResponseEntity.ok(forecasts)
+        return foreCastService.getForecastDataByLocation(lat, long)
+    }
+
+    @Operation(summary = "중기 육상 + 기온 예보 조회", description = "기상청 중기 육상 + 예보 데이터를 호출 후 DB에 저장합니다.")
+    @PostMapping("/mid-combined")
+    fun fetchAndSaveMidCombinedForecastFromApi(): ResponseEntity<String> {
+        val result = midCombinedForecastService.fetchAndSaveFromApi()
+        return ResponseEntity.ok(result)
+    }
+
+    @Operation(summary = "저장된 중기 예보 전체 조회", description = "DB에 저장된 병합된 중기 육상 및 기온 데이터를 모두 조회합니다.")
+    @GetMapping("/mid-combined/all")
+    fun getAllSavedForecasts(): ResponseEntity<List<MidCombinedForecastDTO>> {
+        val dtoList = midCombinedForecastService.findAll()
+        return ResponseEntity.ok(dtoList)
     }
 }

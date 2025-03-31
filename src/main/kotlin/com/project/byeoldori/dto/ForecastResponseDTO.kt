@@ -4,6 +4,8 @@ data class ForecastResponseDTO(
     val ultraForecastResponse : List<UltraForecastResponseDTO>,
     val shortForecastResponse : List<ShortForecastResponseDTO>,
     val midForecastResponseDTO : List<MidForecastResponseDTO>,
+    val midTempForecastResponseDTO : List<MidTempForecastResponseDTO>,
+    val midCombinedForecastDTO : List<MidCombinedForecastDTO>
 )
 
 // TODO : 이후 각각의 자료형 맞춰주기 Double이라 너무큰듯함.
@@ -32,3 +34,36 @@ data class ShortForecastResponseDTO(
     val sno: Double?,
     val reh: Double?
 )
+
+data class MidForecastResponseDTO(
+    val regId: String,
+    val tmFc: String,
+    val tmEf: String,
+    val sky: String,
+    val pre: String,
+    val rnSt: Int
+)
+
+data class MidTempForecastResponseDTO(
+    val regId: String,
+    val tmFc: String,
+    val tmEf: String,
+    val min: Int,
+    val max: Int,
+)
+
+data class MidCombinedForecastDTO(
+    val tmFc: String,
+    val tmEf: String,
+
+    val doRegId: String,
+    val siRegId: String,
+
+    val sky: String?, // 하늘 상태 코드 WB01(맑음), WB02(구름조금), WB03(구름많음), WB04(흐림) -> 프론트에서 매핑?
+    val pre: String?, // 강수 유무 코드 WB09(비),WB11(비/눈),WB13(눈/비),WB12(눈)
+    val rnSt: Int?,
+
+    val min: Int?,
+    val max: Int?
+)
+    // TODO : DTO 병합 - mid 내용들 여기로 추가

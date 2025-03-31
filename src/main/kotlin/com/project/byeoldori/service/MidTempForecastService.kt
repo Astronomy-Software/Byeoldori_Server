@@ -4,7 +4,7 @@
     import com.project.byeoldori.api.WeatherData
     import com.project.byeoldori.dto.MidTempForecastResponseDTO
     import com.project.byeoldori.entity.MidTempForecast
-    import com.project.byeoldori.parser.MidTempForecastParser
+    import com.project.byeoldori.utiles.MidTempForecastParser
     import com.project.byeoldori.repository.MidTempForecastRepository
     import org.slf4j.LoggerFactory
     import org.springframework.stereotype.Service
@@ -70,18 +70,15 @@
             logger.info("24시간 지난 중기 기온 예보 $deletedCount 건 삭제 완료")
         }
 
-        private fun MidTempForecast.toResponseDTO() = MidTempForecastResponseDTO(
+        fun findAllEntity(): List<MidTempForecast> {
+            return midTempForecastRepository.findAll()
+        }
+
+        fun MidTempForecast.toResponseDTO() = MidTempForecastResponseDTO(
             regId = regId,
             tmFc = tmFc,
             tmEf = tmEf,
-            modCode = modCode,
-            stn = stn,
-            c = c,
             min = min,
-            max = max,
-            minL = minL,
-            minH = minH,
-            maxL = maxL,
-            maxH = maxH
+            max = max
         )
     }

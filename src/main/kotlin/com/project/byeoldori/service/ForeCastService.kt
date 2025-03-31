@@ -1,9 +1,9 @@
 package com.project.byeoldori.service
 
 import com.project.byeoldori.dto.ForecastResponseDTO
-import com.project.byeoldori.dto.MidForecastResponseDTO
 import com.project.byeoldori.dto.UltraForecastResponseDTO
 import com.project.byeoldori.dto.ShortForecastResponseDTO
+import com.project.byeoldori.region.RegionMapper
 import latLonToGrid
 import org.springframework.stereotype.Service
 
@@ -11,53 +11,44 @@ import org.springframework.stereotype.Service
 class ForeCastService(
     private val ultraGridForecastService: UltraGridForecastService,
     private val shortGridForecastService: ShortGridForecastService,
-    private val midForecastService: MidForecastService
+    private val midForecastService: MidForecastService,
+    private val midTempForecastService: MidTempForecastService,
+    private val midCombinedForecastService: MidCombinedForecastService
 ) {
     fun getForecastDataByLocation(latitude: Double, longitude: Double): ForecastResponseDTO {
-        // 1) 위경도 -> 격자 좌표 변환
-        val (x, y) = latLonToGrid(latitude, longitude)
+        //TODO : midforecast 정보 반환하는것 추가하고 더미데이터 삭제
 
+        // 1) 위경도 -> 격자x 좌표 변환
+        val (x, y) = latLonToGrid(latitude, longitude)
+        val siRegId = getNearestSiRegIdByLocation(latitude, longitude) // 위경도로 매핑, 임시 방식 적용
+        // val siRegId = RegionMapper.getSiByGrid(x, y) ?: "UNKNOWN" 이건 격자 좌표로 매핑, 좌표와 시지역코드 매핑 시켜줘야함
+        val doRegId = RegionMapper.getDoBySi(siRegId) ?: "UNKNOWN"
+
+        // 2) 초단기, 단기 예보
         val ultraForecast: List<UltraForecastResponseDTO> = ultraGridForecastService.getAllUltraTMEFDataForCell(x, y)
         val shortForecast: List<ShortForecastResponseDTO> = shortGridForecastService.getAllShortTMEFDataForCell(x, y)
 
-        // 3) midForecastResponseDTO 필드에 임시 값 넣기
-        //    MidForecastResponseDTO 생성자에 맞춰 더미 데이터를 넣습니다.
-        //    예: 만약 MidForecastResponseDTO가 (val date: String, val comment: String) 이런 식이라면:
-        val midForecastDummyList = listOf(
-            MidForecastResponseDTO(
-                regId = "REG001",
-                tmFc = "2025-03-26 12:00",
-                tmEf = "2025-03-27 00:00",
-                modCode = "MOD123",
-                stn = "STN001",
-                c = "C0001",
-                sky = "맑음",
-                pre = "0.0mm",
-                conf = "높음",
-                wf = "맑은 날씨",
-                rnSt = 0
-            ),
-            MidForecastResponseDTO(
-                regId = "REG002",
-                tmFc = "2025-03-26 18:00",
-                tmEf = "2025-03-27 06:00",
-                modCode = "MOD456",
-                stn = "STN002",
-                c = "C0002",
-                sky = "흐림",
-                pre = "1.2mm",
-                conf = "보통",
-                wf = "구름 많고 비 소량",
-                rnSt = 40
-            )
-        )
+        // 3) 중기 예보 필터링
+        val midForecast = midForecastService.findAll().filter { it.regId == doRegId }
+        val midTempForecast = midTempForecastService.findAll().filter { it.regId == siRegId }
+        val midCombinedForecast = midCombinedForecastService.findAll().filter { it.siRegId == siRegId }
 
-
-        // 4) 최종적으로 ForecastResponseDTO 반환
+        // 4) 모든 예보를 DTO로 묶어서 반환
         return ForecastResponseDTO(
             ultraForecastResponse = ultraForecast,
             shortForecastResponse = shortForecast,
-            midForecastResponseDTO = midForecastDummyList
+            midForecastResponseDTO = midForecast,
+            midTempForecastResponseDTO = midTempForecast,
+            midCombinedForecastDTO = midCombinedForecast
         )
+    }
+
+    // 임시 매핑 함수로 위도,경도 -> 시 코드 변환
+    private fun getNearestSiRegIdByLocation(lat: Double, lon: Double): String {
+        return when {
+            lat in 37.4..37.6 && lon in 126.9..127.1 -> "11B10101" // 서울 종로구
+            lat in 36.6..36.7 && lon in 127.3..127.5 -> "11C10301" // 대전 유성구
+            else -> "11B10101" // 기본값: 서울
+        }
     }
 }
