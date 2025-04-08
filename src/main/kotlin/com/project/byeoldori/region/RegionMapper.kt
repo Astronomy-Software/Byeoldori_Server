@@ -1,6 +1,12 @@
 package com.project.byeoldori.region
 
+import latLonToGrid
+import kotlin.math.hypot
+
 object RegionMapper {
+
+    // JSON 파일을 통해 로드된 지역 매핑 정보
+    private val regionMappings = RegionMappingLoader.regions
 
     //TODO - 북한지역 강원도에 넣기 / 독도와 울릉도를 어떻게 처리 할 것인가 고민..
 
@@ -34,12 +40,23 @@ object RegionMapper {
     // 도 코드로 시 리스트를 가져오는 헬퍼 메서드
     fun getSiListByDo(doRegId: String): List<String>? = doToSiMap[doRegId]
 
-    /** 격자 좌표 (x, y) → 시 지역 코드, 나중에 정식 좌표 매핑 테이블로 대체
+
+    // 주어진 격자 좌표 (x, y)에 가장 가까운 지역의 시지역코드를 반환
+    // 매핑 정보가 비어있거나, 조건에 맞는 지역이 없으면 null을 반환
     fun getSiByGrid(x: Int, y: Int): String? {
-        return when {
-            x in 58..60 && y in 125..127 -> "11B10101" // 서울 종로구
-            x in 67..69 && y in 122..124 -> "11C10301" // 대전 유성구
-            else -> null
+        if (regionMappings.isEmpty()) return null
+
+        // 각 지역과의 유클리드 거리를 계산하여 가장 가까운 지역을 선택
+        val nearestRegion = regionMappings.minByOrNull { region ->
+            hypot((region.x - x).toDouble(), (region.y - y).toDouble())
         }
-    } */
+        return nearestRegion?.regionCode
+    }
+
+    // 위경도 값을 받아 격자 좌표로 변환한 후, 해당하는 시지역코드를 반환
+    // latLonToGrid 함수는 기존에 구현한 위경도 -> 격자 좌표 변환 함수를 사용
+    fun getSiByLatLon(lat: Double, lon: Double): String? {
+        val (gridX, gridY) = latLonToGrid(lat, lon)
+        return getSiByGrid(gridX, gridY)
+    }
 }

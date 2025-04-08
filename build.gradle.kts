@@ -75,6 +75,8 @@ dependencies {
 
    testImplementation("org.mockito:mockito-core:4.11.0")
    testImplementation("org.mockito:mockito-junit-jupiter:4.11.0")
+
+    testImplementation("com.h2database:h2:2.3.232")
 }
 
 kotlin {

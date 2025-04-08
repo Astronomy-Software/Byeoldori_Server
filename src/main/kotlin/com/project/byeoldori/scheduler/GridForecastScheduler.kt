@@ -27,9 +27,7 @@ class GridForecastScheduler(
     private val midCombinedForecastService: MidCombinedForecastService
 
     ) {
-    // TODO : 스케쥴러 하나로 병합
     // 단 , 이파일에서 getTMFCTimeUltra 이런친구들은 외부로 보내도됨.
-    // TODO : 다시실행하는 로직 초단기 , 단기에 적용
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     private val maxRetryAttempts = retryProperties.attempts
@@ -126,6 +124,14 @@ class GridForecastScheduler(
         logger.info("24시간 지난 중기 기온 데이터 삭제 시작")
         midTempForecastService.deleteOldForecasts()
     }
+
+    // 매 정각마다 24시간 지난 중기 통합 예보 삭제
+    @Scheduled(cron = "0 0 * * * *")
+    fun deleteOldMidCombinedForecasts() {
+        logger.info("24시간 지난 중기 병합 예보 삭제 시작")
+        midCombinedForecastService.deleteOldForecasts()
+    }
+
 
     fun getTMFCTimeUltra(): String {
         val current = LocalDateTime.now()
