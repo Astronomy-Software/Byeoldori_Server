@@ -1,8 +1,8 @@
-package com.project.byeoldori.observation.controller
+package com.project.byeoldori.observationsites.controller
 
-import com.project.byeoldori.observation.dto.ObservationSiteDto
-import com.project.byeoldori.observation.entity.ObservationSite
-import com.project.byeoldori.observation.service.ObservationSiteService
+import com.project.byeoldori.observationsites.dto.ObservationSiteDto
+import com.project.byeoldori.observationsites.entity.ObservationSite
+import com.project.byeoldori.observationsites.service.ObservationSiteService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*
 
 @Tag(name = "Observation Site", description = "관측지 API")
 @RestController
-@RequestMapping("/sites")
+@RequestMapping("/observationsites")
 class ObservationSiteController(
     private val siteService: ObservationSiteService
 ) {

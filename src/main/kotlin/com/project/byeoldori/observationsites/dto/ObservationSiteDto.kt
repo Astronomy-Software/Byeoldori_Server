@@ -1,6 +1,6 @@
-package com.project.byeoldori.observation.dto
+package com.project.byeoldori.observationsites.dto
 
-import com.project.byeoldori.observation.entity.ObservationSite
+import com.project.byeoldori.observationsites.entity.ObservationSite
 import io.swagger.v3.oas.annotations.media.Schema
 
 data class ObservationSiteDto(

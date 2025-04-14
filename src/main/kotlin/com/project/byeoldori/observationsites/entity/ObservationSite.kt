@@ -1,4 +1,4 @@
-package com.project.byeoldori.observation.entity
+package com.project.byeoldori.observationsites.entity
 
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
