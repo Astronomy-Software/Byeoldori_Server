@@ -1,6 +1,8 @@
 package com.project.byeoldori.observationsites.service
 
+import com.project.byeoldori.forecast.dto.ForecastResponseDTO
 import com.project.byeoldori.forecast.service.ForeCastService
+import com.project.byeoldori.forecast.utiles.WeatherScoreCalculator
 import com.project.byeoldori.observationsites.dto.ObservationSiteResponseDto
 import com.project.byeoldori.observationsites.dto.toDto
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
@@ -12,26 +14,25 @@ import kotlin.math.*
 class ObservationSiteRecommendationService(
     // 이미 구현된 ForecastService를 주입받아 날씨 점수 계산에 사용
     private val observationSiteRepository: ObservationSiteRepository,
-    private val forecastService: ForeCastService
+    private val forecastService: ForeCastService,
+    private val scoreCalculator: WeatherScoreCalculator
 ) {
-    // 예보 종류 구분
-    enum class ForecastType { ULTRA, SHORT, MID }
-
     // 관측 시각에 따라 가장 적절한 예보 데이터를 사용하여 관측지 추천 리스트 반환
     fun recommendSites(userLat: Double, userLon: Double, observationTime: LocalDateTime): List<ObservationSiteResponseDto> {
         val sites = observationSiteRepository.findAll()
 
         return sites.map { site ->
-            val type = getForecastType(observationTime)
+            val forecast: ForecastResponseDTO = forecastService.getForecastDataByLocation(site.latitude, site.longitude)
+            val type = scoreCalculator.getForecastType(observationTime)
 
             // 예보 기반 점수 추출
-            val sky = forecastService.getSkyScoreByAllTypes(site.latitude, site.longitude, observationTime)
-            val pty = forecastService.getPreScoreByAllTypes(site.latitude, site.longitude, observationTime)
-            val wind = forecastService.getWindScoreByAllTypes(site.latitude, site.longitude, observationTime)
+            val sky = scoreCalculator.getSkyScore(forecast, type, observationTime)
+            val pty = scoreCalculator.getPreScore(forecast, type, observationTime)
+            val wind = scoreCalculator.getWindScore(forecast, type, observationTime)
 
             // 중기 예보일 경우 달/광공해 점수 제외
-            val moon = if (type == ForecastType.MID) null else getMoonPhaseScore(observationTime)
-            val light = if (type == ForecastType.MID) null else getLightPollutionScore(site.latitude, site.longitude)
+            val moon = if (type == WeatherScoreCalculator.ForecastType.MID) null else getMoonPhaseScore(observationTime)
+            val light = if (type == WeatherScoreCalculator.ForecastType.MID) null else getLightPollutionScore(site.latitude, site.longitude)
 
             // 점수 계산
             val score = calculateTotalScore(type, sky, pty, wind, moon, light)
@@ -40,17 +41,6 @@ class ObservationSiteRecommendationService(
             .sortedByDescending { it.second } // 높은 점수순 정렬
             .take(5) // 상위 5개만 반환
             .map { (site, score) -> site.toDto(score)}
-    }
-
-    // 관측 시간으로부터 예보 타입 결정
-    fun getForecastType(observationTime: LocalDateTime): ForecastType {
-        val now = LocalDateTime.now()
-        val hours = Duration.between(now, observationTime).toHours()
-        return when {
-            hours <= 6 -> ForecastType.ULTRA
-            hours <= 72 -> ForecastType.SHORT
-            else -> ForecastType.MID
-        }
     }
 
     // 달의 위상 점수 계산
@@ -94,7 +84,7 @@ class ObservationSiteRecommendationService(
 
     // 예보 타입별로 점수 항목 및 가중치 다르게 계산
     fun calculateTotalScore(
-        type: ForecastType,
+        type: WeatherScoreCalculator.ForecastType,
         sky: Double,
         pty: Double,
         wind: Double?,
@@ -102,7 +92,7 @@ class ObservationSiteRecommendationService(
         lightPollution: Double?
     ): Double {
         return when (type) {
-            ForecastType.MID -> (0.5714 * sky) + (0.4286 * pty) // 40:30 비중 정규화
+            WeatherScoreCalculator.ForecastType.MID -> (0.5714 * sky) + (0.4286 * pty) // 40:30 비중 정규화
             else -> {
                 val w = wind ?: 0.5
                 val m = moon ?: 0.5

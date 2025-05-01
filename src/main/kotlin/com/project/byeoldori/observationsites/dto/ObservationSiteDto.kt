@@ -42,7 +42,7 @@ fun ObservationSiteDto.toEntity(): ObservationSite {
     )
 }
 
-// Entity ➔ DTO 변환
+// Entity ➔ DTO 변환 (score 포함)
 fun ObservationSite.toDto(score: Double): ObservationSiteResponseDto {
     return ObservationSiteResponseDto(
         name = this.name,
@@ -51,3 +51,9 @@ fun ObservationSite.toDto(score: Double): ObservationSiteResponseDto {
         score = score
     )
 }
+
+fun ObservationSite.toSimpleDto() = ObservationSiteDto(
+    name = this.name,
+    latitude = this.latitude,
+    longitude = this.longitude
+)
