@@ -10,4 +10,6 @@ interface ObservationSiteRepository : JpaRepository<ObservationSite, Long> {
     fun findByNameContaining(keyword: String): List<ObservationSite>
     fun deleteByName(name: String)
     fun existsByName(name: String): Boolean
+    fun existsByNameAndLatitudeAndLongitude(name: String, latitude: Double, longitude: Double): Boolean
+
 }
