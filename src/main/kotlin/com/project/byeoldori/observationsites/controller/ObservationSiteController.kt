@@ -1,7 +1,10 @@
 package com.project.byeoldori.observationsites.controller
 
 import com.project.byeoldori.observationsites.dto.ObservationSiteDto
+import com.project.byeoldori.observationsites.dto.ObservationSiteResponseDto
+import com.project.byeoldori.observationsites.dto.RecommendationRequestDto
 import com.project.byeoldori.observationsites.entity.ObservationSite
+import com.project.byeoldori.observationsites.service.ObservationSiteRecommendationService
 import com.project.byeoldori.observationsites.service.ObservationSiteService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -13,7 +16,8 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/observationsites")
 class ObservationSiteController(
-    private val siteService: ObservationSiteService
+    private val siteService: ObservationSiteService,
+    private val siteRecommendationService: ObservationSiteRecommendationService
 ) {
     @Operation(summary = "관측지 등록", description = "새로운 관측지 정보를 등록합니다.")
     @PostMapping
@@ -48,5 +52,16 @@ class ObservationSiteController(
     fun deleteByName(@PathVariable name: String): ResponseEntity<Void> {
         siteService.deleteSiteByName(name)
         return ResponseEntity.noContent().build()
+    }
+
+    @Operation(summary = "관측지 추천", description = "점수가 높은 상위 5개의 관측지를 추천합니다.")
+    @PostMapping("/recommend")
+    fun recommendSites(@RequestBody @Valid request: RecommendationRequestDto): ResponseEntity<List<ObservationSiteResponseDto>> {
+        val recommendedSites = siteRecommendationService.recommendSites(
+            userLat = request.userLat,
+            userLon = request.userLon,
+            observationTime = request.observationTime
+        )
+        return ResponseEntity.ok(recommendedSites)
     }
 }
