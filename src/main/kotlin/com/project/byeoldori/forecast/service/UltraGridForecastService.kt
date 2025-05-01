@@ -16,7 +16,8 @@ data class UltraGridCell(
     val wsd: Double?, // 풍속
     val pty: Double?, // 강수형태
     val rn1: Double?, // 1시간 강수량
-    val reh: Double?  // 상대습도
+    val reh: Double?, // 상대습도
+    val sky: Double?  // 하늘 상태
 )
 
 @Service
@@ -34,7 +35,7 @@ class UltraGridForecastService(
 
     /**
      * (1) 단일 tmef에 대한 초단기예보 격자 데이터 가져오기
-     * - 6개 변수(T1H, VEC, WSD, PTY, RN1, REH)를 병렬 호출 후, 2차원 GridCell로 결합
+     * - 7개 변수(T1H, VEC, WSD, PTY, RN1, REH, SKY)를 병렬 호출 후, 2차원 GridCell로 결합
      * - Mono로 반환하여 비동기 체인에 연결 가능
      */
     fun fetchUltraShortGrid(
@@ -48,6 +49,7 @@ class UltraGridForecastService(
             weatherData.fetchUltraShortForecast(tmfc, tmef, "PTY"),
             weatherData.fetchUltraShortForecast(tmfc, tmef, "RN1"),
             weatherData.fetchUltraShortForecast(tmfc, tmef, "REH"),
+            weatherData.fetchUltraShortForecast(tmfc, tmef, "SKY"),
         ).map { tuple6 ->
             // 응답 데이터 추출
             val t1hData = tuple6.t1
@@ -56,6 +58,7 @@ class UltraGridForecastService(
             val ptyData = tuple6.t4
             val rn1Data = tuple6.t5
             val rehData = tuple6.t6
+            val skyData = tuple6.t7
 
             // 각 데이터 파싱
             val t1hGrid = GridDataParser.parseGridData(t1hData)
@@ -64,11 +67,12 @@ class UltraGridForecastService(
             val ptyGrid = GridDataParser.parseGridData(ptyData)
             val rn1Grid = GridDataParser.parseGridData(rn1Data)
             val rehGrid = GridDataParser.parseGridData(rehData)
+            val skyGrid = GridDataParser.parseGridData(skyData)
 
             // 2차원 GridCell 리스트 결합
             val combinedGrid = combineUltraGrids(
                 t1hGrid, vecGrid, wsdGrid,
-                ptyGrid, rn1Grid, rehGrid
+                ptyGrid, rn1Grid, rehGrid, skyGrid
             )
 
             // (디버깅) 중앙 셀 출력
@@ -133,7 +137,8 @@ class UltraGridForecastService(
                             wsd = cell.wsd,
                             pty = cell.pty,
                             rn1 = cell.rn1,
-                            reh = cell.reh
+                            reh = cell.reh,
+                            sky = cell.sky
                         )
                     )
                 }
@@ -152,7 +157,8 @@ class UltraGridForecastService(
         wsdGrid: MutableList<MutableList<Double?>>,
         ptyGrid: MutableList<MutableList<Double?>>,
         rn1Grid: MutableList<MutableList<Double?>>,
-        rehGrid: MutableList<MutableList<Double?>>
+        rehGrid: MutableList<MutableList<Double?>>,
+        skyGrid: MutableList<MutableList<Double?>>,
     ): MutableList<MutableList<UltraGridCell>> {
         val numRows = t1hGrid.size
         val numCols = if (numRows > 0) t1hGrid[0].size else 0
@@ -168,7 +174,8 @@ class UltraGridForecastService(
                         wsd = wsdGrid[i][j],
                         pty = ptyGrid[i][j],
                         rn1 = rn1Grid[i][j],
-                        reh = rehGrid[i][j]
+                        reh = rehGrid[i][j],
+                        sky = skyGrid[i][j]
                     )
                 )
             }
