@@ -15,7 +15,8 @@ data class UltraForecastResponseDTO(
     val wsd: Double?,
     val pty: Double?,
     val rn1: Double?,
-    val reh: Double?
+    val reh: Double?,
+    val sky: Double?
 )
 
 data class ShortForecastResponseDTO(

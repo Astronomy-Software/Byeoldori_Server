@@ -1,6 +1,6 @@
-package com.project.byeoldori.observation.repository
+package com.project.byeoldori.observationsites.repository
 
-import com.project.byeoldori.observation.entity.ObservationSite
+import com.project.byeoldori.observationsites.entity.ObservationSite
 import jakarta.transaction.Transactional
 import org.springframework.data.jpa.repository.JpaRepository
 

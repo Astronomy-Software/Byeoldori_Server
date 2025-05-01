@@ -1,9 +1,9 @@
-package com.project.byeoldori.observation.service
+package com.project.byeoldori.observationsites.service
 
-import com.project.byeoldori.observation.dto.ObservationSiteDto
-import com.project.byeoldori.observation.dto.toEntity
-import com.project.byeoldori.observation.entity.ObservationSite
-import com.project.byeoldori.observation.repository.ObservationSiteRepository
+import com.project.byeoldori.observationsites.dto.ObservationSiteDto
+import com.project.byeoldori.observationsites.dto.toEntity
+import com.project.byeoldori.observationsites.entity.ObservationSite
+import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import org.springframework.stereotype.Service
 
 @Service

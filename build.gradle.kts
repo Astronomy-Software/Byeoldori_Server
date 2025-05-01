@@ -64,7 +64,6 @@ dependencies {
    testImplementation("org.testcontainers:postgresql")
    runtimeOnly("org.springframework.boot:spring-boot-docker-compose")
    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-   implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.2")
    implementation("io.github.cdimascio:dotenv-java:3.2.0")
 
 
@@ -77,6 +76,8 @@ dependencies {
    testImplementation("org.mockito:mockito-junit-jupiter:4.11.0")
 
     testImplementation("com.h2database:h2:2.3.232")
+
+    implementation ("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 }
 
 kotlin {
