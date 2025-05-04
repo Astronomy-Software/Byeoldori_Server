@@ -15,7 +15,8 @@ class ObservationSiteRecommendationService(
     // 이미 구현된 ForecastService를 주입받아 날씨 점수 계산에 사용
     private val observationSiteRepository: ObservationSiteRepository,
     private val forecastService: ForeCastService,
-    private val scoreCalculator: WeatherScoreCalculator
+    private val scoreCalculator: WeatherScoreCalculator,
+    private val lightPollutionService: LightPollutionService
 ) {
     // 관측 시각에 따라 가장 적절한 예보 데이터를 사용하여 관측지 추천 리스트 반환
     fun recommendSites(userLat: Double, userLon: Double, observationTime: LocalDateTime): List<ObservationSiteResponseDto> {
@@ -32,7 +33,8 @@ class ObservationSiteRecommendationService(
 
             // 중기 예보일 경우 달/광공해 점수 제외
             val moon = if (type == WeatherScoreCalculator.ForecastType.MID) null else getMoonPhaseScore(observationTime)
-            val light = if (type == WeatherScoreCalculator.ForecastType.MID) null else getLightPollutionScore(site.latitude, site.longitude)
+            val light = if (type == WeatherScoreCalculator.ForecastType.MID)
+                    null else lightPollutionService.getLightPollutionScore(site.latitude, site.longitude)
 
             // 점수 계산
             val score = calculateTotalScore(type, sky, pty, wind, moon, light)
@@ -60,26 +62,8 @@ class ObservationSiteRecommendationService(
 
         // sine 함수를 사용하여 관측 적합도 점수를 매핑:
         // normalized = 0 또는 1일 때 (초승달, 그믐달) sin(0)=0, sin(π)=0 → score=1,
-        // normalized = 0.5 (보름달)일 때 sin(π/2)=1 → score=0
-        return 1 - sin(Math.PI * normalized)
-    }
-
-    // 광공해 값 → 점수로 변환 (어두울수록 높음)
-    fun getLightPollutionScore(lat: Double, lon: Double): Double {
-        val value = queryLightPollutionValue(lat, lon)
-        return when { // 점수 조정 필요
-            value < 1.0 -> 1.0
-            value < 3.0 -> 0.8
-            value < 6.0 -> 0.6
-            value < 12.0 -> 0.4
-            value < 20.0 -> 0.2
-            else -> 0.0
-        }
-    }
-
-    // TODO: 실제 광공해 데이터 연동 필요
-    fun queryLightPollutionValue(lat: Double, lon: Double): Double {
-        return 6.0 // 임시 값
+        // normalized = 0.5 (보름달)일 때 sin(π/2)=1 → score=0.1
+        return 0.1 + 0.9 * (1 - sin(Math.PI * normalized))
     }
 
     // 예보 타입별로 점수 항목 및 가중치 다르게 계산
@@ -92,12 +76,16 @@ class ObservationSiteRecommendationService(
         lightPollution: Double?
     ): Double {
         return when (type) {
-            WeatherScoreCalculator.ForecastType.MID -> (0.5714 * sky) + (0.4286 * pty) // 40:30 비중 정규화
+            WeatherScoreCalculator.ForecastType.MID -> {
+                val score = (0.5714 * sky) + (0.4286 * pty) // 40:30 비중 정규화
+                score * 100
+            }
             else -> {
                 val w = wind ?: 0.5
                 val m = moon ?: 0.5
                 val l = lightPollution ?: 0.5
-                (0.40 * sky) + (0.30 * pty) + (0.05 * w) + (0.15 * m) + (0.10 * l)
+                val score = (0.45 * sky) + (0.25 * pty) + (0.05 * w) + (0.15 * m) + (0.10 * l)
+                score * 100
             }
         }
     }
