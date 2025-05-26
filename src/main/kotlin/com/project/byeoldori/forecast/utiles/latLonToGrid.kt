@@ -1,6 +1,10 @@
 import kotlin.math.*
 
 fun latLonToGrid(lat: Double, lon: Double): Pair<Int, Int> {
+    require(!lat.isNaN() && !lon.isNaN()) { "위도 또는 경도 값이 NaN입니다. lat=$lat, lon=$lon" }
+    require(lat in -90.0..90.0) { "위도 값이 범위를 벗어났습니다. lat=$lat" }
+    require(lon in -180.0..180.0) { "경도 값이 범위를 벗어났습니다. lon=$lon" }
+
     // PDF에 명시된 상수 값들
     val RE = 6371.00877       // 지구 반경 (km)
     val GRID = 5.0            // 격자 간격 (km)
