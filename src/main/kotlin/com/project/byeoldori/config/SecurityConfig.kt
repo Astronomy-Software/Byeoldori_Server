@@ -1,20 +1,32 @@
 package com.project.byeoldori.config
 
+import com.project.byeoldori.security.JwtAuthenticationFilter
+import com.project.byeoldori.security.OAuth2SuccessHandler
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
+import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 @Configuration
-class SecurityConfig {
-
+@EnableWebSecurity
+class SecurityConfig (
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val oAuth2SuccessHandler: OAuth2SuccessHandler
+){
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .cors { } // Cors 설정 추가, Cors -> 다른 출처에서 리소스 요청 시 접근 권한을 부여하는 메커니즘
+            .csrf { it.disable() } // CSRF 보호 비활성화 (REST API에서 불필요)
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) } // 세션 비활성화
             .authorizeHttpRequests {
                 it.requestMatchers(
                     "/swagger-ui/**",
@@ -24,11 +36,17 @@ class SecurityConfig {
                     "/webjars/**",
                     // 이곳에 인바운드 설정을 해주어야한다. controller 작성시마다.
                     "/weather/**",
-                    "/observationsites/**"
+                    "/observationsites/**",
+                    "/users/{userId}/saved-sites/**",
+                    "/auth/**"
                 ).permitAll()  // Swagger URL을 허용
                 it.anyRequest().authenticated()
             }
-            .csrf { it.disable() } // CSRF 보호 비활성화 (선택)
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java) // JWT 필터 등록
+            .oauth2Login { oauth ->
+                oauth
+                    .successHandler(oAuth2SuccessHandler)
+            }
 
         return http.build()
     }
@@ -46,5 +64,10 @@ class SecurityConfig {
         source.registerCorsConfiguration("/**", configuration)
         return source
     }
-}
 
+    // 비밀번호 암호화를 위한 Bean 등록
+    @Bean
+    fun passwordEncoder(): PasswordEncoder {
+        return BCryptPasswordEncoder()
+    }
+}
