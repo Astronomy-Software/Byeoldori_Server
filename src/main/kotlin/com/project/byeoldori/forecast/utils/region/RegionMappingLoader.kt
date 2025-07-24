@@ -1,4 +1,4 @@
-package com.project.byeoldori.forecast.utiles
+package com.project.byeoldori.forecast.utils.region
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper

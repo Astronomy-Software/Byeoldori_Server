@@ -18,6 +18,12 @@ class User(
     @Column(nullable = false)
     var password: String,  // 암호화된 비밀번호
 
+    @Column(nullable = false)
+    val name: String,
+
+    @Column(nullable = false)
+    val phone: String,
+
     @Column(nullable = true, unique = true)
     var nickname: String? = null,  // 사용자 닉네임 (중복 불가)
 

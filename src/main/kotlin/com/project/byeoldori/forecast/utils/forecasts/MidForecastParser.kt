@@ -1,4 +1,4 @@
-package com.project.byeoldori.forecast.utiles
+package com.project.byeoldori.forecast.utils.forecasts
 
 import com.project.byeoldori.forecast.entity.MidForecast
 import org.springframework.stereotype.Component

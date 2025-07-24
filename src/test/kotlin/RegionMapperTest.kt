@@ -1,4 +1,4 @@
-import com.project.byeoldori.forecast.utiles.RegionMapper
+import com.project.byeoldori.forecast.utils.region.RegionMapper
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 

@@ -3,7 +3,7 @@ package com.project.byeoldori.forecast.service
 import com.project.byeoldori.forecast.dto.ForecastResponseDTO
 import com.project.byeoldori.forecast.dto.UltraForecastResponseDTO
 import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
-import com.project.byeoldori.forecast.utiles.RegionMapper
+import com.project.byeoldori.forecast.utils.region.RegionMapper
 import latLonToGrid
 import org.springframework.stereotype.Service
 

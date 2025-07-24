@@ -10,6 +10,7 @@ import java.time.LocalDateTime
 interface MidCombinedForecastRepository : JpaRepository<MidCombinedForecast, Long> {
 
     fun existsByTmFcAndTmEfAndSiRegId(tmFc: String, tmEf: String, siRegId: String): Boolean
+    fun findByTmFcAndTmEfAndSiRegId(tmFc: String, tmEf: String, siRegId: String): MidCombinedForecast?
 
     @Transactional
     fun deleteByCreatedAtBefore(cutoffTime: LocalDateTime): Long

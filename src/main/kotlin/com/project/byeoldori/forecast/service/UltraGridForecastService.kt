@@ -2,7 +2,8 @@ package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.UltraForecastResponseDTO
-import com.project.byeoldori.forecast.utiles.GridDataParser
+import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
+import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -11,13 +12,13 @@ import kotlin.concurrent.write
 
 // 단일 격자 셀 구조
 data class UltraGridCell(
-    val t1h: Double?, // 기온
-    val vec: Double?, // 풍향
-    val wsd: Double?, // 풍속
-    val pty: Double?, // 강수형태
-    val rn1: Double?, // 1시간 강수량
-    val reh: Double?, // 상대습도
-    val sky: Double?  // 하늘 상태
+    val t1h: Int?,
+    val vec: Int?,
+    val wsd: Float?,
+    val pty: Int?,
+    val rn1: Float?,
+    val reh: Int?,
+    val sky: Int?
 )
 
 @Service
@@ -43,22 +44,22 @@ class UltraGridForecastService(
         tmef: String
     ): Mono<MutableList<MutableList<UltraGridCell>>> {
         return Mono.zip(
-            weatherData.fetchUltraShortForecast(tmfc, tmef, "T1H"),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, "VEC"),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, "WSD"),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, "PTY"),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, "RN1"),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, "REH"),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, "SKY"),
-        ).map { tuple6 ->
+            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.T1H),
+            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.VEC),
+            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.WSD),
+            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.PTY),
+            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.RN1),
+            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.REH),
+            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.SKY),
+        ).map { tuple7 ->
             // 응답 데이터 추출
-            val t1hData = tuple6.t1
-            val vecData = tuple6.t2
-            val wsdData = tuple6.t3
-            val ptyData = tuple6.t4
-            val rn1Data = tuple6.t5
-            val rehData = tuple6.t6
-            val skyData = tuple6.t7
+            val t1hData = tuple7.t1
+            val vecData = tuple7.t2
+            val wsdData = tuple7.t3
+            val ptyData = tuple7.t4
+            val rn1Data = tuple7.t5
+            val rehData = tuple7.t6
+            val skyData = tuple7.t7
 
             // 각 데이터 파싱
             val t1hGrid = GridDataParser.parseGridData(t1hData)
@@ -169,13 +170,13 @@ class UltraGridForecastService(
             for (j in 0 until numCols) {
                 row.add(
                     UltraGridCell(
-                        t1h = t1hGrid[i][j],
-                        vec = vecGrid[i][j],
-                        wsd = wsdGrid[i][j],
-                        pty = ptyGrid[i][j],
-                        rn1 = rn1Grid[i][j],
-                        reh = rehGrid[i][j],
-                        sky = skyGrid[i][j]
+                        t1h = t1hGrid[i][j]?.toInt(),
+                        vec = vecGrid[i][j]?.toInt(),
+                        wsd = wsdGrid[i][j]?.toFloat(),
+                        pty = ptyGrid[i][j]?.toInt(),
+                        rn1 = rn1Grid[i][j]?.toFloat(),
+                        reh = rehGrid[i][j]?.toInt(),
+                        sky = skyGrid[i][j]?.toInt()
                     )
                 )
             }

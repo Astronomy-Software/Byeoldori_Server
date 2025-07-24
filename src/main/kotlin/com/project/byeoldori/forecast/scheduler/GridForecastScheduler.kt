@@ -3,8 +3,9 @@ package com.project.byeoldori.forecast.scheduler
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.config.RetryProperties
 import com.project.byeoldori.forecast.service.*
-import com.project.byeoldori.forecast.utiles.MidForecastParser
-import com.project.byeoldori.forecast.utiles.MidTempForecastParser
+import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil
+import com.project.byeoldori.forecast.utils.forecasts.MidForecastParser
+import com.project.byeoldori.forecast.utils.forecasts.MidTempForecastParser
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -42,7 +43,9 @@ class GridForecastScheduler(
         fetchWithRetry(
             tag = "초단기예보",
             fetchFunction = {
-                ultraGridForecastService.updateAllUltraTMEFData(getTMFCTimeUltra(), getTMEFTimesForUltra())
+                val tmfc = ForecastTimeUtil.getStableUltraTmfc()  // ← 60분 전 기준 안정적 tmfc
+                val tmefList = ForecastTimeUtil.getNext6UltraTmef()
+                ultraGridForecastService.updateAllUltraTMEFData(tmfc, tmefList)
                 Mono.empty()
             }
         )

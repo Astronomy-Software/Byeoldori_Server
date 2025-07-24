@@ -2,7 +2,8 @@ package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
-import com.project.byeoldori.forecast.utiles.GridDataParser
+import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
+import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -14,17 +15,17 @@ import kotlin.concurrent.write
 // SKY: 하늘상태, PTY: 강수형태, POP: 강수유무, PCP: 1시간 강수량,
 // SNO: 1시간 적설량, REH: 상대습도
 data class ShortGridCell(
-    val tmp: Double?, // 기온
-    val tmx: Double?, // 최고기온
-    val tmn: Double?, // 최저기온
-    val vec: Double?, // 풍향
-    val wsd: Double?, // 풍속
-    val sky: Double?, // 하늘상태
-    val pty: Double?, // 강수형태
-    val pop: Double?, // 강수유무
-    val pcp: Double?, // 1시간 강수량
-    val sno: Double?, // 1시간 적설량
-    val reh: Double?  // 상대습도
+    val tmp: Int?,
+    val tmx: Int?,
+    val tmn: Int?,
+    val vec: Float?,
+    val wsd: Float?,
+    val sky: Int?,
+    val pty: Int?,
+    val pop: Int?,
+    val pcp: Float?,
+    val sno: Float?,
+    val reh: Int?
 )
 
 @Service
@@ -53,17 +54,17 @@ class ShortGridForecastService(
         tmef: String
     ): Mono<MutableList<MutableList<ShortGridCell>>> {
         val monos = listOf(
-            weatherData.fetchShortForecast(tmfc, tmef, "TMP"),
-            weatherData.fetchShortForecast(tmfc, tmef, "TMX"),
-            weatherData.fetchShortForecast(tmfc, tmef, "TMN"),
-            weatherData.fetchShortForecast(tmfc, tmef, "VEC"),
-            weatherData.fetchShortForecast(tmfc, tmef, "WSD"),
-            weatherData.fetchShortForecast(tmfc, tmef, "SKY"),
-            weatherData.fetchShortForecast(tmfc, tmef, "PTY"),
-            weatherData.fetchShortForecast(tmfc, tmef, "POP"),
-            weatherData.fetchShortForecast(tmfc, tmef, "PCP"),
-            weatherData.fetchShortForecast(tmfc, tmef, "SNO"),
-            weatherData.fetchShortForecast(tmfc, tmef, "REH")
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.TMP),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.TMX),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.TMN),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.VEC),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.WSD),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.SKY),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.PTY),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.POP),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.PCP),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.SNO),
+            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.REH)
         )
         return zipMonos(monos) { results ->
             // 결과는 List<Any>로 전달되므로, 각 결과를 적절히 캐스팅하여 사용합니다.
@@ -160,7 +161,7 @@ class ShortGridForecastService(
                             wsd = cell.wsd,
                             sky = cell.sky,
                             pty = cell.pty,
-                            rn1 = cell.pcp,
+                            pcp = cell.pcp,
                             pop = cell.pop,
                             sno = cell.sno,
                             reh = cell.reh
@@ -197,17 +198,17 @@ class ShortGridForecastService(
             for (j in 0 until numCols) {
                 row.add(
                     ShortGridCell(
-                        tmp = tmpGrid[i][j],
-                        tmx = tmxGrid[i][j],
-                        tmn = tmnGrid[i][j],
-                        vec = vecGrid[i][j],
-                        wsd = wsdGrid[i][j],
-                        sky = skyGrid[i][j],
-                        pty = ptyGrid[i][j],
-                        pop = popGrid[i][j],
-                        pcp = pcpGrid[i][j],
-                        sno = snoGrid[i][j],
-                        reh = rehGrid[i][j]
+                        tmp = tmpGrid[i][j]?.toInt(),
+                        tmx = tmxGrid[i][j]?.toInt(),
+                        tmn = tmnGrid[i][j]?.toInt(),
+                        vec = vecGrid[i][j]?.toFloat(),
+                        wsd = wsdGrid[i][j]?.toFloat(),
+                        sky = skyGrid[i][j]?.toInt(),
+                        pty = ptyGrid[i][j]?.toInt(),
+                        pop = popGrid[i][j]?.toInt(),
+                        pcp = pcpGrid[i][j]?.toFloat(),
+                        sno = snoGrid[i][j]?.toFloat(),
+                        reh = rehGrid[i][j]?.toInt()
                     )
                 )
             }

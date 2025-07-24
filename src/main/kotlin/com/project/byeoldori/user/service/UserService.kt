@@ -49,6 +49,8 @@ class UserService(
         val user = User(
             email = request.email,
             password = passwordEncoder.encode(request.password),
+            name = request.name,
+            phone = request.phone,
             termsOfService = request.consents.termsOfService,
             privacyPolicy = request.consents.privacyPolicy,
             marketing = request.consents.marketing,
@@ -67,6 +69,7 @@ class UserService(
         emailService.sendVerificationEmail(user.email, token.token)
     }
 
+    @Transactional
     fun login(request: LoginRequestDto): Map<String, String> {
         val user = userRepository.findByEmail(request.email)
             .orElseThrow { IllegalArgumentException("이메일 또는 비밀번호가 잘못되었습니다.") }

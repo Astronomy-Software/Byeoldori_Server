@@ -1,4 +1,4 @@
-package com.project.byeoldori.forecast.utiles
+package com.project.byeoldori.forecast.utils.score
 
 import com.project.byeoldori.forecast.dto.ForecastResponseDTO
 import org.springframework.stereotype.Component
@@ -26,8 +26,8 @@ class WeatherScoreCalculator {
     fun getSkyScore(forecast: ForecastResponseDTO, type: ForecastType, time: LocalDateTime): Double {
         val tStr = formatToForecastTMEF(time)
         return when (type) {
-            ForecastType.ULTRA -> forecast.ultraForecastResponse.find { it.tmef == tStr }?.sky?.toInt()
-            ForecastType.SHORT -> forecast.shortForecastResponse.find { it.tmef == tStr }?.sky?.toInt()
+            ForecastType.ULTRA -> forecast.ultraForecastResponse.find { it.tmef == tStr }?.sky
+            ForecastType.SHORT -> forecast.shortForecastResponse.find { it.tmef == tStr }?.sky
             ForecastType.MID -> when (forecast.midCombinedForecastDTO.find { it.tmEf.startsWith(tStr.take(8)) }?.sky) {
                 "WB01" -> 1
                 "WB02" -> 2

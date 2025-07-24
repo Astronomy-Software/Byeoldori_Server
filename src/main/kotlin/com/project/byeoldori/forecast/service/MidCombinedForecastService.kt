@@ -5,10 +5,11 @@ import com.project.byeoldori.forecast.dto.MidCombinedForecastDTO
 import com.project.byeoldori.forecast.entity.MidCombinedForecast
 import com.project.byeoldori.forecast.entity.MidForecast
 import com.project.byeoldori.forecast.entity.MidTempForecast
-import com.project.byeoldori.forecast.utiles.MidForecastParser
-import com.project.byeoldori.forecast.utiles.MidTempForecastParser
-import com.project.byeoldori.forecast.utiles.RegionMapper
+import com.project.byeoldori.forecast.utils.forecasts.MidForecastParser
+import com.project.byeoldori.forecast.utils.forecasts.MidTempForecastParser
+import com.project.byeoldori.forecast.utils.region.RegionMapper
 import com.project.byeoldori.forecast.repository.MidCombinedForecastRepository
+import com.project.byeoldori.forecast.utils.logging.LogMessages
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -44,52 +45,53 @@ class MidCombinedForecastService(
         tempList: List<MidTempForecast>
     ): List<MidCombinedForecast> {
 
-        val landMap = landList.groupBy { Pair(it.tmFc, it.tmEf) }
+        // 기온 예보는 00시(TMEf = xxxx0000)만 존재 → 이를 기준으로 병합
+        val tempMap = tempList
+            .filter { it.tmEf.endsWith("0000") }
+            .associateBy { Pair(it.tmEf, it.regId) } // (tmEf, siRegId) → MidTempForecast
 
-        return tempList.mapNotNull { temp ->
-            val doRegId = RegionMapper.getDoBySi(temp.regId)
+        return landList.mapNotNull { land ->
+            // 육상 예보는 도(regId) 기준 → 해당 도에 속하는 모든 시 리스트 조회
+            val siList = RegionMapper.getSiListByDo(land.regId) ?: return@mapNotNull null
 
-            if (doRegId == null) {
-                logger.warn("시 지역(${temp.regId})에 대한 도 지역 매핑을 찾을 수 없습니다.")
-                return@mapNotNull null
+            // 시 단위로 반복하여 병합 예보 생성
+            siList.mapNotNull { siRegId ->
+                // 육상 예보의 날짜 (tmEf) 기반으로 00시 기온 참조
+                val forecastDate = land.tmEf.substring(0, 8) + "0000"
+                val temp = tempMap[Pair(forecastDate, siRegId)]
+
+                MidCombinedForecast(
+                    tmFc = land.tmFc,
+                    tmEf = land.tmEf,
+                    doRegId = land.regId,
+                    siRegId = siRegId,
+                    sky = land.sky,
+                    pre = land.pre,
+                    rnSt = land.rnSt,
+                    min = temp?.min, // 없으면 null
+                    max = temp?.max
+                )
             }
-
-            val matchingLand = landMap[Pair(temp.tmFc, temp.tmEf)]?.find {
-                it.regId == doRegId
-            }
-
-            if (matchingLand == null) {
-                logger.warn("도 지역(${doRegId})에 대한 육상 예보를 찾을 수 없습니다. [tmFc=${temp.tmFc}, tmEf=${temp.tmEf}]")
-                return@mapNotNull null
-            }
-
-            MidCombinedForecast(
-                tmFc = temp.tmFc,
-                tmEf = temp.tmEf,
-                doRegId = doRegId,
-                siRegId = temp.regId,
-                sky = matchingLand.sky,
-                pre = matchingLand.pre,
-                rnSt = matchingLand.rnSt,
-                min = temp.min,
-                max = temp.max
-            )
-        }
+        }.flatten()
     }
 
     @Transactional
     fun saveAll(forecastList: List<MidCombinedForecast>) {
-        val filteredList = forecastList.filter {
-            !combinedForecastRepository.existsByTmFcAndTmEfAndSiRegId(
-                it.tmFc, it.tmEf, it.siRegId
-            )
-        }
+        forecastList.forEach { forecast ->
+            val existing = combinedForecastRepository
+                .findByTmFcAndTmEfAndSiRegId(forecast.tmFc, forecast.tmEf, forecast.siRegId)
 
-        if (filteredList.isNotEmpty()) {
-            combinedForecastRepository.saveAll(filteredList)
-            logger.info("신규 병합 예보 ${filteredList.size}건 저장 완료!")
-        } else {
-            logger.info("신규 저장할 병합 예보 데이터가 없습니다.")
+            if (existing != null) {
+                combinedForecastRepository.delete(existing)
+                logger.info(
+                    String.format(LogMessages.DELETE_FORECAST, forecast.tmFc, forecast.tmEf, forecast.siRegId)
+                )
+            }
+
+            combinedForecastRepository.save(forecast)
+            logger.info(
+                String.format(LogMessages.SAVE_FORECAST, forecast.tmFc, forecast.tmEf, forecast.siRegId)
+            )
         }
     }
 
