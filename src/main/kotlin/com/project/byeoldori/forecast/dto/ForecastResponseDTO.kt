@@ -6,32 +6,30 @@ data class ForecastResponseDTO(
     val midCombinedForecastDTO : List<MidCombinedForecastDTO>
 )
 
-// TODO : 이후 각각의 자료형 맞춰주기 Double이라 너무큰듯함.
-
 data class UltraForecastResponseDTO(
     val tmef: String,
-    val t1h: Double?,
-    val vec: Double?,
-    val wsd: Double?,
-    val pty: Double?,
-    val rn1: Double?,
-    val reh: Double?,
-    val sky: Double?
+    val t1h: Int?,
+    val vec: Int?,
+    val wsd: Float?,
+    val pty: Int?,
+    val rn1: Float?,
+    val reh: Int?,
+    val sky: Int?
 )
 
 data class ShortForecastResponseDTO(
     val tmef: String,
-    val tmp: Double?,
-    val tmx: Double?,
-    val tmn: Double?,
-    val vec: Double?,
-    val wsd: Double?,
-    val sky: Double?,
-    val pty: Double?,
-    val pop: Double?,
-    val rn1: Double?,
-    val sno: Double?,
-    val reh: Double?
+    val tmp: Int?,
+    val tmx: Int?,
+    val tmn: Int?,
+    val vec: Float?,
+    val wsd: Float?,
+    val sky: Int?,
+    val pty: Int?,
+    val pop: Int?,
+    val pcp: Float?,
+    val sno: Float?,
+    val reh: Int?
 )
 
 data class MidForecastResponseDTO(
