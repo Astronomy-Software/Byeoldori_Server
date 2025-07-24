@@ -1,4 +1,4 @@
-package com.project.byeoldori.forecast.utiles
+package com.project.byeoldori.forecast.utils.forecasts
 
 object GridDataParser {
     /**
