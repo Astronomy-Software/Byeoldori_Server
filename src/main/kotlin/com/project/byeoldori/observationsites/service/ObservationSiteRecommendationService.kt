@@ -2,7 +2,7 @@ package com.project.byeoldori.observationsites.service
 
 import com.project.byeoldori.forecast.dto.ForecastResponseDTO
 import com.project.byeoldori.forecast.service.ForeCastService
-import com.project.byeoldori.forecast.utiles.WeatherScoreCalculator
+import com.project.byeoldori.forecast.utils.score.WeatherScoreCalculator
 import com.project.byeoldori.observationsites.dto.ObservationSiteResponseDto
 import com.project.byeoldori.observationsites.dto.toDto
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository

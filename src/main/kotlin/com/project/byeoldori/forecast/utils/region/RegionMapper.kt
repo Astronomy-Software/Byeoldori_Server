@@ -1,4 +1,4 @@
-package com.project.byeoldori.forecast.utiles
+package com.project.byeoldori.forecast.utils.region
 
 import latLonToGrid
 import kotlin.math.hypot

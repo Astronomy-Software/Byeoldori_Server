@@ -34,6 +34,8 @@ class OAuth2SuccessHandler(
                 password = "OAUTH_USER",  // 명확한 마킹
                 nickname = null, // 프론트에서 추후 수정 가능
                 birthdate = null,
+                name = "name",
+                phone = "null",
                 emailVerified = true,
                 termsOfService = true,
                 privacyPolicy = true,

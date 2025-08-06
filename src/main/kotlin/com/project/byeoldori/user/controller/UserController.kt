@@ -36,8 +36,8 @@ class UserController(
     @GetMapping("/verify-email")
     @Operation(summary = "이메일 인증 처리", description = "회원가입 후 이메일로 받은 토큰을 통해 인증을 완료합니다.")
     fun verifyEmail(@RequestParam token: String): ResponseEntity<ApiResponse<String?>> {
-        val verificationToken = tokenRepository.findByToken(token)
-            .orElseThrow { IllegalArgumentException("유효하지 않은 인증 토큰입니다.") }
+        val verificationToken = tokenRepository.findByTokenWithUser(token)
+            ?: throw IllegalArgumentException("유효하지 않은 인증 토큰입니다.")
 
         if (verificationToken.verified) {
             return ResponseEntity.badRequest().body(ApiResponse(false, "이미 인증이 완료된 이메일입니다.", null))

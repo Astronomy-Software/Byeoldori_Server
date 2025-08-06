@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service
 import org.springframework.web.util.UriComponentsBuilder
 import org.thymeleaf.TemplateEngine
 import org.thymeleaf.context.Context
+import jakarta.mail.internet.MimeUtility
+import jakarta.mail.internet.InternetAddress
 
 @Service
 class EmailService(
@@ -21,6 +23,8 @@ class EmailService(
     // application.properties에 설정된 호스트 URL (http://localhost:8080)
     @Value("\${app.host-url}")
     private lateinit var hostUrl: String
+    @Value("\${spring.mail.username}")
+    private lateinit var fromAddress: String
 
     fun sendVerificationEmail(to: String, token: String) {
         try {
@@ -28,7 +32,8 @@ class EmailService(
             val helper = MimeMessageHelper(message, true, "UTF-8")
 
             helper.setTo(to)
-            helper.setSubject("[별도리] 이메일 인증을 완료해주세요")
+            helper.setFrom(InternetAddress(fromAddress, MimeUtility.encodeText("별도리", "UTF-8", "B")))
+            helper.setSubject(MimeUtility.encodeText("[별도리] 이메일 인증을 완료해주세요", "UTF-8", "B"))
             helper.setText(buildEmailBody(token), true)
 
             mailSender.send(message)
