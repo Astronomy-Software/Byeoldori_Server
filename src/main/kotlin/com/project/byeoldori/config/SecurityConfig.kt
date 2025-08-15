@@ -14,6 +14,7 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
+import org.springframework.http.HttpMethod
 
 @Configuration
 @EnableWebSecurity
@@ -38,8 +39,10 @@ class SecurityConfig (
                     "/weather/**",
                     "/observationsites/**",
                     "/users/{userId}/saved-sites/**",
+                    "/community/**",
                     "/auth/**"
                 ).permitAll()  // Swagger URL을 허용
+                it.requestMatchers(HttpMethod.GET, "/files/**").permitAll()
                 it.anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java) // JWT 필터 등록

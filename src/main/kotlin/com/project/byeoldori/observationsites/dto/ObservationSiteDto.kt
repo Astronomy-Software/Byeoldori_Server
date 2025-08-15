@@ -10,10 +10,10 @@ data class ObservationSiteDto(
     @Schema(description = "관측지 이름", example = "별마로 천문대")
     val name: String,
 
-    @Schema(description = "경도", example = "128.4865953418")
+    @Schema(description = "위도", example = "37.1978774787")
     val latitude: Double,
 
-    @Schema(description = "위도", example = "37.1978774787")
+    @Schema(description = "경도", example = "128.4865953418")
     val longitude: Double,
 )
 
