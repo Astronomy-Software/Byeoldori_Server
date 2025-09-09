@@ -6,6 +6,10 @@ plugins {
 	kotlin("plugin.jpa") version "1.9.25"
 }
 
+springBoot {
+    mainClass.set("com.project.byeoldori.ByeoldoriApplicationKt")
+}
+
 group = "com.project"
 version = "0.0.1-SNAPSHOT"
 
@@ -62,7 +66,6 @@ dependencies {
     testImplementation("org.testcontainers:mongodb")
     testImplementation("org.testcontainers:mysql")
     testImplementation("org.testcontainers:postgresql")
-    runtimeOnly("org.springframework.boot:spring-boot-docker-compose")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("io.github.cdimascio:dotenv-java:3.2.0")
 
