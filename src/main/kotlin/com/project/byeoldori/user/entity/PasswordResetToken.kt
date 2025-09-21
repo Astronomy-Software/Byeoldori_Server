@@ -1,24 +1,26 @@
 package com.project.byeoldori.user.entity
 
+import com.project.byeoldori.common.jpa.BaseTimeEntity
 import jakarta.persistence.*
 import java.time.LocalDateTime
 import java.util.*
 
 @Entity
+@Table(name = "password_reset_tokens")
 data class PasswordResetToken(
     @Id
-    val token: String = UUID.randomUUID().toString(),
+    val id: String = UUID.randomUUID().toString(),
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    val user: User,
 
     @Column(nullable = false)
-    val email: String,
+    val expiresAt: LocalDateTime = LocalDateTime.now().plusMinutes(15),
 
-    @Column(nullable = false)
-    val expiration: LocalDateTime = LocalDateTime.now().plusMinutes(10),
-
-    @Column(nullable = false)
-    val createdAt: LocalDateTime = LocalDateTime.now(),
-
-    @Column(nullable = false)
-    var used: Boolean = false
-)
+    var usedAt: LocalDateTime? = null
+) : BaseTimeEntity() {
+    fun isUsable(now: LocalDateTime = LocalDateTime.now()) =
+        usedAt == null && now.isBefore(expiresAt)
+}
 
