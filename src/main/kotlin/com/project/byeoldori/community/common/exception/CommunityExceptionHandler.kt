@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @ControllerAdvice
-class GlobalExceptionHandler {
+class CommunityExceptionHandler {
 
     private fun reasonPhraseOf(code: Int): String =
         HttpStatus.resolve(code)?.reasonPhrase ?: "Error"
