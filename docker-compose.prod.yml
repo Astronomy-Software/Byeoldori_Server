@@ -6,6 +6,8 @@ services:
     env_file:
       - .env
     environment:
+      TZ: Asia/Seoul
+
       SPRING_DOCKER_COMPOSE_ENABLED: "false"
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/byeoldori?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
       SPRING_DATASOURCE_USERNAME: root
@@ -28,7 +30,6 @@ services:
         condition: service_healthy
 
     volumes:
-      - ./.env:/app/.env:ro
       - uploads:/app/uploads
 
     networks: [backend]
