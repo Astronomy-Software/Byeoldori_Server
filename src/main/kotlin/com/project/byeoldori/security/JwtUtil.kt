@@ -1,77 +1,75 @@
 package com.project.byeoldori.security
 
-import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.SignatureAlgorithm
+import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.security.Keys
-import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.*
+import javax.crypto.SecretKey
 
 @Component
 class JwtUtil(
-    @Value("\${jwt.secret}") private val secretKey: String,
-    @Value("\${jwt.access.expiration}") private val accessExpirationMs: Long,
-    @Value("\${jwt.refresh.expiration}") private val refreshExpirationMs: Long
+    @Value("\${jwt.secret}") private val secret: String,
+    @Value("\${jwt.access.expiration:3600000}") private val accessExpMs: Long,
+    @Value("\${jwt.refresh.expiration:1209600000}") private val refreshExpMs: Long
 ) {
-    private val key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secretKey))
-    private val logger = LoggerFactory.getLogger(this::class.java)
+    val zoneId: ZoneId = ZoneId.of("Asia/Seoul")
 
-    fun generateAccessToken(email: String): String {
-        val now = Date()
-        val expiry = Date(now.time + accessExpirationMs)
-        return Jwts.builder()
-            .setSubject(email)
-            .setIssuedAt(now)
-            .setExpiration(expiry)
-            .signWith(key, SignatureAlgorithm.HS256)
-            .compact()
+    private val key: SecretKey = Keys.hmacShaKeyFor(
+        MessageDigest.getInstance("SHA-256").digest(secret.toByteArray(StandardCharsets.UTF_8))
+    )
+
+    private fun parser() = Jwts.parserBuilder().setSigningKey(key).build()
+
+    fun validateToken(token: String): Boolean = try {
+        parser().parseClaimsJws(token) // 서명/만료/형식 검증
+        true
+    } catch (_: JwtException) {
+        false
+    } catch (_: IllegalArgumentException) {
+        false
     }
 
-    fun generateRefreshToken(email: String): String {
-        val now = Date()
-        val expiry = Date(now.time + refreshExpirationMs)
-        return Jwts.builder()
-            .setSubject(email)
-            .setIssuedAt(now)
-            .setExpiration(expiry)
-            .signWith(key, SignatureAlgorithm.HS256)
-            .compact()
-    }
+    fun generateAccessToken(email: String): String =
+        buildToken(email, accessExpMs, "access")
 
-    // 토큰에서 이메일 추출
-    fun extractEmail(token: String): String {
-        return getClaims(token).subject
-    }
+    fun generateRefreshToken(email: String): String =
+        buildToken(email, refreshExpMs, "refresh")
 
-    // 토큰 유효성 검사
-    fun validateToken(token: String): Boolean {
-        return try {
-            val claims = getClaims(token)
-            !claims.expiration.before(Date())
-        } catch (e: Exception) {
-            logger.warn("JWT 유효성 검사 실패: ${e.message}")
-            false
-        }
-    }
-
-    private fun getClaims(token: String): Claims {
-        return Jwts.parserBuilder()
-            .setSigningKey(key)
-            .build()
-            .parseClaimsJws(token)
-            .body
-    }
+    fun extractEmail(token: String): String =
+        parser().parseClaimsJws(token).body.subject
 
     fun extractExpiration(token: String): LocalDateTime {
-        val claims = getClaims(token)
-        return claims.expiration.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val exp = Jwts.parserBuilder().setSigningKey(key).build()
+            .parseClaimsJws(token).body.expiration
+        return LocalDateTime.ofInstant(exp.toInstant(), zoneId)
     }
 
-    fun getSecretKey(): java.security.Key {
-        return key
+    fun isTokenType(token: String, expected: String): Boolean {
+        val typ = Jwts.parserBuilder().setSigningKey(key).build()
+            .parseClaimsJws(token).body["typ"] as? String
+        return typ == expected
+    }
+
+    private fun buildToken(email: String, ttlMs: Long, typ: String): String {
+        val now = LocalDateTime.now(zoneId)
+        val exp = now.plus(Duration.ofMillis(ttlMs))
+        val nowDate = Date.from(now.atZone(zoneId).toInstant())
+        val expDate = Date.from(exp.atZone(zoneId).toInstant())
+
+        return Jwts.builder()
+            .setSubject(email)
+            .setIssuedAt(nowDate)
+            .setExpiration(expDate)
+            .claim("typ", typ) // "access" | "refresh"
+            .signWith(key, SignatureAlgorithm.HS256)
+            .compact()
     }
 }

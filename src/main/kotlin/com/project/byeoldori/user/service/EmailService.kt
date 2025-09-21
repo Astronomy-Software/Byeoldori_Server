@@ -3,7 +3,6 @@ package com.project.byeoldori.user.service
 import jakarta.mail.MessagingException
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.mail.SimpleMailMessage
 import org.springframework.mail.javamail.JavaMailSender
 import org.springframework.mail.javamail.MimeMessageHelper
 import org.springframework.stereotype.Service
@@ -20,11 +19,32 @@ class EmailService(
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-    // application.properties에 설정된 호스트 URL (http://localhost:8080)
     @Value("\${app.host-url}")
     private lateinit var hostUrl: String
+
     @Value("\${spring.mail.username}")
     private lateinit var fromAddress: String
+
+    fun sendEmailVerification(toEmail: String, token: String) {
+        sendVerificationEmail(toEmail, token)
+    }
+
+    fun sendPasswordReset(toEmail: String, token: String) {
+        try {
+            val message = mailSender.createMimeMessage()
+            val helper = MimeMessageHelper(message, true, "UTF-8")
+
+            helper.setTo(toEmail)
+            helper.setFrom(InternetAddress(fromAddress, MimeUtility.encodeText("별도리", "UTF-8", "B")))
+            helper.setSubject(MimeUtility.encodeText("[별도리] 비밀번호 재설정 링크", "UTF-8", "B"))
+            helper.setText(buildPasswordResetBody(token), true)
+
+            mailSender.send(message)
+        } catch (e: MessagingException) {
+            logger.error("비밀번호 재설정 메일 전송 실패: {}", e.message)
+            throw RuntimeException("이메일 전송에 실패했습니다.")
+        }
+    }
 
     fun sendVerificationEmail(to: String, token: String) {
         try {
@@ -43,29 +63,33 @@ class EmailService(
         }
     }
 
-    // HTML 이메일 본문 생성
     private fun buildEmailBody(token: String): String {
         val verificationUrl = UriComponentsBuilder
-            .fromHttpUrl(hostUrl)
+            .fromHttpUrl(hostUrl.trimEnd('/'))
             .path("/auth/verify-email")
             .queryParam("token", token)
             .build()
+            .encode(java.nio.charset.StandardCharsets.UTF_8)
             .toUriString()
 
         val context = Context().apply {
             setVariable("verificationUrl", verificationUrl)
         }
-
         return templateEngine.process("email-verification", context)
     }
 
-    // 비밀번호 재설정 시 메일 전송
-    fun sendEmail(to: String, subject: String, body: String) {
-        val message = SimpleMailMessage().apply {
-            setTo(to)
-            setSubject(subject)
-            setText(body)
+    private fun buildPasswordResetBody(token: String): String {
+        val resetUrl = UriComponentsBuilder
+            .fromHttpUrl(hostUrl.trimEnd('/'))
+            .path("/reset-password")
+            .queryParam("token", token)
+            .build()
+            .encode(java.nio.charset.StandardCharsets.UTF_8)
+            .toUriString()
+
+        val context = Context().apply {
+            setVariable("resetUrl", resetUrl)
         }
-        mailSender.send(message)
+        return templateEngine.process("password-reset", context)
     }
 }

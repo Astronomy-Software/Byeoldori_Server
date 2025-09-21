@@ -1,5 +1,6 @@
 package com.project.byeoldori.user.entity
 
+import com.project.byeoldori.common.jpa.BaseTimeEntity
 import jakarta.persistence.*
 import java.time.LocalDateTime
 import java.util.*
@@ -10,18 +11,17 @@ import java.util.*
 class EmailVerificationToken(
 
     @Id
-    val token: String = UUID.randomUUID().toString(),  // 토큰은 UUID로 생성
+    val id: String = UUID.randomUUID().toString(),
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY) // 한 유저에게 여러 토큰(재발송) 가능
     @JoinColumn(name = "user_id", nullable = false)
-    val user: User,  // 토큰과 연결된 사용자
+    val user: User,
 
     @Column(nullable = false)
-    val expiresAt: LocalDateTime = LocalDateTime.now().plusHours(1),  // 유효기간 1시간
+    val expiresAt: LocalDateTime = LocalDateTime.now().plusHours(24),
 
-    @Column(nullable = false)
-    var verified: Boolean = false,  // 인증 성공 여부
-
-    @Column(nullable = false)
-    val createdAt: LocalDateTime = LocalDateTime.now()
-)
+    var usedAt: LocalDateTime? = null
+) : BaseTimeEntity() {
+    fun isUsable(now: LocalDateTime = LocalDateTime.now()) =
+        usedAt == null && now.isBefore(expiresAt)
+}
