@@ -1,11 +1,8 @@
 package com.project.byeoldori.forecast.scheduler
 
-import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.config.RetryProperties
 import com.project.byeoldori.forecast.service.*
 import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil
-import com.project.byeoldori.forecast.utils.forecasts.MidForecastParser
-import com.project.byeoldori.forecast.utils.forecasts.MidTempForecastParser
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -20,10 +17,7 @@ class GridForecastScheduler(
     private val ultraGridForecastService: UltraGridForecastService,
     private val shortGridForecastService: ShortGridForecastService,
     private val retryProperties: RetryProperties,
-    private val weatherData: WeatherData,
-    private val midForecastParser: MidForecastParser,
     private val midForecastService: MidForecastService,
-    private val midTempForecastParser: MidTempForecastParser,
     private val midTempForecastService: MidTempForecastService,
     private val midCombinedForecastService: MidCombinedForecastService
 
@@ -36,7 +30,7 @@ class GridForecastScheduler(
 
     // 특정시각마다 업데이트가 많이 느릴때가있음. 시간을 잘 조정해봐야할것으로 보임.
     // 매시각 10분마다 실행 -> 초단기예보 및 실황 , 일단 실황은 제외
-    @Scheduled(cron = "0 0/10 * * * *")
+    @Scheduled(cron = "0 0/10 * * * *", zone = "Asia/Seoul")
     fun clockForUltraForecast() {
         logger.info("초단기예보 및 실황정보 받아오는중...")
 
@@ -52,7 +46,7 @@ class GridForecastScheduler(
     }
 
     // 2시부터 3시간간격으로 실행 -> 단기예보
-    @Scheduled(cron = "0 0 2/3 * * *")
+    @Scheduled(cron = "0 0 2/3 * * *", zone = "Asia/Seoul")
     fun clockForShortForecast() {
         logger.info("단기예보 받아오는중...")
 
@@ -65,8 +59,21 @@ class GridForecastScheduler(
         )
     }
 
-    // 06시, 18시 실행 -> 중기 육상 예보
-    @Scheduled(cron = "0 0 6,18 * * *")
+    // 06:10 / 18:10시 실행 중기 데이터 병합 및 저장
+    @Scheduled(cron = "0 10 6,18 * * *", zone = "Asia/Seoul")
+    fun collectMidCombinedDirect() {
+        logger.info("중기 예보 수집·병합·저장 시작...")
+        fetchWithRetry(
+            tag = "중기예보",
+            fetchFunction = {
+                midCombinedForecastService.fetchAndSaveFromApi()
+                Mono.empty()
+            }
+        )
+    }
+
+    /* 06시, 18시 실행 -> 중기 육상 예보
+    @Scheduled(cron = "0 0 6,18 * * *", zone = "Asia/Seoul")
     fun clockForMidForecast() {
         logger.info("중기 육상 예보 받아오는중...")
 
@@ -85,7 +92,7 @@ class GridForecastScheduler(
     }
 
     // 06시, 18시 1분 실행, 중기 육상 스케줄러와 겹치지 않기 위해 -> 중기 기온
-    @Scheduled(cron = "0 1 6,18 * * *")
+    @Scheduled(cron = "0 1 6,18 * * *", zone = "Asia/Seoul")
     fun clockForMidTempForecast() {
         logger.info("중기 기온 예보 받아오는중...")
 
@@ -104,7 +111,7 @@ class GridForecastScheduler(
     }
 
     // 중기 육상,기온 예보를 자동 병합 후 저장하는 스케줄러 추가
-    @Scheduled(cron = "0 7 6,18 * * *")
+    @Scheduled(cron = "0 7 6,18 * * *", zone = "Asia/Seoul")
     fun clockForMidCombinedForecast() {
         logger.info("중기 병합 예보 병합 및 저장 중...")
 
@@ -113,28 +120,28 @@ class GridForecastScheduler(
         val combinedList = midCombinedForecastService.mergeForecasts(landList, tempList)
         midCombinedForecastService.saveAll(combinedList)
     }
+    */
 
-    // 매 정각마다 24시간 지난 중기 육상 예보 삭제
-    @Scheduled(cron = "0 0 * * * *")
+    // 06:30 / 18:30마다 24시간 지난 중기 육상 예보 삭제
+    @Scheduled(cron = "0 30 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidForecasts() {
         logger.info("24시간 지난 중기 육상 데이터 삭제 시작")
         midForecastService.deleteOldForecasts()
     }
 
     // 매 정각마다 24시간 지난 중기 기온 예보 삭제
-    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(cron = "0 30 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidTempForecasts() {
         logger.info("24시간 지난 중기 기온 데이터 삭제 시작")
         midTempForecastService.deleteOldForecasts()
     }
 
     // 매 정각마다 24시간 지난 중기 통합 예보 삭제
-    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(cron = "0 35 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidCombinedForecasts() {
         logger.info("24시간 지난 중기 병합 예보 삭제 시작")
         midCombinedForecastService.deleteOldForecasts()
     }
-
 
     fun getTMFCTimeUltra(): String {
         val current = LocalDateTime.now()
@@ -226,7 +233,7 @@ class GridForecastScheduler(
         }
 
         // ─────────────────────────────────────────────────────
-        // 4) 6시간 후부터 리스트 생성 (초단기예보와 겹치지 않게)
+        //        // 4) 6시간 후부터 리스트 생성 (초단기예보와 겹치지 않게)
         // ─────────────────────────────────────────────────────
         // now가 "가장 가까운 패턴 시각"이므로, 거기서 +6시간 한 시점부터 시작
         var temp = now.plusHours(6).withMinute(0).withSecond(0).withNano(0)
