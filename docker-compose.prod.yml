@@ -8,6 +8,10 @@ services:
     environment:
       TZ: Asia/Seoul
 
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_BASE_DIR: /data/uploads
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+
       SPRING_DOCKER_COMPOSE_ENABLED: "false"
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/byeoldori?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
       SPRING_DATASOURCE_USERNAME: root
@@ -30,7 +34,7 @@ services:
         condition: service_healthy
 
     volumes:
-      - uploads:/app/uploads
+      - uploads:/data/uploads
 
     networks: [backend]
 
