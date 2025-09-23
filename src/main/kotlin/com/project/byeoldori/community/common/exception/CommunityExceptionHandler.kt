@@ -12,7 +12,11 @@ import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ControllerAdvice
 import org.springframework.web.bind.annotation.ExceptionHandler
+import org.springframework.web.multipart.MaxUploadSizeExceededException
+import org.springframework.web.multipart.MultipartException
+import org.springframework.web.multipart.support.MissingServletRequestPartException
 import org.springframework.web.server.ResponseStatusException
+import java.io.IOException
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @ControllerAdvice
@@ -113,5 +117,37 @@ class CommunityExceptionHandler {
             path = req.requestURI
         )
         return ResponseEntity.status(status).body(body)
+    }
+
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArg(ex: IllegalArgumentException, req: HttpServletRequest): ResponseEntity<ApiError> {
+        val s = HttpStatus.BAD_REQUEST
+        return ResponseEntity.status(s).body(
+            ApiError(s.value(), s.reasonPhrase, ex.message ?: "잘못된 요청입니다.", req.requestURI)
+        )
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException::class)
+    fun handleMissingPart(ex: MissingServletRequestPartException, req: HttpServletRequest): ResponseEntity<ApiError> {
+        val s = HttpStatus.BAD_REQUEST
+        return ResponseEntity.status(s).body(
+            ApiError(s.value(), s.reasonPhrase, "필수 파일 파라미터가 누락되었습니다: ${ex.requestPartName}", req.requestURI)
+        )
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException::class)
+    fun handleTooLarge(ex: MaxUploadSizeExceededException, req: HttpServletRequest): ResponseEntity<ApiError> {
+        val s = HttpStatus.PAYLOAD_TOO_LARGE
+        return ResponseEntity.status(s).body(
+            ApiError(s.value(), s.reasonPhrase, "파일이 너무 큽니다.", req.requestURI)
+        )
+    }
+
+    @ExceptionHandler(MultipartException::class, IOException::class)
+    fun handleMultipart(ex: Exception, req: HttpServletRequest): ResponseEntity<ApiError> {
+        val s = HttpStatus.BAD_REQUEST
+        return ResponseEntity.status(s).body(
+            ApiError(s.value(), s.reasonPhrase, "멀티파트 요청이 올바르지 않습니다.", req.requestURI)
+        )
     }
 }
