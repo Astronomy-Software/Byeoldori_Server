@@ -6,6 +6,7 @@ import com.project.byeoldori.community.like.repository.LikeRepository
 import com.project.byeoldori.community.post.domain.CommunityPost
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.user.entity.User
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -38,5 +39,48 @@ class LikeService(
             liked = !existed,
             likes = likeCount,
         )
+    }
+
+    @Transactional
+    fun ensureLike(postId: Long, user: User): LikeToggleResponse {
+        val post = postRepository.findById(postId)
+            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Post not found") }
+
+        if (!likeRepository.existsByPostIdAndUserId(postId, user.id)) {
+            try {
+                likeRepository.save(LikeEntity(post = post, user = user))
+                post.likeCount = post.likeCount + 1
+            } catch (e: DataIntegrityViolationException) {
+
+            }
+        }
+        val likes = likeRepository.countByPostId(postId)
+        post.likeCount = likes
+
+        return LikeToggleResponse(liked = true, likes = likes)
+    }
+
+    @Transactional
+    fun ensureUnlike(postId: Long, user: User): LikeToggleResponse {
+        val post = postRepository.findById(postId)
+            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Post not found") }
+
+        likeRepository.findByPostIdAndUserId(postId, user.id)?.let {
+            likeRepository.delete(it)
+            post.likeCount = (post.likeCount - 1).coerceAtLeast(0)
+        }
+
+        val likes = likeRepository.countByPostId(postId)
+        post.likeCount = likes
+
+        return LikeToggleResponse(liked = false, likes = likes)
+    }
+
+    @Transactional(readOnly = true)
+    fun count(postId: Long): Long {
+        if (!postRepository.existsById(postId)) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Post not found")
+        }
+        return likeRepository.countByPostId(postId)
     }
 }

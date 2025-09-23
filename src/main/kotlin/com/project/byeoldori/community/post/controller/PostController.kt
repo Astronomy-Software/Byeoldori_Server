@@ -1,5 +1,7 @@
 package com.project.byeoldori.community.post.controller
 
+import com.project.byeoldori.community.like.dto.*
+import com.project.byeoldori.community.like.service.LikeService
 import com.project.byeoldori.community.common.domain.PostType
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.service.PostService
@@ -16,7 +18,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/community")
 @Tag(name = "Post", description = "커뮤니티 게시글 API")
 class PostController(
-    private val service: PostService
+    private val service: PostService,
+    private val likeService: LikeService
 ) {
     @PostMapping("/{type}/posts")
     @Operation(summary = "게시글 생성")
@@ -61,4 +64,31 @@ class PostController(
     @PostMapping("/posts/{postId}/views")
     @Operation(summary = "조회수 증가")
     fun increaseView(@PathVariable postId: Long) = service.increaseView(postId)
+
+    @PostMapping("/posts/{postId}/likes/toggle")
+    @Operation(summary = "좋아요 토글", description = "이미 좋아요면 취소, 아니면 좋아요")
+    fun toggleLike(
+        @PathVariable postId: Long,
+        @RequestAttribute("currentUser") user: User
+    ): LikeToggleResponse = likeService.toggleAndCount(postId, user)
+
+    @PutMapping("/posts/{postId}/likes")
+    @Operation(summary = "좋아요 설정(멱등)", description = "결과를 항상 좋아요 상태로 맞춥니다")
+    fun like(
+        @PathVariable postId: Long,
+        @RequestAttribute("currentUser") user: User
+    ): LikeToggleResponse = likeService.ensureLike(postId, user)
+
+    @DeleteMapping("/posts/{postId}/likes")
+    @Operation(summary = "좋아요 해제(멱등)", description = "결과를 항상 좋아요 취소 상태로 맞춥니다")
+    fun unlike(
+        @PathVariable postId: Long,
+        @RequestAttribute("currentUser") user: User
+    ): LikeToggleResponse = likeService.ensureUnlike(postId, user)
+
+    @GetMapping("/posts/{postId}/likes/count")
+    @Operation(summary = "좋아요 수 조회", description = "해당 게시글의 총 좋아요 수")
+    fun likeCount(
+        @PathVariable postId: Long
+    ): LikeCountResponse = LikeCountResponse(likeService.count(postId))
 }

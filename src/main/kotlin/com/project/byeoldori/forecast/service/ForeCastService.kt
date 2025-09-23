@@ -1,8 +1,8 @@
 package com.project.byeoldori.forecast.service
 
-import com.project.byeoldori.forecast.dto.ForecastResponseDTO
-import com.project.byeoldori.forecast.dto.UltraForecastResponseDTO
-import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
+import com.project.byeoldori.common.web.OutOfServiceAreaException
+import com.project.byeoldori.forecast.dto.*
+import com.project.byeoldori.forecast.utils.region.GeoBounds
 import com.project.byeoldori.forecast.utils.region.RegionMapper
 import latLonToGrid
 import org.springframework.stereotype.Service
@@ -14,6 +14,10 @@ class ForeCastService(
     private val midCombinedForecastService: MidCombinedForecastService
 ) {
     fun getForecastDataByLocation(latitude: Double, longitude: Double): ForecastResponseDTO {
+
+        if (!GeoBounds.isInKorea(latitude, longitude)) {
+            throw OutOfServiceAreaException(latitude, longitude)
+        }
 
         // 1) 위경도 -> 격자x 좌표 변환
         val (x, y) = latLonToGrid(latitude, longitude)

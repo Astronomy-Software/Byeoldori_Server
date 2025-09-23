@@ -40,6 +40,7 @@ class SecurityConfig{
                     "/auth/**"
                 ).permitAll()  // Swagger URL을 허용
                 it.requestMatchers(HttpMethod.GET, "/files/**").permitAll()
+                it.requestMatchers(HttpMethod.POST, "/files").authenticated()
                 it.anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java) // JWT 필터 등록

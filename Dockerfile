@@ -16,4 +16,4 @@ WORKDIR /app
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 EXPOSE 8080
 USER appuser
-ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=75.0","-jar","/app/app.jar"]
+ENTRYPOINT ["java","-Duser.timezone=Asia/Seoul","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=75.0","-jar","/app/app.jar"]
