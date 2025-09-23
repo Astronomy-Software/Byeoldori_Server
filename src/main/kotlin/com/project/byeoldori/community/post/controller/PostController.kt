@@ -61,10 +61,6 @@ class PostController(
         @RequestAttribute("currentUser") user: User
     ) = service.delete(postId, user)
 
-    @PostMapping("/posts/{postId}/views")
-    @Operation(summary = "조회수 증가")
-    fun increaseView(@PathVariable postId: Long) = service.increaseView(postId)
-
     @PostMapping("/posts/{postId}/likes/toggle")
     @Operation(summary = "좋아요 토글", description = "이미 좋아요면 취소, 아니면 좋아요")
     fun toggleLike(
