@@ -67,8 +67,14 @@ class PostService(
     fun list(type: PostType, pageable: Pageable): Page<CommunityPost> =
         postRepo.findAllByType(type, pageable)
 
-    @Transactional(readOnly = true)
+    @Transactional
     fun detail(postId: Long): PostResponse {
+
+        val updated = postRepo.increaseViewCount(postId)
+        if (updated == 0) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다.")
+        }
+
         val p = postRepo.findById(postId).orElseThrow()
         val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(postId).map { it.url }
 
@@ -119,6 +125,4 @@ class PostService(
         }
         postRepo.delete(p)
     }
-
-    @Transactional fun increaseView(postId: Long) { postRepo.increaseViewCount(postId) }
 }

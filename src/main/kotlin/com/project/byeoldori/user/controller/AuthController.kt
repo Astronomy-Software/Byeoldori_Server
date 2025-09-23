@@ -45,7 +45,7 @@ class AuthController(
     @PostMapping("/password/reset-request")
     @Operation(summary = "비밀번호 재설정 요청(메일 발송)")
     fun requestPassword(@Valid @RequestBody req: PasswordResetRequestDto): ResponseEntity<ApiResponse<Unit>> {
-        userService.requestPasswordReset(req.email)
+        userService.requestPasswordReset(req.email, req.name, req.phone)
         return ResponseEntity.ok(ApiResponse.ok("재설정 메일 전송"))
     }
 

@@ -1,6 +1,7 @@
 package com.project.byeoldori.user.controller
 
 import com.project.byeoldori.common.web.ApiResponse
+import com.project.byeoldori.user.dto.UserMeResponseDto
 import com.project.byeoldori.user.dto.UserUpdateRequestDto
 import com.project.byeoldori.user.service.UserService
 import io.swagger.v3.oas.annotations.Operation
@@ -16,7 +17,7 @@ class UserController(
 
     @GetMapping("/me")
     @Operation(summary = "내 정보 조회")
-    fun me(auth: Authentication): ResponseEntity<ApiResponse<Any>> {
+    fun me(auth: Authentication): ResponseEntity<ApiResponse<UserMeResponseDto>> {
         val me = userService.getMe(auth.name)
         return ResponseEntity.ok(ApiResponse.ok(me))
     }

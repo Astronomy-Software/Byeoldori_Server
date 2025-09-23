@@ -127,10 +127,27 @@ class UserService(
     }
 
     @Transactional
-    fun requestPasswordReset(email: String) {
+    fun requestPasswordReset(email: String, name: String, phone: String) {
         val user = userRepository.findByEmail(email)
-            .orElseThrow { IllegalArgumentException("가입된 이메일이 아닙니다.") }
+            .orElseThrow { IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.") }
+
+        // 유틸 파일 없이, 서비스 내부에 인라인 정규화(숫자만 비교, +82 처리 옵션)
+        fun normalizePhone(s: String?): String {
+            if (s == null) return ""
+            var d = s.filter { it.isDigit() }
+            if (d.startsWith("82") && d.length >= 11) d = "0" + d.removePrefix("82")
+            return d
+        }
+
+        val nameMatches = (user.name ?: "").trim().equals(name.trim(), ignoreCase = true)
+        val phoneMatches = normalizePhone(user.phone) == normalizePhone(phone)
+
+        if (!nameMatches || !phoneMatches) {
+            throw IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.")
+        }
+
         val token = resetTokenRepo.save(PasswordResetToken(user = user))
+
         emailService.sendPasswordReset(user.email, token.id)
     }
 
@@ -138,17 +155,22 @@ class UserService(
     fun confirmPasswordReset(tokenId: String, newPassword: String) {
         require(PasswordValidator.isValid(newPassword)) { "비밀번호 정책을 확인하세요." }
 
-        val token = resetTokenRepo.findByIdAndUsedAtIsNull(tokenId)
+        val token = resetTokenRepo.findUsableForUpdate(tokenId)
             .orElseThrow { IllegalArgumentException("토큰이 유효하지 않습니다.") }
         require(token.isUsable()) { "토큰이 만료되었습니다." }
 
         val user = token.user
         user.passwordHash = passwordEncoder.encode(newPassword)
         token.usedAt = LocalDateTime.now()
+
+        refreshTokenRepo.deleteByUserId(user.id)
     }
 
     @Transactional(readOnly = true)
-    fun getMe(email: String) = userRepository.findByEmail(email).orElseThrow()
+    fun getMe(email: String): UserMeResponseDto {
+        val user = userRepository.findByEmail(email).orElseThrow()
+        return UserMeResponseDto.from(user)
+    }
 
     @Transactional
     fun updateMe(email: String, req: UserUpdateRequestDto) {

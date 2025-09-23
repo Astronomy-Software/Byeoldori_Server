@@ -26,7 +26,7 @@ class LocalStorageService(
 
         // 1) MIME 화이트리스트 우선 체크
         val declared = (file.contentType ?: "").lowercase()
-        if (declared !in allowedTypes) {
+        if (declared.isNotBlank() && declared != "application/octet-stream" && declared !in allowedTypes) {
             throw IllegalArgumentException("Unsupported content-type: $declared")
         }
 

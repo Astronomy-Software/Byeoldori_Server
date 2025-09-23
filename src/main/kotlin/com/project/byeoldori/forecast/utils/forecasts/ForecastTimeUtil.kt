@@ -1,5 +1,6 @@
 package com.project.byeoldori.forecast.utils.forecasts
 
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -24,9 +25,9 @@ object ForecastTimeUtil {
     }
 
     /**
-     * 예보 시각 리스트 (현재 시각 기준 이후 6시간)
+     * 예보 시각 리스트 (현재 시각 기준 이후 5시간)
      */
-    fun getNext6UltraTmef(now: ZonedDateTime = nowKst()): List<String> {
+    fun getNext6UltraTmef(now: LocalDateTime = LocalDateTime.now()): List<String> {
         return (1..6).map {
             now.plusHours(it.toLong())
                 .withMinute(0).withSecond(0).withNano(0)
