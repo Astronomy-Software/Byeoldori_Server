@@ -1,5 +1,7 @@
 package com.project.byeoldori.user.entity
 
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.annotation.JsonProperty.Access
 import com.project.byeoldori.common.jpa.BaseTimeEntity
 import jakarta.persistence.*
 import java.time.LocalDate
@@ -17,6 +19,7 @@ class User(
     val email: String,  // 사용자 이메일 (중복 불가)
 
     @Column(nullable = false)
+    @JsonProperty(access = Access.WRITE_ONLY)
     var passwordHash: String,
 
     @Column(nullable = false)
