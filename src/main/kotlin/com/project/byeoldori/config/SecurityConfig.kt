@@ -37,10 +37,11 @@ class SecurityConfig{
                     "/observationsites/**",
                     "/users/**",
                     "/community/**",
-                    "/auth/**"
+                    "/auth/**",
+                    "/reset-password"
                 ).permitAll()  // Swagger URL을 허용
                 it.requestMatchers(HttpMethod.GET, "/files/**").permitAll()
-                it.requestMatchers(HttpMethod.POST, "/files").authenticated()
+                it.requestMatchers(HttpMethod.POST, "/files").permitAll()
                 it.anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java) // JWT 필터 등록
@@ -56,7 +57,7 @@ class SecurityConfig{
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration().apply {
-            allowedOrigins = listOf("http://localhost:8080") // 실제 운영시엔 origin을 제한
+            allowedOrigins = listOf("http://localhost:8080", "http://43.202.235.27") // 실제 운영시엔 origin을 제한
             allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true
