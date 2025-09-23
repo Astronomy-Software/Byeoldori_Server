@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Mono
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -31,7 +32,6 @@ class GridForecastScheduler(
 
     private val seoul: ZoneId = ZoneId.of("Asia/Seoul")
     private val ymdhm: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
-    private val shortpattenhours = setOf(2, 5, 8, 11, 14, 17, 20, 23)
 
     // 특정시각마다 업데이트가 많이 느릴때가있음. 시간을 잘 조정해봐야할것으로 보임.
     // 매시각 10분마다 실행 -> 초단기예보 및 실황 , 일단 실황은 제외
@@ -106,11 +106,26 @@ class GridForecastScheduler(
     }
 
     fun getTMFCTimeForShort(): String {
-        var base = ZonedDateTime.now(seoul).withSecond(0).withNano(0).withMinute(0)
-        while (base.hour !in shortpattenhours) {
-            base = base.minusHours(1)
+        val current = LocalDateTime.now()
+        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
+
+        // 패턴 시간(2,5,8,11,14,17,20,23)
+        val patternHours = setOf(2, 5, 8, 11, 14, 17, 20, 23)
+
+        // 1) 분/초/나노초를 0으로 맞춤 (정시 기준)
+        var dateTime = current
+            .withMinute(0)
+            .withSecond(0)
+            .withNano(0)
+
+        // 2) "가장 가까운" 패턴 시각으로 이동
+        //    - 현재 시각의 시(hour)가 patternHours에 없다면, 1시간씩 더하며 맞춤
+        while (dateTime.hour !in patternHours) {
+            dateTime = dateTime.minusHours(1)
         }
-        return base.format(ymdhm)
+
+        // 3) 포맷팅하여 반환
+        return dateTime.format(formatter)
     }
 
     fun getTMEFTimesForUltra(): List<String> {
@@ -121,31 +136,51 @@ class GridForecastScheduler(
     }
 
     fun getTMEFTimesForShortForecast(): List<String> {
-        // 1) 기준 시각: 최근 패턴 정시(KST)
-        var base = ZonedDateTime.now(seoul).withSecond(0).withNano(0).withMinute(0)
-        while (base.hour !in shortpattenhours) {
-            base = base.minusHours(1)
-        }
+        // 현재 시각
+        var now = LocalDateTime.now()
+        val patternHours = setOf(2, 5, 8, 11, 14, 17, 20, 23)
 
-        // 2) 초단기와 겹치지 않게 +6h부터 시작 (기존 로직 유지)
-        var cursor = base.plusHours(6).withMinute(0).withSecond(0).withNano(0)
-
-        // 3) 종료 시각 결정(기존 규칙 유지)
-        val set1 = setOf(2, 5, 8, 11, 14)   // +2일 자정까지(== base + 3일 00:00)
-        val set2 = setOf(17, 20, 23)        // +3일 자정까지(== base + 4일 00:00)
-        val end = if (base.hour in set1) {
-            base.toLocalDate().plusDays(3).atStartOfDay(seoul)
+        // 1) 분(MM)이 0이 아니라면 다음 정시로 맞춤
+        if (now.minute != 0) {
+            now = now.plusHours(1).withMinute(0).withSecond(0).withNano(0)
         } else {
-            base.toLocalDate().plusDays(4).atStartOfDay(seoul)
+            // 이미 정각이라면, 초/나노초만 0으로 맞춤
+            now = now.withSecond(0).withNano(0)
         }
 
-        // 4) 1시간 간격으로 end까지 생성
-        val result = mutableListOf<String>()
-        while (!cursor.isAfter(end)) {
-            result.add(cursor.format(ymdhm))
-            cursor = cursor.plusHours(1)
+        // 2) 가장 가까운 패턴 시각(2,5,8,11,14,17,20,23)을 찾을 때까지 1시간씩 증가
+        while (now.hour !in patternHours) {
+            now = now.minusHours(1)
         }
-        return result
+
+        // 3) 패턴에 따라 종료 시각 결정
+        val set1 = setOf(2, 5, 8, 11, 14)   // +2일 자정
+        val set2 = setOf(17, 20, 23)       // +3일 자정
+
+        val endDateTime = if (now.hour in set1) {
+            now.toLocalDate().plusDays(3).atStartOfDay()
+        } else {
+            now.toLocalDate().plusDays(4).atStartOfDay()
+        }
+
+        // ─────────────────────────────────────────────────────
+        //        // 4) 6시간 후부터 리스트 생성 (초단기예보와 겹치지 않게)
+        // ─────────────────────────────────────────────────────
+        // now가 "가장 가까운 패턴 시각"이므로, 거기서 +6시간 한 시점부터 시작
+        var temp = now.plusHours(6).withMinute(0).withSecond(0).withNano(0)
+
+        // 결과 리스트
+        val result = mutableListOf<LocalDateTime>()
+
+        // endDateTime까지 1시간 간격으로 추가
+        while (!temp.isAfter(endDateTime)) {
+            result.add(temp)
+            temp = temp.plusHours(1)
+        }
+
+        // 5) 포맷팅 (yyyyMMddHHmm)
+        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
+        return result.map { it.format(formatter) }
     }
 
     // 공통 재시도 fetch 처리

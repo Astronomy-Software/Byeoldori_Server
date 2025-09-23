@@ -1,5 +1,6 @@
 package com.project.byeoldori.common.web
 
+import com.project.byeoldori.forecast.utils.region.GeoBounds
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.ConstraintViolationException
 import org.slf4j.LoggerFactory
@@ -25,16 +26,30 @@ class GlobalExceptionHandler {
 
     private val log = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
 
-    // 한국 서비스 영역 밖: 400
+    //한국 서비스 영역 밖: 418 (I_AM_A_TEAPOT)
     @ExceptionHandler(OutOfServiceAreaException::class)
     fun handleOutOfService(
         ex: OutOfServiceAreaException,
         req: HttpServletRequest
     ): ResponseEntity<ApiResponse<ErrorInfo>> {
-        val status = HttpStatus.BAD_REQUEST
+        val status = HttpStatus.I_AM_A_TEAPOT
+        val message = ex.message
+            ?: ("한국 내 좌표만 지원하고 있습니다. " +
+            "(위도: ${GeoBounds.LAT_MIN}~${GeoBounds.LAT_MAX}, 경도: ${GeoBounds.LON_MIN}~${GeoBounds.LON_MAX})"
+                    )
+
         val body = ApiResponse.fail(
-            message = ex.message ?: "Out of service area",
-            data = ErrorInfo(code = "OUT_OF_SERVICE_AREA", path = req.requestURI)
+            message = message,
+            data = ErrorInfo(
+                code = "OUT_OF_SERVICE_AREA",
+                path = req.requestURI,
+                details = mapOf(
+                    "lat_min" to GeoBounds.LAT_MIN,
+                    "lat_max" to GeoBounds.LAT_MAX,
+                    "lon_min" to GeoBounds.LON_MIN,
+                    "lon_max" to GeoBounds.LON_MAX
+                )
+            )
         )
         return ResponseEntity.status(status).body(body)
     }
