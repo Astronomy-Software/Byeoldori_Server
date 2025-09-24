@@ -4,6 +4,7 @@ import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.service.UserService
 import io.swagger.v3.oas.annotations.Operation
+import jakarta.servlet.http.HttpSession
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -11,7 +12,8 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/auth")
 class AuthController(
-    private val userService: UserService
+    private val userService: UserService,
+    private val session: HttpSession
 ) {
 
     @PostMapping("/signup")
@@ -26,6 +28,14 @@ class AuthController(
     fun verifyEmail(@RequestParam token: String): ResponseEntity<ApiResponse<Unit>> {
         userService.verifyEmail(token)
         return ResponseEntity.ok(ApiResponse.ok("이메일 인증 완료"))
+    }
+
+    @PostMapping("/find-email")
+    @Operation(summary = "아이디(이메일) 찾기", description = "이름과 전화번호로 가입된 아이디 목록을 반환합니다.")
+    fun findIds(@Valid @RequestBody req: FindEmailRequestDto)
+            : ResponseEntity<ApiResponse<FindEmailResponseDto>> {
+        val emails = userService.findEmailsByNameAndPhone(req.name, req.phone)
+        return ResponseEntity.ok(ApiResponse.ok(FindEmailResponseDto(ids = emails)))
     }
 
     @PostMapping("/login")
@@ -46,13 +56,11 @@ class AuthController(
     @Operation(summary = "비밀번호 재설정 요청(메일 발송)")
     fun requestPassword(@Valid @RequestBody req: PasswordResetRequestDto): ResponseEntity<ApiResponse<Unit>> {
         userService.requestPasswordReset(req.email, req.name, req.phone)
-        return ResponseEntity.ok(ApiResponse.ok("재설정 메일 전송"))
-    }
 
-    @PostMapping("/password/reset-confirm")
-    @Operation(summary = "비밀번호 재설정 확정")
-    fun confirmPassword(@Valid @RequestBody req: PasswordResetConfirmDto): ResponseEntity<ApiResponse<Unit>> {
-        userService.confirmPasswordReset(req.token, req.newPassword)
-        return ResponseEntity.ok(ApiResponse.ok("비밀번호 변경 완료"))
+        val verifiedUserId = userService.findVerifiedUserIdForPasswordReset(req.email, req.name, req.phone)
+            ?: throw IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.")
+        session.setAttribute(com.project.byeoldori.user.utils.PWD_RESET_V_UID, verifiedUserId)
+
+        return ResponseEntity.ok(ApiResponse.ok("재설정 메일 전송"))
     }
 }
