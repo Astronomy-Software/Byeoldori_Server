@@ -3,6 +3,7 @@ package com.project.byeoldori.common.web
 import com.project.byeoldori.forecast.utils.region.GeoBounds
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.ConstraintViolationException
+import org.hibernate.query.sqm.tree.SqmNode.log
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -28,30 +29,12 @@ class GlobalExceptionHandler {
 
     //한국 서비스 영역 밖: 418 (I_AM_A_TEAPOT)
     @ExceptionHandler(OutOfServiceAreaException::class)
-    fun handleOutOfService(
-        ex: OutOfServiceAreaException,
-        req: HttpServletRequest
-    ): ResponseEntity<ApiResponse<ErrorInfo>> {
+    fun handleOutOfServiceArea(ex: OutOfServiceAreaException, req: HttpServletRequest)
+            : ResponseEntity<ApiResponse<Unit>> {
         val status = HttpStatus.I_AM_A_TEAPOT
-        val message = ex.message
-            ?: ("한국 내 좌표만 지원하고 있습니다. " +
-            "(위도: ${GeoBounds.LAT_MIN}~${GeoBounds.LAT_MAX}, 경도: ${GeoBounds.LON_MIN}~${GeoBounds.LON_MAX})"
-                    )
-
-        val body = ApiResponse.fail(
-            message = message,
-            data = ErrorInfo(
-                code = "OUT_OF_SERVICE_AREA",
-                path = req.requestURI,
-                details = mapOf(
-                    "lat_min" to GeoBounds.LAT_MIN,
-                    "lat_max" to GeoBounds.LAT_MAX,
-                    "lon_min" to GeoBounds.LON_MIN,
-                    "lon_max" to GeoBounds.LON_MAX
-                )
-            )
-        )
-        return ResponseEntity.status(status).body(body)
+        val msg = "한국 내 좌표만 지원합니다. (위도: ${GeoBounds.LAT_MIN}~${GeoBounds.LAT_MAX}, 경도: ${GeoBounds.LON_MIN}~${GeoBounds.LON_MAX})"
+        return ResponseEntity.status(status)
+            .body(ApiResponse.fail(message = ex.message ?: msg, data = null))
     }
 
     // 잘못된 요청류: 400

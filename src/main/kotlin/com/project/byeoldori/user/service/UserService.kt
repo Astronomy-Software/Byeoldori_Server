@@ -59,6 +59,11 @@ class UserService(
         token.user.emailVerified = true
     }
 
+    @Transactional(readOnly = true)
+    fun findEmailsByNameAndPhone(name: String, phone: String): List<String> {
+        return userRepository.findAllByNameAndPhone(name, phone).map { it.email }
+    }
+
     @Transactional
     fun login(req: LoginRequestDto): AuthResponseDto {
         val user = userRepository.findByEmail(req.email)
@@ -151,17 +156,28 @@ class UserService(
         emailService.sendPasswordReset(user.email, token.id)
     }
 
+    @Transactional(readOnly = true)
+    fun findVerifiedUserIdForPasswordReset(email: String, name: String, phone: String): Long? {
+        val user = userRepository.findByEmail(email).orElse(null) ?: return null
+
+        fun normalizePhone(s: String?): String {
+            if (s == null) return ""
+            var d = s.filter { it.isDigit() }
+            if (d.startsWith("82") && d.length >= 11) d = "0" + d.removePrefix("82")
+            return d
+        }
+        val nameMatches = (user.name ?: "").trim().equals(name.trim(), ignoreCase = true)
+        val phoneMatches = normalizePhone(user.phone) == normalizePhone(phone)
+
+        return if (nameMatches && phoneMatches) user.id else null
+    }
+
     @Transactional
-    fun confirmPasswordReset(tokenId: String, newPassword: String) {
-        require(PasswordValidator.isValid(newPassword)) { "비밀번호 정책을 확인하세요." }
+    fun resetPasswordByUserId(userId: Long, newRawPassword: String) {
+        val user = userRepository.findById(userId)
+            .orElseThrow { IllegalArgumentException("사용자를 찾을 수 없습니다.") }
 
-        val token = resetTokenRepo.findUsableForUpdate(tokenId)
-            .orElseThrow { IllegalArgumentException("토큰이 유효하지 않습니다.") }
-        require(token.isUsable()) { "토큰이 만료되었습니다." }
-
-        val user = token.user
-        user.passwordHash = passwordEncoder.encode(newPassword)
-        token.usedAt = LocalDateTime.now()
+        user.passwordHash = passwordEncoder.encode(newRawPassword)
 
         refreshTokenRepo.deleteByUserId(user.id)
     }

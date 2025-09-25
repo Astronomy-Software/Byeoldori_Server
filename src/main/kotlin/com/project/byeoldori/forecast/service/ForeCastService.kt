@@ -3,7 +3,6 @@ package com.project.byeoldori.forecast.service
 import com.project.byeoldori.common.web.OutOfServiceAreaException
 import com.project.byeoldori.forecast.dto.*
 import com.project.byeoldori.forecast.utils.region.GeoBounds
-import com.project.byeoldori.forecast.utils.region.GeoBounds.isInKorea
 import com.project.byeoldori.forecast.utils.region.RegionMapper
 import latLonToGrid
 import org.springframework.stereotype.Service
@@ -16,11 +15,9 @@ class ForeCastService(
 ) {
     fun getForecastDataByLocation(latitude: Double, longitude: Double): ForecastResponseDTO {
 
-        if (!isInKorea(latitude, longitude)) {
-            throw OutOfServiceAreaException(
-                "한국 내 좌표만 지원하고 있습니다. " +
-                        "(위도: ${GeoBounds.LAT_MIN}~${GeoBounds.LAT_MAX}, 경도: ${GeoBounds.LON_MIN}~${GeoBounds.LON_MAX})"
-            )
+        if (!GeoBounds.isInKorea(latitude, longitude)) {
+            val msg = "한국 내 좌표만 지원합니다. (위도: ${GeoBounds.LAT_MIN}~${GeoBounds.LAT_MAX}, 경도: ${GeoBounds.LON_MIN}~${GeoBounds.LON_MAX})"
+            throw OutOfServiceAreaException(msg)
         }
 
         // 1) 위경도 -> 격자x 좌표 변환

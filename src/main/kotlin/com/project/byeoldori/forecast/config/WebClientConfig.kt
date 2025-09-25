@@ -1,19 +1,32 @@
 package com.project.byeoldori.forecast.config
 
+import io.netty.channel.ChannelOption
+import io.netty.handler.timeout.ReadTimeoutHandler
+import io.netty.handler.timeout.WriteTimeoutHandler
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.web.reactive.function.client.WebClient
+import reactor.netty.http.client.HttpClient
+import java.time.Duration
 
 @Configuration
 class WebClientConfig {
     @Bean
     fun weatherApiClient(): WebClient {
+        val httpClient = HttpClient.create()
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+            .responseTimeout(Duration.ofSeconds(15))
+            .doOnConnected { conn ->
+                conn.addHandlerLast(ReadTimeoutHandler(15))
+                    .addHandlerLast(WriteTimeoutHandler(15))
+            }
+
         return WebClient.builder()
             .baseUrl("https://apihub.kma.go.kr/api/typ01")
             .defaultHeader("Content-Type", "application/json")
-            .codecs { configurer ->
-                configurer.defaultCodecs().maxInMemorySize(524288)
-            } // Data 512kb 까지 전송받을수있게 설정, 기상청 격자데이터가 약 340kb임
+            .codecs { c -> c.defaultCodecs().maxInMemorySize(524288) }
+            .clientConnector(ReactorClientHttpConnector(httpClient))
             .build()
     }
 
