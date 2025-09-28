@@ -55,12 +55,7 @@ class AuthController(
     @PostMapping("/password/reset-request")
     @Operation(summary = "비밀번호 재설정 요청(메일 발송)")
     fun requestPassword(@Valid @RequestBody req: PasswordResetRequestDto): ResponseEntity<ApiResponse<Unit>> {
-        userService.requestPasswordReset(req.email, req.name, req.phone)
-
-        val verifiedUserId = userService.findVerifiedUserIdForPasswordReset(req.email, req.name, req.phone)
-            ?: throw IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.")
-        session.setAttribute(com.project.byeoldori.user.utils.PWD_RESET_V_UID, verifiedUserId)
-
-        return ResponseEntity.ok(ApiResponse.ok("재설정 메일 전송"))
+        userService.resetPasswordByIdentity(req)
+        return ResponseEntity.ok(ApiResponse.ok("임시 비밀번호가 메일로 발송되었습니다."))
     }
 }

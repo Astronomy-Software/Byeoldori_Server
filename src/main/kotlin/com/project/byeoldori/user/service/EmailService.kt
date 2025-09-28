@@ -29,21 +29,30 @@ class EmailService(
         sendVerificationEmail(toEmail, token)
     }
 
-    fun sendPasswordReset(toEmail: String, token: String) {
+    fun sendTemporaryPassword(to: String, name: String, tempPassword: String) {
         try {
             val message = mailSender.createMimeMessage()
             val helper = MimeMessageHelper(message, true, "UTF-8")
 
-            helper.setTo(toEmail)
+            helper.setTo(to)
             helper.setFrom(InternetAddress(fromAddress, MimeUtility.encodeText("별도리", "UTF-8", "B")))
-            helper.setSubject(MimeUtility.encodeText("[별도리] 비밀번호 재설정 링크", "UTF-8", "B"))
-            helper.setText(buildPasswordResetBody(token), true)
+            helper.setSubject(MimeUtility.encodeText("[별도리] 임시 비밀번호 안내", "UTF-8", "B"))
+            helper.setText(buildTemporaryPasswordBody(name, tempPassword), true)
 
             mailSender.send(message)
         } catch (e: MessagingException) {
-            logger.error("비밀번호 재설정 메일 전송 실패: {}", e.message)
+            logger.error("임시 비밀번호 메일 전송 실패: {}", e.message)
             throw RuntimeException("이메일 전송에 실패했습니다.")
         }
+    }
+
+    private fun buildTemporaryPasswordBody(name: String, tempPassword: String): String {
+        val ctx = Context().apply {
+            setVariable("name", name)
+            setVariable("tempPassword", tempPassword)
+            setVariable("loginUrl", hostUrl.trimEnd('/'))
+        }
+        return templateEngine.process("temporary-password", ctx)
     }
 
     fun sendVerificationEmail(to: String, token: String) {
@@ -76,20 +85,5 @@ class EmailService(
             setVariable("verificationUrl", verificationUrl)
         }
         return templateEngine.process("email-verification", context)
-    }
-
-    private fun buildPasswordResetBody(token: String): String {
-        val resetUrl = UriComponentsBuilder
-            .fromHttpUrl(hostUrl.trimEnd('/'))
-            .path("/reset-password")
-            .queryParam("token", token)
-            .build()
-            .encode(java.nio.charset.StandardCharsets.UTF_8)
-            .toUriString()
-
-        val context = Context().apply {
-            setVariable("resetUrl", resetUrl)
-        }
-        return templateEngine.process("password-reset", context)
     }
 }
