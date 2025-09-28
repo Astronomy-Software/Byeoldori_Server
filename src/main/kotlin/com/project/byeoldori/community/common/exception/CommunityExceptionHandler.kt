@@ -18,8 +18,8 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import org.springframework.web.server.ResponseStatusException
 import java.io.IOException
 
-@Order(Ordered.HIGHEST_PRECEDENCE)
-@ControllerAdvice
+@Order(Ordered.LOWEST_PRECEDENCE)
+@ControllerAdvice("com.project.byeoldori.community")
 class CommunityExceptionHandler {
 
     private fun reasonPhraseOf(code: Int): String =

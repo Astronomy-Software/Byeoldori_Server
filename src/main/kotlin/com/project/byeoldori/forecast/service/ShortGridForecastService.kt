@@ -5,6 +5,7 @@ import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
 import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.springframework.stereotype.Service
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -53,59 +54,30 @@ class ShortGridForecastService(
         tmfc: String,
         tmef: String
     ): Mono<MutableList<MutableList<ShortGridCell>>> {
-        val monos = listOf(
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.TMP),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.TMX),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.TMN),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.VEC),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.WSD),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.SKY),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.PTY),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.POP),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.PCP),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.SNO),
-            weatherData.fetchShortForecast(tmfc, tmef, ForecastElement.REH)
+        val forecastElements = listOf(
+            ForecastElement.TMP, ForecastElement.TMX, ForecastElement.TMN,
+            ForecastElement.VEC, ForecastElement.WSD, ForecastElement.SKY,
+            ForecastElement.PTY, ForecastElement.POP, ForecastElement.PCP,
+            ForecastElement.SNO, ForecastElement.REH
         )
-        return zipMonos(monos) { results ->
-            // 결과는 List<Any>로 전달되므로, 각 결과를 적절히 캐스팅하여 사용합니다.
-            val tmpData = results[0]
-            val tmxData = results[1]
-            val tmnData = results[2]
-            val vecData = results[3]
-            val wsdData = results[4]
-            val skyData = results[5]
-            val ptyData = results[6]
-            val popData = results[7]
-            val pcpData = results[8]
-            val snoData = results[9]
-            val rehData = results[10]
 
-            // 각 데이터 파싱 (격자 데이터 파싱)
-            val tmpGrid = GridDataParser.parseGridData(tmpData)
-            val tmxGrid = GridDataParser.parseGridData(tmxData)
-            val tmnGrid = GridDataParser.parseGridData(tmnData)
-            val vecGrid = GridDataParser.parseGridData(vecData)
-            val wsdGrid = GridDataParser.parseGridData(wsdData)
-            val skyGrid = GridDataParser.parseGridData(skyData)
-            val ptyGrid = GridDataParser.parseGridData(ptyData)
-            val popGrid = GridDataParser.parseGridData(popData)
-            val pcpGrid = GridDataParser.parseGridData(pcpData)
-            val snoGrid = GridDataParser.parseGridData(snoData)
-            val rehGrid = GridDataParser.parseGridData(rehData)
-
-            // 2차원 ShortGridCell 리스트 결합
-            val combinedGrid = combineShortGrids(
-                tmpGrid, tmxGrid, tmnGrid,
-                vecGrid, wsdGrid, skyGrid,
-                ptyGrid, popGrid, pcpGrid,
-                snoGrid, rehGrid
-            )
-
-            // (디버깅) 중앙 셀 출력
-            printCenterShortGridCell(combinedGrid)
-
-            combinedGrid
-        }
+        // Flux를 사용해 요청을 제어 (동시에 최대 3개만 요청)
+        return Flux.fromIterable(forecastElements)
+            .flatMap({ element ->
+                weatherData.fetchShortForecast(tmfc, tmef, element)
+                    .map { response -> Pair(element, GridDataParser.parseGridData(response)) }
+            }, 2)
+            .collectMap({ it.first }, { it.second })
+            .map { gridMap ->
+                combineShortGrids(
+                    gridMap[ForecastElement.TMP]!!, gridMap[ForecastElement.TMX]!!,
+                    gridMap[ForecastElement.TMN]!!, gridMap[ForecastElement.VEC]!!,
+                    gridMap[ForecastElement.WSD]!!, gridMap[ForecastElement.SKY]!!,
+                    gridMap[ForecastElement.PTY]!!, gridMap[ForecastElement.POP]!!,
+                    gridMap[ForecastElement.PCP]!!, gridMap[ForecastElement.SNO]!!,
+                    gridMap[ForecastElement.REH]!!
+                )
+            }
     }
 
     /**

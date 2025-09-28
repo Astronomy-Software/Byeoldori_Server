@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.core.publisher.Mono
 import org.slf4j.LoggerFactory
+import reactor.util.retry.Retry
+import java.time.Duration
 
 
 @Component
@@ -85,6 +87,10 @@ class WeatherData(
             }
             .retrieve()
             .bodyToMono(String::class.java)
+            .retryWhen(
+                Retry.backoff(3, Duration.ofSeconds(5)) // 5초 간격으로 최대 3번 재시도
+                .doBeforeRetry { logger.warn("단기예보 API 재시도... (${it.totalRetries() + 1}회)") }
+            )
             // 구독 시작 시점에 로그
             .doOnSubscribe {
                 logger.info("단기예보 API 호출 시작 - tmfc=$tmfc, tmef=$tmef, vars=$vars")
