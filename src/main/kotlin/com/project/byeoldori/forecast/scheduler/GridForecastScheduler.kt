@@ -106,7 +106,7 @@ class GridForecastScheduler(
     }
 
     fun getTMFCTimeForShort(): String {
-        val current = LocalDateTime.now()
+        val current = ZonedDateTime.now(seoul)
         val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
 
         // 패턴 시간(2,5,8,11,14,17,20,23)

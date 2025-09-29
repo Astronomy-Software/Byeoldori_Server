@@ -3,11 +3,12 @@ package com.project.byeoldori.user.service
 import com.project.byeoldori.security.JwtUtil
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.entity.EmailVerificationToken
-import com.project.byeoldori.user.entity.PasswordResetToken
 import com.project.byeoldori.user.entity.RefreshToken
 import com.project.byeoldori.user.entity.User
 import com.project.byeoldori.user.repository.*
 import com.project.byeoldori.user.utils.PasswordValidator
+import com.project.byeoldori.user.utils.PhoneNormalizer
+import com.project.byeoldori.user.utils.TemporaryPassword
 import com.project.byeoldori.user.utils.TokenHasher
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -18,7 +19,6 @@ import java.time.LocalDateTime
 class UserService(
     private val userRepository: UserRepository,
     private val emailTokenRepo: EmailVerificationTokenRepository,
-    private val resetTokenRepo: PasswordResetTokenRepository,
     private val refreshTokenRepo: RefreshTokenRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwt: JwtUtil,
@@ -132,55 +132,50 @@ class UserService(
     }
 
     @Transactional
-    fun requestPasswordReset(email: String, name: String, phone: String) {
-        val user = userRepository.findByEmail(email)
+    fun resetPasswordByIdentity(req: PasswordResetRequestDto) {
+        val user = userRepository.findByEmail(req.email)
             .orElseThrow { IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.") }
 
-        // 유틸 파일 없이, 서비스 내부에 인라인 정규화(숫자만 비교, +82 처리 옵션)
-        fun normalizePhone(s: String?): String {
-            if (s == null) return ""
-            var d = s.filter { it.isDigit() }
-            if (d.startsWith("82") && d.length >= 11) d = "0" + d.removePrefix("82")
-            return d
-        }
 
-        val nameMatches = (user.name ?: "").trim().equals(name.trim(), ignoreCase = true)
-        val phoneMatches = normalizePhone(user.phone) == normalizePhone(phone)
-
+        val nameMatches = (user.name ?: "").trim().equals(req.name.trim(), ignoreCase = true)
+        val phoneMatches = PhoneNormalizer.normalize(user.phone) == PhoneNormalizer.normalize(req.phone)
         if (!nameMatches || !phoneMatches) {
             throw IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.")
         }
 
-        val token = resetTokenRepo.save(PasswordResetToken(user = user))
+        val tempPw = TemporaryPassword.generate(12)
+        user.passwordHash = passwordEncoder.encode(tempPw)
 
-        emailService.sendPasswordReset(user.email, token.id)
-    }
+        refreshTokenRepo.deleteByUserId(user.id)
 
-    @Transactional(readOnly = true)
-    fun findVerifiedUserIdForPasswordReset(email: String, name: String, phone: String): Long? {
-        val user = userRepository.findByEmail(email).orElse(null) ?: return null
-
-        fun normalizePhone(s: String?): String {
-            if (s == null) return ""
-            var d = s.filter { it.isDigit() }
-            if (d.startsWith("82") && d.length >= 11) d = "0" + d.removePrefix("82")
-            return d
-        }
-        val nameMatches = (user.name ?: "").trim().equals(name.trim(), ignoreCase = true)
-        val phoneMatches = normalizePhone(user.phone) == normalizePhone(phone)
-
-        return if (nameMatches && phoneMatches) user.id else null
+        emailService.sendTemporaryPassword(
+            to = user.email,
+            name = user.name ?: "사용자",
+            tempPassword = tempPw
+        )
     }
 
     @Transactional
-    fun resetPasswordByUserId(userId: Long, newRawPassword: String) {
-        val user = userRepository.findById(userId)
+    fun changePasswordByUsername(username: String, req: ChangePasswordRequest) {
+        val user = userRepository.findByEmail(username)
             .orElseThrow { IllegalArgumentException("사용자를 찾을 수 없습니다.") }
 
-        user.passwordHash = passwordEncoder.encode(newRawPassword)
+        if (!passwordEncoder.matches(req.currentPassword, user.passwordHash)) {
+            throw IllegalArgumentException("현재 비밀번호가 일치하지 않습니다.")
+        }
 
+        if (req.newPassword != req.confirmNewPassword) {
+            throw IllegalArgumentException("새 비밀번호와 재입력 비밀번호가 일치하지 않습니다.")
+        }
+
+        if (passwordEncoder.matches(req.newPassword, user.passwordHash)) {
+            throw IllegalArgumentException("새 비밀번호가 이전 비밀번호와 동일합니다.")
+        }
+
+        user.passwordHash = passwordEncoder.encode(req.newPassword)
         refreshTokenRepo.deleteByUserId(user.id)
     }
+
 
     @Transactional(readOnly = true)
     fun getMe(email: String): UserMeResponseDto {
