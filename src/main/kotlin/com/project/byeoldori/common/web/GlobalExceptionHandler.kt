@@ -53,8 +53,14 @@ class GlobalExceptionHandler {
     )
     fun handleBadRequest(ex: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<ErrorInfo>> {
         val status = HttpStatus.BAD_REQUEST
+        val errorMessage = if (ex is MethodArgumentNotValidException) {
+            ex.bindingResult.fieldErrors.firstOrNull()?.defaultMessage ?: "유효성 검사에 실패했습니다."
+        } else {
+            ex.message ?: "잘못된 요청입니다."
+        }
+
         val body = ApiResponse.fail(
-            message = ex.message ?: "잘못된 요청입니다.",
+            message = errorMessage, // 가공된 메시지를 사용합니다.
             data = ErrorInfo(code = "BAD_REQUEST", path = req.requestURI)
         )
         return ResponseEntity.status(status).body(body)
