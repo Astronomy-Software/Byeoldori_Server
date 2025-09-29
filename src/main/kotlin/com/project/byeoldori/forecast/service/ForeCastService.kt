@@ -28,7 +28,8 @@ class ForeCastService(
 
         // 2) 초단기, 단기 예보
         val ultraForecast: List<UltraForecastResponseDTO> = ultraGridForecastService.getAllUltraTMEFDataForCell(x, y)
-        val shortForecast: List<ShortForecastResponseDTO> = shortGridForecastService.getAllShortTMEFDataForCell(x, y)
+        val shortForecastRaw: List<ShortForecastResponseDTO> = shortGridForecastService.getAllShortTMEFDataForCell(x, y)
+        val shortForecastProcessed = fillMissingShortTermTemperatures(shortForecastRaw)
 
         // 3) 중기 예보 필터링
         val midCombinedForecast = midCombinedForecastService.findAll().filter { it.siRegId == siRegId }
@@ -36,8 +37,29 @@ class ForeCastService(
         // 4) 모든 예보를 DTO로 묶어서 반환
         return ForecastResponseDTO(
             ultraForecastResponse = ultraForecast,
-            shortForecastResponse = shortForecast,
+            shortForecastResponse = shortForecastProcessed,
             midCombinedForecastDTO = midCombinedForecast
         )
+    }
+
+    private fun fillMissingShortTermTemperatures(forecasts: List<ShortForecastResponseDTO>): List<ShortForecastResponseDTO> {
+        return forecasts.groupBy { it.tmef.substring(0, 8) }
+            .flatMap { (_, dailyForecasts) ->
+
+                val validTmn = dailyForecasts.map { it.tmn }.firstOrNull { it != -999 && it != null }
+                val validTmx = dailyForecasts.map { it.tmx }.firstOrNull { it != -999 && it != null }
+
+                if (validTmn != null || validTmx != null) {
+                    dailyForecasts.map { forecast ->
+                        forecast.copy(
+                            tmn = validTmn ?: forecast.tmn,
+                            tmx = validTmx ?: forecast.tmx
+                        )
+                    }
+                } else {
+                    dailyForecasts
+                }
+            }
+            .sortedBy { it.tmef }
     }
 }
