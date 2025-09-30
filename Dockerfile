@@ -14,6 +14,10 @@ RUN useradd -ms /bin/bash appuser
 WORKDIR /app
 # 빌드 산출물 복사(파일명 상관없이 단일 jar로)
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
+
+# /app/uploads 디렉토리를 만들고 소유권을 appuser 사용자에게 부여
+RUN mkdir -p /app/uploads && chown -R appuser:appuser /app/uploads
+
 EXPOSE 8080
 USER appuser
 ENTRYPOINT ["java","-Duser.timezone=Asia/Seoul","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=75.0","-jar","/app/app.jar"]
