@@ -1,5 +1,6 @@
 package com.project.byeoldori.community.post.controller
 
+import com.project.byeoldori.community.common.domain.PostSortBy
 import com.project.byeoldori.community.like.dto.*
 import com.project.byeoldori.community.like.service.LikeService
 import com.project.byeoldori.community.common.domain.PostType
@@ -11,7 +12,9 @@ import com.project.byeoldori.user.entity.User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
 import org.springframework.web.bind.annotation.*
 
 @RestController
@@ -30,13 +33,21 @@ class PostController(
     ): IdResponse = IdResponse(service.create(user, type, req))
 
     @GetMapping("/{type}/posts")
-    @Operation(summary = "타입별 목록 조회")
-    fun list(@PathVariable type: PostType, pageable: Pageable): PageResponse<PostSummaryResponse> {
-        val pageData = service.list(type, pageable).map {
+    @Operation(summary = "타입별 목록 조회", description = "최신순(LATEST), 조회순(VIEWS), 좋아요순(LIKES)으로 정렬 조회")
+    fun list(
+        @PathVariable type: PostType,
+        @RequestParam(defaultValue = "LATEST") sortBy: PostSortBy,
+        pageable: Pageable
+    ): PageResponse<PostSummaryResponse> {
+
+        val sort = Sort.by(Sort.Direction.DESC, sortBy.property)
+        val customPageable = PageRequest.of(pageable.pageNumber, pageable.pageSize, sort)
+
+        val pageData = service.list(type, customPageable).map {
             PostSummaryResponse(
                 id = it.id!!, type = it.type, title = it.title, authorId = it.author.id,
                 viewCount = it.viewCount, likeCount = it.likeCount, commentCount = it.commentCount,
-                createdAt = it.createdAt?.toString()
+                createdAt = it.createdAt
             )
         }
         return pageData.toPageResponse()
@@ -87,4 +98,10 @@ class PostController(
     fun likeCount(
         @PathVariable postId: Long
     ): LikeCountResponse = LikeCountResponse(likeService.count(postId))
+
+    @GetMapping("/home")
+    @Operation(summary = "커뮤니티 홈 화면 조회", description = "최신 리뷰, 신규 교육, 인기글 목록을 반환합니다.")
+    fun getCommunityHome(): CommunityHomeResponse {
+        return service.getCommunityHomeData()
+    }
 }

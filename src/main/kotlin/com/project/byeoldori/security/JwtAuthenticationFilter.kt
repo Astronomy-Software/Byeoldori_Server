@@ -1,5 +1,6 @@
 package com.project.byeoldori.security
 
+import com.project.byeoldori.user.repository.UserRepository
 import io.jsonwebtoken.ExpiredJwtException
 import io.jsonwebtoken.MalformedJwtException
 import jakarta.servlet.FilterChain
@@ -14,7 +15,8 @@ import io.jsonwebtoken.security.SignatureException
 
 @Component
 class JwtAuthenticationFilter(
-    private val jwtUtil: JwtUtil  // JWT 생성/검증 유틸리티 주입
+    private val jwtUtil: JwtUtil,  // JWT 생성/검증 유틸리티 주입
+    private val userRepo: UserRepository
 ) : OncePerRequestFilter() {
 
     // 요청 헤더에서 JWT를 추출하고, 유효하면 SecurityContext에 인증 정보를 등록
@@ -33,20 +35,20 @@ class JwtAuthenticationFilter(
             if (token != null && jwtUtil.validateToken(token)) {
                 val userEmail = jwtUtil.extractEmail(token)
 
-                /**
-                 * 인증 객체 생성
-                 * - 첫 번째 인자: 인증된 사용자 이름 (이메일)
-                 * - 두 번째 인자: 비밀번호 (null, 사용하지 않음)
-                 * - 세 번째 인자: 권한 리스트 (비워둠)
-                 */
-                val authentication = UsernamePasswordAuthenticationToken(
-                    userEmail, null, emptyList()
-                )
+                // 이메일을 사용하여 DB에서 User 엔티티를 조회합니다.
+                userRepo.findByEmail(userEmail).orElse(null)?.let { user ->
+                    // 인증 객체 생성 시 Principal로 User 객체를 직접 사용합니다.
+                    val authentication = UsernamePasswordAuthenticationToken(
+                        user, null, emptyList()
+                    )
+                    authentication.details = WebAuthenticationDetailsSource().buildDetails(request)
+                    SecurityContextHolder.getContext().authentication = authentication
 
-                // 요청 정보에 인증 정보를 담아서 SecurityContext에 저장
-                authentication.details = WebAuthenticationDetailsSource().buildDetails(request)
-                SecurityContextHolder.getContext().authentication = authentication
+                    // Controller에서 @RequestAttribute로 참조할 수 있도록 request에 user 정보를 추가합니다.
+                    request.setAttribute("currentUser", user)
+                }
             }
+
         }  catch (e: ExpiredJwtException) {
             logger.warn("Access Token 만료 - IP: ${request.remoteAddr}")
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Access Token이 만료되었습니다.")
