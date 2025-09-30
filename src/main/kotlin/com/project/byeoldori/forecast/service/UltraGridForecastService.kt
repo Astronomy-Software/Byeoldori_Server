@@ -3,201 +3,133 @@ package com.project.byeoldori.forecast.service
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.UltraForecastResponseDTO
 import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
+import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.springframework.stereotype.Service
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 
-// 단일 격자 셀 구조
 data class UltraGridCell(
-    val t1h: Int?,
-    val vec: Int?,
-    val wsd: Float?,
-    val pty: Int?,
-    val rn1: Float?,
-    val reh: Int?,
-    val sky: Int?
+    val t1h: Int?, val vec: Int?, val wsd: Float?,
+    val pty: Int?, val rn1: Float?, val reh: Int?, val sky: Int?
 )
 
 @Service
 class UltraGridForecastService(
     private val weatherData: WeatherData
 ) {
-
-    /**
-     * tmef -> 2차원 GridCell 매핑
-     * 여러 tmef에 대한 격자를 저장해둠
-     */
     private val ultraTMEFGridMap = mutableMapOf<String, MutableList<MutableList<UltraGridCell>>>()
-    // 전역에 락 객체 정의 (업데이트 시에만 사용)
     private val ultraReadWriteLock = ReentrantReadWriteLock()
 
     /**
-     * (1) 단일 tmef에 대한 초단기예보 격자 데이터 가져오기
-     * - 7개 변수(T1H, VEC, WSD, PTY, RN1, REH, SKY)를 병렬 호출 후, 2차원 GridCell로 결합
-     * - Mono로 반환하여 비동기 체인에 연결 가능
-     */
-    fun fetchUltraShortGrid(
-        tmfc: String,
-        tmef: String
-    ): Mono<MutableList<MutableList<UltraGridCell>>> {
-        return Mono.zip(
-            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.T1H),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.VEC),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.WSD),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.PTY),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.RN1),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.REH),
-            weatherData.fetchUltraShortForecast(tmfc, tmef, ForecastElement.SKY),
-        ).map { tuple7 ->
-            // 응답 데이터 추출
-            val t1hData = tuple7.t1
-            val vecData = tuple7.t2
-            val wsdData = tuple7.t3
-            val ptyData = tuple7.t4
-            val rn1Data = tuple7.t5
-            val rehData = tuple7.t6
-            val skyData = tuple7.t7
-
-            // 각 데이터 파싱
-            val t1hGrid = GridDataParser.parseGridData(t1hData)
-            val vecGrid = GridDataParser.parseGridData(vecData)
-            val wsdGrid = GridDataParser.parseGridData(wsdData)
-            val ptyGrid = GridDataParser.parseGridData(ptyData)
-            val rn1Grid = GridDataParser.parseGridData(rn1Data)
-            val rehGrid = GridDataParser.parseGridData(rehData)
-            val skyGrid = GridDataParser.parseGridData(skyData)
-
-            // 2차원 GridCell 리스트 결합
-            val combinedGrid = combineUltraGrids(
-                t1hGrid, vecGrid, wsdGrid,
-                ptyGrid, rn1Grid, rehGrid, skyGrid
-            )
-
-            // (디버깅) 중앙 셀 출력
-            printCenterUltraGridCell(combinedGrid)
-
-            // 각 tmef의 결과를 반환 (UltraTMEFGridMap 업데이트는 상위에서 진행)
-            combinedGrid
-        }
-    }
-
-    /**
-     * (2) 여러 tmef를 병렬로 처리하여, 각 tmef의 2차원 GridCell 리스트를 모은다.
-     * - Mono<List<Pair<tmef, 2차원 GridCell>> 형태로 반환
-     */
-    fun fetchUltraShortGrids(
-        tmfc: String,
-        tmefList: List<String>
-    ): Mono<List<Pair<String, MutableList<MutableList<UltraGridCell>>>>> {
-        val monoList = tmefList.map { tmef ->
-            fetchUltraShortGrid(tmfc, tmef).map { grid -> Pair(tmef, grid) }
-        }
-
-        return Mono.zip(monoList) { arrayOfResults ->
-            arrayOfResults.map { it as Pair<String, MutableList<MutableList<UltraGridCell>>> }
-        }
-    }
-
-    /**
-     * 상위 레벨에서 모든 데이터를 수집한 후, 일괄 업데이트하는 메서드
-     */
-    fun updateAllUltraTMEFData(tmfc: String, tmefList: List<String>) {
-        fetchUltraShortGrids(tmfc, tmefList)
-            .subscribe { listOfGrids ->
-                ultraReadWriteLock.write {
-                    ultraTMEFGridMap.clear()
-                    listOfGrids.forEach { (tmef, grid) ->
-                        ultraTMEFGridMap[tmef] = grid
-                    }
-                }
-                println("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
-            }
-    }
-
-
-
-    /**
-     * tmef -> GridCell 2차원 리스트 맵에서
-     * 모든 tmef에 대해 (x, y) 좌표 셀 정보를 조회하여 반환
-     * 조회 작업은 readLock을 사용하여 여러 스레드가 동시에 접근 가능하도록 함
+     * 최종적으로 사용자에게 초단기 예보 데이터를 제공하는 함수.
+     * 캐시를 확인하고, 없으면 실시간으로 데이터를 가져와 응답을 완성합니다.
      */
     fun getAllUltraTMEFDataForCell(x: Int, y: Int): List<UltraForecastResponseDTO> {
-        return ultraReadWriteLock.read {
-            val result = mutableListOf<UltraForecastResponseDTO>()
-            for ((tmef, grid) in ultraTMEFGridMap) {
-                if (y in grid.indices && x in grid[y].indices) {
-                    val cell = grid[y][x]
-                    result.add(
-                        UltraForecastResponseDTO(
-                            tmef = tmef,
-                            t1h = cell.t1h,
-                            vec = cell.vec,
-                            wsd = cell.wsd,
-                            pty = cell.pty,
-                            rn1 = cell.rn1,
-                            reh = cell.reh,
-                            sky = cell.sky
-                        )
-                    )
-                }
-            }
-            result.sortBy { it.tmef }
-            result
+        val forecastTimes = ForecastTimeUtil.getNext6UltraTmef()
+
+        return forecastTimes.map { tmef ->
+            val gridForTime = getGridForTMEF(tmef)
+            val cellData = gridForTime?.getOrNull(y)?.getOrNull(x)
+
+            UltraForecastResponseDTO(
+                tmef = tmef,
+                t1h = cellData?.t1h, vec = cellData?.vec, wsd = cellData?.wsd,
+                pty = cellData?.pty, rn1 = cellData?.rn1, reh = cellData?.reh,
+                sky = cellData?.sky
+            )
         }
     }
 
     /**
-     * 격자 결합 로직
+     * 특정 예보 시간(tmef)의 격자 데이터를 가져오는 헬퍼 함수.
+     * 캐시를 먼저 읽고, 없으면 쓰기 락을 걸어 실시간 API를 호출합니다.
+     */
+    private fun getGridForTMEF(tmef: String): MutableList<MutableList<UltraGridCell>>? {
+        ultraReadWriteLock.read {
+            if (ultraTMEFGridMap.containsKey(tmef)) return ultraTMEFGridMap[tmef]
+        }
+        return ultraReadWriteLock.write {
+            if (ultraTMEFGridMap.containsKey(tmef)) return@write ultraTMEFGridMap[tmef]
+
+            val fetchedGrid = fetchAndParseRealtime(tmef)
+            if (fetchedGrid != null) {
+                ultraTMEFGridMap[tmef] = fetchedGrid
+            }
+            fetchedGrid
+        }
+    }
+
+    /**
+     * 스케줄러가 백그라운드에서 캐시를 채우기 위해 호출하는 함수.
+     */
+    fun updateAllUltraTMEFData(tmfc: String, tmefList: List<String>) {
+        val monoList = tmefList.map { tmef -> fetchUltraGrid(tmfc, tmef).map { tmef to it } }
+        Mono.zip(monoList) { results ->
+            results.map { it as Pair<String, MutableList<MutableList<UltraGridCell>>> }
+        }.subscribe { listOfGrids ->
+            ultraReadWriteLock.write {
+                ultraTMEFGridMap.clear()
+                listOfGrids.forEach { (tmef, grid) -> ultraTMEFGridMap[tmef] = grid }
+            }
+        }
+    }
+
+    /**
+     * 실시간으로 API를 호출하여 데이터를 가져오는 함수.
+     */
+    private fun fetchAndParseRealtime(tmef: String): MutableList<MutableList<UltraGridCell>>? {
+        val tmfc = ForecastTimeUtil.getStableUltraTmfc()
+        return fetchUltraGrid(tmfc, tmef).block()
+    }
+
+    /**
+     * 단일 tmef에 대한 초단기예보 격자 데이터를 API로부터 가져와 파싱하는 공통 로직.
+     */
+    private fun fetchUltraGrid(tmfc: String, tmef: String): Mono<MutableList<MutableList<UltraGridCell>>> {
+        val elements = listOf(
+            ForecastElement.T1H, ForecastElement.VEC, ForecastElement.WSD, ForecastElement.PTY,
+            ForecastElement.RN1, ForecastElement.REH, ForecastElement.SKY
+        )
+        return Flux.fromIterable(elements)
+            .flatMap({ element ->
+                weatherData.fetchUltraShortForecast(tmfc, tmef, element)
+                    .map { response -> element to GridDataParser.parseGridData(response) }
+            }, 3)
+            .collectMap({ it.first }, { it.second })
+            .map { gridMap -> combineUltraGrids(
+                gridMap[ForecastElement.T1H]!!, gridMap[ForecastElement.VEC]!!, gridMap[ForecastElement.WSD]!!,
+                gridMap[ForecastElement.PTY]!!, gridMap[ForecastElement.RN1]!!, gridMap[ForecastElement.REH]!!,
+                gridMap[ForecastElement.SKY]!!
+            )}
+    }
+
+    /**
+     * 각 요소별 격자 데이터를 하나의 UltraGridCell 격자로 합치는 함수.
      */
     private fun combineUltraGrids(
-        t1hGrid: MutableList<MutableList<Double?>>,
-        vecGrid: MutableList<MutableList<Double?>>,
-        wsdGrid: MutableList<MutableList<Double?>>,
-        ptyGrid: MutableList<MutableList<Double?>>,
-        rn1Grid: MutableList<MutableList<Double?>>,
-        rehGrid: MutableList<MutableList<Double?>>,
-        skyGrid: MutableList<MutableList<Double?>>,
+        t1hGrid: MutableList<MutableList<Double?>>, vecGrid: MutableList<MutableList<Double?>>,
+        wsdGrid: MutableList<MutableList<Double?>>, ptyGrid: MutableList<MutableList<Double?>>,
+        rn1Grid: MutableList<MutableList<Double?>>, rehGrid: MutableList<MutableList<Double?>>,
+        skyGrid: MutableList<MutableList<Double?>>
     ): MutableList<MutableList<UltraGridCell>> {
         val numRows = t1hGrid.size
         val numCols = if (numRows > 0) t1hGrid[0].size else 0
         val combined = mutableListOf<MutableList<UltraGridCell>>()
-
         for (i in 0 until numRows) {
             val row = mutableListOf<UltraGridCell>()
             for (j in 0 until numCols) {
-                row.add(
-                    UltraGridCell(
-                        t1h = t1hGrid[i][j]?.toInt(),
-                        vec = vecGrid[i][j]?.toInt(),
-                        wsd = wsdGrid[i][j]?.toFloat(),
-                        pty = ptyGrid[i][j]?.toInt(),
-                        rn1 = rn1Grid[i][j]?.toFloat(),
-                        reh = rehGrid[i][j]?.toInt(),
-                        sky = skyGrid[i][j]?.toInt()
-                    )
-                )
+                row.add(UltraGridCell(
+                    t1h = t1hGrid[i][j]?.toInt(), vec = vecGrid[i][j]?.toInt(), wsd = wsdGrid[i][j]?.toFloat(),
+                    pty = ptyGrid[i][j]?.toInt(), rn1 = rn1Grid[i][j]?.toFloat(), reh = rehGrid[i][j]?.toInt(),
+                    sky = skyGrid[i][j]?.toInt()
+                ))
             }
             combined.add(row)
         }
         return combined
-    }
-
-    /**
-     * (디버깅용) 중앙 셀 출력
-     */
-    private fun printCenterUltraGridCell(grid: MutableList<MutableList<UltraGridCell>>) {
-        val numRows = grid.size
-        val numCols = if (numRows > 0) grid[0].size else 0
-        if (numRows == 0 || numCols == 0) {
-            println("격자 데이터가 비어있습니다.")
-            return
-        }
-        val centerRow = (numRows - 1) / 2
-        val centerCol = (numCols - 1) / 2
-        val centerCell = grid[centerRow][centerCol]
-        println("중앙 셀 (x: $centerCol , y: $centerRow): $centerCell")
     }
 }
