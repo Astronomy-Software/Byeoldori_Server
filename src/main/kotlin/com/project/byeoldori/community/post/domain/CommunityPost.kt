@@ -1,6 +1,8 @@
 package com.project.byeoldori.community.post.domain
 
+import com.project.byeoldori.community.comment.domain.Comment
 import com.project.byeoldori.community.common.domain.PostType
+import com.project.byeoldori.community.like.domain.LikeEntity
 import com.project.byeoldori.user.entity.User
 import jakarta.persistence.*
 import java.time.LocalDateTime
@@ -35,5 +37,14 @@ class CommunityPost(
     val createdAt: LocalDateTime? = null,
 
     @Column(name = "updated_at", insertable = false, updatable = false)
-    val updatedAt: LocalDateTime? = null
+    val updatedAt: LocalDateTime? = null,
+
+    @OneToMany(mappedBy = "post", cascade = [CascadeType.ALL], orphanRemoval = true)
+    val comments: MutableList<Comment> = mutableListOf(),
+
+    @OneToMany(mappedBy = "post", cascade = [CascadeType.ALL], orphanRemoval = true)
+    val likes: MutableList<LikeEntity> = mutableListOf(),
+
+    @OneToMany(mappedBy = "post", cascade = [CascadeType.ALL], orphanRemoval = true)
+    val images: MutableList<PostImage> = mutableListOf()
 )

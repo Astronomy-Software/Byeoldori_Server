@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import java.time.LocalDateTime
 
 data class ReviewDto(
     val location: String? = null,
@@ -49,7 +50,7 @@ data class PostSummaryResponse(
     val viewCount: Long,
     val likeCount: Long,
     val commentCount: Long,
-    val createdAt: String?
+    val createdAt: LocalDateTime?
 )
 
 data class PostResponse(
@@ -64,8 +65,14 @@ data class PostResponse(
     val viewCount: Long,
     val likeCount: Long,
     val commentCount: Long,
-    val createdAt: String?,
-    val updatedAt: String?
+    val createdAt: LocalDateTime?,
+    val updatedAt: LocalDateTime?
 )
 
 data class IdResponse(val id: Long)
+
+data class CommunityHomeResponse(
+    val recentReviews: List<PostSummaryResponse>,
+    val newEducations: List<PostSummaryResponse>,
+    val popularFreePosts: List<PostSummaryResponse>
+)

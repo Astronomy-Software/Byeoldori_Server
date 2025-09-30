@@ -40,8 +40,7 @@ class CommentService(
             Comment(post = post, author = author, content = content, parent = parent, depth = depth)
         )
 
-        // 카운트 동기화
-        post.commentCount = commentRepo.countByPostIdAndDeletedFalse(postId)
+        post.commentCount++
         return saved.id!!
     }
 
@@ -89,7 +88,10 @@ class CommentService(
         if (!c.deleted) {
             c.deleted = true
             c.content = "삭제된 댓글입니다."
+
+            if (c.post.commentCount > 0) {
+                c.post.commentCount--
+            }
         }
-        c.post.commentCount = commentRepo.countByPostIdAndDeletedFalse(c.post.id!!)
     }
 }
