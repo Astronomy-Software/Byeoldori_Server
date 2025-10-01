@@ -8,10 +8,10 @@ import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
-import org.springframework.stereotype.Service
 import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
+import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
 
 @Service
 class CommentService(
@@ -20,39 +20,48 @@ class CommentService(
 ) {
 
     @Transactional
-    fun write(postId: Long, author: User, content: String, parentId: Long? = null): Long {
+    fun write(postId: Long, author: User, content: String, parentId: Long? = null): CommentResponse {
         val post = postRepo.findById(postId).orElseThrow {
             ResponseStatusException(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다.")
         }
 
-        val parent = parentId?.let {
-            val p = commentRepo.findById(it).orElseThrow {
-                ResponseStatusException(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다.")
+        val parent = parentId?.takeIf { it > 0 }?.let { validParentId ->
+            val p = commentRepo.findById(validParentId).orElseThrow {
+                ResponseStatusException(HttpStatus.NOT_FOUND, "답글을 작성할 부모 댓글을 찾을 수 없습니다.")
             }
             if (p.post.id != postId) {
-                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "댓글이 다른 게시글에 속합니다.")
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "부모 댓글이 다른 게시글에 속해있습니다.")
+            }
+            if (p.depth > 0) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "더 이상 답글을 작성할 수 없습니다.")
             }
             p
         }
 
         val depth = if (parent != null) 1 else 0
-        val saved = commentRepo.save(
+        val savedComment = commentRepo.save(
             Comment(post = post, author = author, content = content, parent = parent, depth = depth)
         )
 
         post.commentCount++
-        return saved.id!!
+
+        return CommentResponse(
+            id = savedComment.id!!,
+            authorId = savedComment.author.id,
+            content = savedComment.content,
+            createdAt = savedComment.createdAt,
+            parentId = savedComment.parent?.id,
+            depth = savedComment.depth,
+            deleted = savedComment.deleted
+        )
     }
 
     @Transactional(readOnly = true)
     fun list(postId: Long, page: Int, size: Int): PageResponse<CommentResponse> {
-        // 정렬은 서비스에서만 관리: createdAt ASC, id ASC
-        val sort = Sort.by(
-            Sort.Order.asc("createdAt"),
-            Sort.Order.asc("id")
-        )
-        val pageable = PageRequest.of(page, size, sort)
+        require(page > 0) { "페이지 번호는 1 이상이어야 합니다." }
 
+        val sort = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"))
+        val pageable = PageRequest.of(page - 1, size, sort)
         val result = commentRepo.findByPostId(postId, pageable)
 
         return PageResponse(
@@ -61,7 +70,7 @@ class CommentService(
                     id = it.id!!,
                     authorId = it.author.id,
                     content = it.content,
-                    createdAt = it.createdAt!!,
+                    createdAt = it.createdAt,
                     parentId = it.parent?.id,
                     depth = it.depth,
                     deleted = it.deleted
