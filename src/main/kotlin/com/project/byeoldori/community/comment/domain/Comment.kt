@@ -35,6 +35,6 @@ class Comment(
     @Column(nullable = false)
     var deleted: Boolean = false,
 
-    @Column(name = "created_at", insertable = false, updatable = false)
-    val createdAt: LocalDateTime? = null
+    @Column(name = "created_at", updatable = false)
+    val createdAt: LocalDateTime = LocalDateTime.now()
 )

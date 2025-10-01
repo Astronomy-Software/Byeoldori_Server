@@ -8,6 +8,7 @@ import com.project.byeoldori.user.entity.User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 
@@ -24,16 +25,15 @@ class CommentController(
         @PathVariable postId: Long,
         @Valid @RequestBody req: CommentCreateRequest,
         @RequestAttribute("currentUser") user: User
-    ): Map<String, Long> {
-        val id = service.write(postId, user, req.content, req.parentId)
-        return mapOf("id" to id)
+    ): CommentResponse {
+        return service.write(postId, user, req.content, req.parentId)
     }
 
     @GetMapping("/posts/{postId}/comments")
     @Operation(summary = "댓글 목록", description = "작성 시각 오름차순으로 페이징 조회합니다.")
     fun list(
         @PathVariable postId: Long,
-        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "1") page: Int,
         @RequestParam(defaultValue = "15") size: Int
     ): PageResponse<CommentResponse> = service.list(postId, page, size)
 
@@ -43,5 +43,10 @@ class CommentController(
         @PathVariable postId: Long,
         @PathVariable commentId: Long,
         @RequestAttribute("currentUser") user: User
-    ) = service.delete(postId, commentId, user)
+    ): ResponseEntity<Map<String, String>> { // <- 수정: 반환 타입 변경
+        service.delete(postId, commentId, user)
+
+        val response = mapOf("message" to "댓글이 삭제되었습니다.")
+        return ResponseEntity.ok(response)
+    }
 }

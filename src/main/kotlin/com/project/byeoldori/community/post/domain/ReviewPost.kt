@@ -1,9 +1,9 @@
 package com.project.byeoldori.community.post.domain
 
 import jakarta.persistence.*
-import java.time.LocalDateTime
 import org.hibernate.annotations.OnDelete
 import org.hibernate.annotations.OnDeleteAction
+import java.time.LocalDate
 
 @Entity
 @Table(name = "review_post")
@@ -22,7 +22,7 @@ class ReviewPost(
     var equipment: String? = null,
 
     @Column(name = "observation_dt")
-    var observationDate: LocalDateTime? = null,
+    var observationDate: LocalDate? = null,
 
     var score: Int? = null // 1~5점
 )

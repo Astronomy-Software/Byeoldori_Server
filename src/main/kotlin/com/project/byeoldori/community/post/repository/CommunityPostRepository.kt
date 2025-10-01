@@ -12,6 +12,10 @@ import org.springframework.data.repository.query.Param
 interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     fun findAllByType(type: PostType, pageable: Pageable): Page<CommunityPost>
 
+    fun findByTypeAndTitle(type: PostType, title: String, pageable: Pageable): Page<CommunityPost>
+    fun findByTypeAndContent(type: PostType, content: String, pageable: Pageable): Page<CommunityPost>
+    fun findByTypeAndAuthorNickname(type: PostType, nickname: String, pageable: Pageable): Page<CommunityPost>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update CommunityPost p set p.viewCount = p.viewCount + 1 where p.id = :postId")
     fun increaseViewCount(@Param("postId") postId: Long): Int

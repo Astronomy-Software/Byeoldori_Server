@@ -70,9 +70,3 @@ data class PostResponse(
 )
 
 data class IdResponse(val id: Long)
-
-data class CommunityHomeResponse(
-    val recentReviews: List<PostSummaryResponse>,
-    val newEducations: List<PostSummaryResponse>,
-    val popularFreePosts: List<PostSummaryResponse>
-)
