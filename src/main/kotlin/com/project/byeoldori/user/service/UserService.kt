@@ -1,5 +1,6 @@
 package com.project.byeoldori.user.service
 
+import com.project.byeoldori.security.CurrentUserResolver
 import com.project.byeoldori.security.JwtUtil
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.entity.EmailVerificationToken
@@ -22,7 +23,8 @@ class UserService(
     private val refreshTokenRepo: RefreshTokenRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwt: JwtUtil,
-    private val emailService: EmailService
+    private val emailService: EmailService,
+    private val currentUserResolver: CurrentUserResolver
 ) {
 
     @Transactional
@@ -126,8 +128,8 @@ class UserService(
     }
 
     @Transactional
-    fun logout(authEmail: String) {
-        val user = userRepository.findByEmail(authEmail).orElseThrow()
+    fun logout() {
+        val user = currentUserResolver.getUser()
         refreshTokenRepo.deleteByUserId(user.id)
     }
 
@@ -156,9 +158,8 @@ class UserService(
     }
 
     @Transactional
-    fun changePasswordByUsername(username: String, req: ChangePasswordRequest) {
-        val user = userRepository.findByEmail(username)
-            .orElseThrow { IllegalArgumentException("사용자를 찾을 수 없습니다.") }
+    fun changePassword(req: ChangePasswordRequest) {
+        val user = currentUserResolver.getUser()
 
         if (!passwordEncoder.matches(req.currentPassword, user.passwordHash)) {
             throw IllegalArgumentException("현재 비밀번호가 일치하지 않습니다.")
@@ -176,16 +177,15 @@ class UserService(
         refreshTokenRepo.deleteByUserId(user.id)
     }
 
-
     @Transactional(readOnly = true)
-    fun getMe(email: String): UserMeResponseDto {
-        val user = userRepository.findByEmail(email).orElseThrow()
+    fun getMe(): UserMeResponseDto {
+        val user = currentUserResolver.getUser()
         return UserMeResponseDto.from(user)
     }
 
     @Transactional
-    fun updateMe(email: String, req: UserUpdateRequestDto) {
-        val user = userRepository.findByEmail(email).orElseThrow()
+    fun updateMe(req: UserUpdateRequestDto) {
+        val user = currentUserResolver.getUser()
         req.nickname?.let {
             if (it.isNotBlank() && it != user.nickname) {
                 require(!userRepository.existsByNickname(it)) { "이미 사용 중인 닉네임입니다." }
@@ -196,8 +196,8 @@ class UserService(
     }
 
     @Transactional
-    fun deleteAccount(email: String) {
-        val user = userRepository.findByEmail(email).orElseThrow()
+    fun deleteAccount() {
+        val user = currentUserResolver.getUser()
         refreshTokenRepo.deleteByUserId(user.id)
         emailTokenRepo.deleteAllByUserId(user.id)
         userRepository.delete(user)
