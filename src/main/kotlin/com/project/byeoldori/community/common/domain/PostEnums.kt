@@ -11,3 +11,9 @@ enum class PostSortBy(val property: String) {
     VIEWS("viewCount"),
     LIKES("likeCount")
 }
+
+enum class PostSearchBy {
+    TITLE,
+    CONTENT,
+    NICKNAME
+}

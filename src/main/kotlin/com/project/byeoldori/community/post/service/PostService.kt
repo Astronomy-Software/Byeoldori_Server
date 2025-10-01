@@ -1,12 +1,14 @@
 package com.project.byeoldori.community.post.service
 
+import com.project.byeoldori.community.common.domain.PostSearchBy
+import com.project.byeoldori.community.common.dto.PageResponse
+import com.project.byeoldori.community.common.dto.toPageResponse
 import com.project.byeoldori.community.common.domain.PostType
 import com.project.byeoldori.community.post.domain.*
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
 import com.project.byeoldori.user.entity.User
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -14,7 +16,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
-import java.time.LocalDateTime
+import java.time.LocalDate
 
 @Service
 @Transactional
@@ -44,7 +46,7 @@ class PostService(
                         location = d.location,
                         target = d.target,
                         equipment = d.equipment,
-                        observationDate = d.observationDate?.let(LocalDateTime::parse),
+                        observationDate = d.observationDate?.let(LocalDate::parse),
                         score = d.score
                     )
                 )
@@ -73,34 +75,44 @@ class PostService(
     }
 
     @Transactional(readOnly = true)
-    fun getCommunityHomeData(): CommunityHomeResponse {
-        val itemCount = homeItemCount
-
-        val recentReviews = postRepo.findAllByType(
+    fun getRecentReviews(): List<PostSummaryResponse> {
+        return postRepo.findAllByType(
             PostType.REVIEW,
-            PageRequest.of(0, itemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
+            PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
         ).content.map { it.toSummaryResponse() }
-
-        val newEducations = postRepo.findAllByType(
-            PostType.EDUCATION,
-            PageRequest.of(0, itemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
-        ).content.map { it.toSummaryResponse() }
-
-        val popularFreePosts = postRepo.findAllByType(
-            PostType.FREE,
-            PageRequest.of(0, itemCount, Sort.by(Sort.Direction.DESC, "viewCount"))
-        ).content.map { it.toSummaryResponse() }
-
-        return CommunityHomeResponse(
-            recentReviews = recentReviews,
-            newEducations = newEducations,
-            popularFreePosts = popularFreePosts
-        )
     }
 
     @Transactional(readOnly = true)
-    fun list(type: PostType, pageable: Pageable): Page<CommunityPost> =
-        postRepo.findAllByType(type, pageable)
+    fun getNewEducations(): List<PostSummaryResponse> {
+        return postRepo.findAllByType(
+            PostType.EDUCATION,
+            PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
+        ).content.map { it.toSummaryResponse() }
+    }
+
+    @Transactional(readOnly = true)
+    fun getPopularFreePosts(): List<PostSummaryResponse> {
+        return postRepo.findAllByType(
+            PostType.FREE,
+            PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "viewCount"))
+        ).content.map { it.toSummaryResponse() }
+    }
+
+    @Transactional(readOnly = true)
+    fun list(type: PostType, pageable: Pageable, searchBy: PostSearchBy, keyword: String?): PageResponse<PostSummaryResponse> { // <- 수정
+
+        val postPage = if (keyword.isNullOrBlank()) {
+            postRepo.findAllByType(type, pageable)
+        } else {
+            when (searchBy) {
+                PostSearchBy.TITLE -> postRepo.findByTypeAndTitle(type, keyword, pageable)
+                PostSearchBy.CONTENT -> postRepo.findByTypeAndContent(type, keyword, pageable)
+                PostSearchBy.NICKNAME -> postRepo.findByTypeAndAuthorNickname(type, keyword, pageable)
+            }
+        }
+
+        return postPage.map { it.toSummaryResponse() }.toPageResponse()
+    }
 
     @Transactional
     fun detail(postId: Long): PostResponse {
@@ -176,7 +188,7 @@ class PostService(
         reviewDto.location?.let { reviewPost.location = it }
         reviewDto.target?.let { reviewPost.target = it }
         reviewDto.equipment?.let { reviewPost.equipment = it }
-        reviewDto.observationDate?.let { reviewPost.observationDate = LocalDateTime.parse(it) }
+        reviewDto.observationDate?.let { reviewPost.observationDate = LocalDate.parse(it) }
         reviewDto.score?.let { reviewPost.score = it }
     }
 
