@@ -1,19 +1,27 @@
 package com.project.byeoldori.observationsites.entity
 
+import com.project.byeoldori.user.entity.User
 import jakarta.persistence.*
+import java.io.Serializable
 import java.time.LocalDateTime
 
 @Entity
-@Table(
-    name = "user_saved_site",
-    uniqueConstraints = [UniqueConstraint(columnNames = ["userId", "siteId"])]
-)
-data class UserSavedSite(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+@Table(name = "user_saved_sites")
+@IdClass(UserSavedSiteId::class)
+class UserSavedSite(
+    @Id
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    val user: User,
 
-    val userId: String,         // 사용자 ID (로그인 없으면 디바이스 ID나 UUID도 가능)
-    val siteId: Long,           // ObservationSite ID
-
+    @Id
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "site_id")
+    val site: ObservationSite,
     val savedAt: LocalDateTime = LocalDateTime.now()
 )
+
+data class UserSavedSiteId(
+    var user: Long = 0L,
+    var site: Long = 0L
+) : Serializable
