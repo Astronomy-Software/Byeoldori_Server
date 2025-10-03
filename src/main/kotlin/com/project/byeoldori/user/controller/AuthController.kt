@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpSession
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.reactive.result.view.RedirectView
 
 @RestController
 @RequestMapping("/auth")
@@ -25,9 +26,9 @@ class AuthController(
 
     @GetMapping("/verify-email")
     @Operation(summary = "이메일 인증")
-    fun verifyEmail(@RequestParam token: String): ResponseEntity<ApiResponse<Unit>> {
+    fun verifyEmail(@RequestParam token: String): RedirectView {
         userService.verifyEmail(token)
-        return ResponseEntity.ok(ApiResponse.ok("이메일 인증 완료"))
+        return RedirectView("/verification-success.html")
     }
 
     @PostMapping("/find-email")
