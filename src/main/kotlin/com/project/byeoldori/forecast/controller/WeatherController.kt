@@ -20,7 +20,7 @@ class WeatherController(
         @RequestParam lat: Double,
         @RequestParam lon: Double,
     ): ForecastResponseDTO {
-        logger.info("ForecastData 호출 lat $lat, long $lon")
+        logger.info("ForecastData 호출 lat $lat, lon $lon")
         return foreCastService.getForecastDataByLocation(lat, lon)
     }
 }
