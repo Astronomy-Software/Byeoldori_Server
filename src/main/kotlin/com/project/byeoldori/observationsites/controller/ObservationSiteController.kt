@@ -1,5 +1,6 @@
 package com.project.byeoldori.observationsites.controller
 
+import com.project.byeoldori.observationsites.dto.ObservationSiteDetailDto
 import com.project.byeoldori.observationsites.dto.ObservationSiteDto
 import com.project.byeoldori.observationsites.entity.ObservationSite
 import com.project.byeoldori.observationsites.service.ObservationSiteService
@@ -29,8 +30,8 @@ class ObservationSiteController(
 
     @Operation(summary = "관측지 단건 조회(ID)", description = "하나의 관측지를 조회합니다.")
     @GetMapping("/{id}")
-    fun getOne(@PathVariable id: Long): ResponseEntity<ObservationSite> =
-        siteService.getById(id)?.let { ResponseEntity.ok(it) } ?: ResponseEntity.notFound().build()
+    fun getOne(@PathVariable id: Long): ResponseEntity<ObservationSiteDetailDto> =
+        siteService.getSiteDetailById(id)?.let { ResponseEntity.ok(it) } ?: ResponseEntity.notFound().build()
 
     @Operation(summary = "관측지 검색", description = "키워드가 포함된 관측지 이름으로 검색합니다.")
     @GetMapping("/name")

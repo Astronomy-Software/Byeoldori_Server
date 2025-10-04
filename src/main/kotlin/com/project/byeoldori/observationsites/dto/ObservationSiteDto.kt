@@ -33,6 +33,17 @@ data class RecommendationRequestDto(
     val observationTime: LocalDateTime
 )
 
+// 관측지 상세 정보 DTO
+data class ObservationSiteDetailDto(
+    val id: Long,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val reviewCount: Long,
+    val totalLikes: Long,
+    val averageScore: Double
+)
+
 // DTO ➔ Entity 변환
 fun ObservationSiteDto.toEntity(): ObservationSite {
     return ObservationSite(
