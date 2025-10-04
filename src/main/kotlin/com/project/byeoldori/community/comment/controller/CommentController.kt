@@ -1,5 +1,6 @@
 package com.project.byeoldori.community.comment.controller
 
+import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.community.comment.dto.CommentCreateRequest
 import com.project.byeoldori.community.comment.dto.CommentResponse
 import com.project.byeoldori.community.comment.service.CommentService
@@ -43,10 +44,8 @@ class CommentController(
         @PathVariable postId: Long,
         @PathVariable commentId: Long,
         @RequestAttribute("currentUser") user: User
-    ): ResponseEntity<Map<String, String>> { // <- 수정: 반환 타입 변경
+    ): ResponseEntity<ApiResponse<Unit>> {
         service.delete(postId, commentId, user)
-
-        val response = mapOf("message" to "댓글이 삭제되었습니다.")
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(ApiResponse.ok("댓글이 삭제되었습니다."))
     }
 }
