@@ -1,5 +1,6 @@
 package com.project.byeoldori.community.post.controller
 
+import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.community.common.domain.PostSearchBy
 import com.project.byeoldori.community.common.domain.PostSortBy
 import com.project.byeoldori.community.like.dto.*
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
 @RestController
@@ -58,14 +60,20 @@ class PostController(
         @PathVariable postId: Long,
         @RequestBody req: PostUpdateRequest,
         @RequestAttribute("currentUser") user: User
-    ) = service.update(postId, req, user)
+    ): ResponseEntity<ApiResponse<Unit>> {
+        service.update(postId, req, user)
+        return ResponseEntity.ok(ApiResponse.ok("게시글이 수정되었습니다."))
+    }
 
     @DeleteMapping("/posts/{postId}")
     @Operation(summary = "삭제")
     fun delete(
         @PathVariable postId: Long,
         @RequestAttribute("currentUser") user: User
-    ) = service.delete(postId, user)
+    ): ResponseEntity<ApiResponse<Unit>> {
+        service.delete(postId, user)
+        return ResponseEntity.ok(ApiResponse.ok("게시글이 삭제되었습니다."))
+    }
 
     @PostMapping("/posts/{postId}/likes/toggle")
     @Operation(summary = "좋아요 토글", description = "이미 좋아요면 취소, 아니면 좋아요")

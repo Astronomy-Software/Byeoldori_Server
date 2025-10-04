@@ -6,11 +6,11 @@ import com.project.byeoldori.user.service.UserService
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.servlet.http.HttpSession
 import jakarta.validation.Valid
+import org.springframework.stereotype.Controller
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import org.springframework.web.reactive.result.view.RedirectView
 
-@RestController
+@Controller
 @RequestMapping("/auth")
 class AuthController(
     private val userService: UserService,
@@ -26,9 +26,9 @@ class AuthController(
 
     @GetMapping("/verify-email")
     @Operation(summary = "이메일 인증")
-    fun verifyEmail(@RequestParam token: String): RedirectView {
+    fun verifyEmail(@RequestParam token: String): String {
         userService.verifyEmail(token)
-        return RedirectView("/verification-success.html")
+        return "verification-success"
     }
 
     @PostMapping("/find-email")

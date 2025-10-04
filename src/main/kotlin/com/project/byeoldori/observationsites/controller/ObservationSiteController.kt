@@ -1,5 +1,6 @@
 package com.project.byeoldori.observationsites.controller
 
+import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.observationsites.dto.ObservationSiteDetailDto
 import com.project.byeoldori.observationsites.dto.ObservationSiteDto
 import com.project.byeoldori.observationsites.entity.ObservationSite
@@ -50,8 +51,12 @@ class ObservationSiteController(
 
     @Operation(summary = "관측지 삭제 (ID)")
     @DeleteMapping("/{id}")
-    fun deleteById(@PathVariable id: Long): ResponseEntity<Void> {
-        return if (siteService.deleteSiteById(id)) ResponseEntity.noContent().build()
-        else ResponseEntity.notFound().build()
+    fun deleteById(@PathVariable id: Long): ResponseEntity<ApiResponse<Unit>> {
+        return if (siteService.deleteSiteById(id)) {
+            ResponseEntity.ok(ApiResponse.ok("관측지가 삭제되었습니다."))
+        } else {
+            ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.fail("해당 ID의 관측지를 찾을 수 없습니다."))
+        }
     }
 }
