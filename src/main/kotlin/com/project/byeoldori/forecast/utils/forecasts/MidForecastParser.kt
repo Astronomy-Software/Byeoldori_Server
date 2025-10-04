@@ -19,7 +19,7 @@ class MidForecastParser {
                     tmEf = columns[2],
                     sky = columns[6],
                     pre = columns[7],
-                    rnSt = columns[10].toIntOrNull() ?: -999 // 예외 처리
+                    rnSt = columns[10].toIntOrNull() ?: 0
                 )
             }
             .toList()
