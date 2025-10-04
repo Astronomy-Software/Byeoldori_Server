@@ -7,6 +7,7 @@ import com.project.byeoldori.community.common.domain.PostType
 import com.project.byeoldori.community.post.domain.*
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
+import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.PageRequest
@@ -25,7 +26,8 @@ class PostService(
     private val reviewRepo: ReviewPostRepository,
     private val eduRepo: EducationPostRepository,
     private val imgRepo: PostImageRepository,
-    private val freePostRepo: FreePostRepository
+    private val freePostRepo: FreePostRepository,
+    private val siteRepo: ObservationSiteRepository
 ) {
 
     @Value("\${community.home.item-count:4}")
@@ -40,9 +42,15 @@ class PostService(
         when (type) {
             PostType.REVIEW -> {
                 val d = req.review ?: ReviewDto()
+
+                val site = d.observationSiteId?.let {
+                    siteRepo.findById(it).orElse(null)
+                }
+
                 reviewRepo.save(
                     ReviewPost(
                         post = post,
+                        observationSite = site,
                         location = d.location,
                         target = d.target,
                         equipment = d.equipment,
@@ -105,9 +113,9 @@ class PostService(
             postRepo.findAllByType(type, pageable)
         } else {
             when (searchBy) {
-                PostSearchBy.TITLE -> postRepo.findByTypeAndTitle(type, keyword, pageable)
-                PostSearchBy.CONTENT -> postRepo.findByTypeAndContent(type, keyword, pageable)
-                PostSearchBy.NICKNAME -> postRepo.findByTypeAndAuthorNickname(type, keyword, pageable)
+                PostSearchBy.TITLE -> postRepo.findByTypeAndTitleContaining(type, keyword, pageable)
+                PostSearchBy.CONTENT -> postRepo.findByTypeAndContentContaining(type, keyword, pageable)
+                PostSearchBy.NICKNAME -> postRepo.findByTypeAndAuthorNicknameContaining(type, keyword, pageable)
             }
         }
 
@@ -126,7 +134,7 @@ class PostService(
         val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(postId).map { it.url }
 
         val review = reviewRepo.findById(postId).orElse(null)?.let {
-            ReviewDto(it.location, it.target, it.equipment, it.observationDate?.toString(), it.score)
+            ReviewDto(it.location, it.observationSite?.id, it.target, it.equipment, it.observationDate?.toString(), it.score)
         }
         val education = eduRepo.findById(postId).orElse(null)?.let {
             EducationDto(it.summary, it.difficulty, it.tags, it.status)
@@ -190,6 +198,15 @@ class PostService(
         reviewDto.equipment?.let { reviewPost.equipment = it }
         reviewDto.observationDate?.let { reviewPost.observationDate = LocalDate.parse(it) }
         reviewDto.score?.let { reviewPost.score = it }
+
+        if (reviewDto.observationSiteId != null) {
+            val site = siteRepo.findById(reviewDto.observationSiteId).orElseThrow {
+                ResponseStatusException(HttpStatus.NOT_FOUND, "연결할 관측지를 찾을 수 없습니다.")
+            }
+            reviewPost.observationSite = site
+        } else {
+            reviewPost.observationSite = null
+        }
     }
 
     private fun updateEducationPost(postId: Long, educationDto: EducationDto) {
@@ -231,9 +248,15 @@ class PostService(
     }
 
     private fun CommunityPost.toSummaryResponse(): PostSummaryResponse {
+        val summary = if (this.type == PostType.FREE) {
+            this.content.take(30)
+        } else {
+            null
+        }
+
         return PostSummaryResponse(
-            id = this.id!!, type = this.type, title = this.title, authorId = this.author.id,
-            viewCount = this.viewCount, likeCount = this.likeCount, commentCount = this.commentCount,
+            id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
+            contentSummary = summary, viewCount = this.viewCount, likeCount = this.likeCount, commentCount = this.commentCount,
             createdAt = this.createdAt
         )
     }

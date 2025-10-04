@@ -9,6 +9,7 @@ import java.time.LocalDateTime
 
 data class ReviewDto(
     val location: String? = null,
+    val observationSiteId: Long? = null,
     val target: String? = null,
     val equipment: String? = null,
     val observationDate: String? = null,
@@ -47,6 +48,8 @@ data class PostSummaryResponse(
     val type: PostType,
     val title: String,
     val authorId: Long,
+    val authorNickname: String?,
+    val contentSummary: String? = null,
     val viewCount: Long,
     val likeCount: Long,
     val commentCount: Long,
