@@ -1,12 +1,12 @@
 package com.project.byeoldori.service
 
-import com.project.byeoldori.observationsites.service.LightPollutionService
+import com.project.byeoldori.forecast.utils.score.LightPollution
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class LightPollutionServiceTest {
 
-    private val service = LightPollutionService()
+    private val service = LightPollution()
 
     @Test
     fun `서울 광공해 점수는 낮아야 한다`() {

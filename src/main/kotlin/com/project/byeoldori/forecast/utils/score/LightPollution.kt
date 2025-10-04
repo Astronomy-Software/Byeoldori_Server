@@ -1,13 +1,13 @@
-package com.project.byeoldori.observationsites.service
+package com.project.byeoldori.forecast.utils.score
 
 import org.springframework.stereotype.Component
 import kotlin.math.hypot
 import kotlin.math.ln
 
 @Component
-class LightPollutionService {
+class LightPollution {
 
-    private val pollutionData: List<Triple<Double, Double, Double>> = loadCsv()
+    val pollutionData: List<Triple<Double, Double, Double>> = loadCsv()
 
     fun getLightPollutionScore(lat: Double, lon: Double): Double {
         if (lat !in 33.0..39.5 || lon !in 124.0..132.0) {

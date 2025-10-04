@@ -1,11 +1,11 @@
 package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.common.web.OutOfServiceAreaException
-import com.project.byeoldori.forecast.dto.ForecastResponseDTO
-import com.project.byeoldori.forecast.dto.UltraForecastResponseDTO
-import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
+import com.project.byeoldori.forecast.dto.*
 import com.project.byeoldori.forecast.utils.region.GeoBounds
 import com.project.byeoldori.forecast.utils.region.RegionMapper
+import com.project.byeoldori.forecast.utils.score.WeatherScoreCalculator
+import com.project.byeoldori.forecast.utils.score.LightPollution
 import latLonToGrid
 import org.springframework.stereotype.Service
 
@@ -13,7 +13,9 @@ import org.springframework.stereotype.Service
 class ForeCastService(
     private val ultraGridForecastService: UltraGridForecastService,
     private val shortGridForecastService: ShortGridForecastService,
-    private val midCombinedForecastService: MidCombinedForecastService
+    private val midCombinedForecastService: MidCombinedForecastService,
+    private val weatherScoreCalculator: WeatherScoreCalculator,
+    private val lightPollution: LightPollution
 ) {
     fun getForecastDataByLocation(latitude: Double, longitude: Double): ForecastResponseDTO {
 
@@ -34,11 +36,20 @@ class ForeCastService(
         // 3) 중기 예보 필터링
         val midCombinedForecast = midCombinedForecastService.findAll().filter { it.siRegId == siRegId }
 
-        // 4) 모든 예보를 DTO로 묶어서 반환
-        return ForecastResponseDTO(
-            ultraForecastResponse = ultraForecast,
-            shortForecastResponse = shortForecast,
-            midCombinedForecastDTO = midCombinedForecast
-        )
+        // 4) 광공해 점수
+        val lightScore = lightPollution.getLightPollutionScore(latitude, longitude)
+
+        // 5) 예보별 관측적합도
+        val ultraScored = ultraForecast.map { u ->
+            val s = weatherScoreCalculator.suitabilityForUltra(u, lightScore)
+            u.copy(suitability = s.total) }
+        val shortScored = shortForecast.map { srt ->
+            val s = weatherScoreCalculator.suitabilityForShort(srt, lightScore, latitude, longitude)
+            srt.copy(suitability = s.total) }
+        val midScored   = midCombinedForecast.map { m ->
+            val s = weatherScoreCalculator.suitabilityForMid(m, lightScore, latitude, longitude)
+            m.copy(suitability = s.total) }
+
+        return ForecastResponseDTO(ultraScored, shortScored, midScored)
     }
 }

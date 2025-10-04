@@ -83,6 +83,9 @@ dependencies {
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     implementation("org.springframework.boot:spring-boot-starter-mail")
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
+
+    // 달의 위상과 고도 계산을 위한 라이브러리
+    implementation("org.apache.commons:commons-math3:3.6.1")
 }
 
 kotlin {

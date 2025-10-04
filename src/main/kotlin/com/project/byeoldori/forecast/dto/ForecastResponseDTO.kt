@@ -14,7 +14,8 @@ data class UltraForecastResponseDTO(
     val pty: Int?,
     val rn1: Float?,
     val reh: Int?,
-    val sky: Int?
+    val sky: Int?,
+    val suitability: Int = 0
 )
 
 data class ShortForecastResponseDTO(
@@ -29,7 +30,8 @@ data class ShortForecastResponseDTO(
     val pop: Int?,
     val pcp: Float?,
     val sno: Float?,
-    val reh: Int?
+    val reh: Int?,
+    val suitability: Int = 0
 )
 
 data class MidForecastResponseDTO(
@@ -52,14 +54,35 @@ data class MidTempForecastResponseDTO(
 data class MidCombinedForecastDTO(
     val tmFc: String,
     val tmEf: String,
-
     val doRegId: String,
     val siRegId: String,
-
-    val sky: String?, // 하늘 상태 코드 WB01(맑음), WB02(구름조금), WB03(구름많음), WB04(흐림) -> 프론트에서 매핑?
+    val sky: String?, // 하늘 상태 코드 WB01(맑음), WB02(구름조금), WB03(구름많음), WB04(흐림)
     val pre: String?, // 강수 유무 코드 WB09(비),WB11(비/눈),WB13(눈/비),WB12(눈)
     val rnSt: Int?,
-
     val min: Int?,
-    val max: Int?
+    val max: Int?,
+    val suitability: Int = 0
 )
+
+data class SuitabilityScoreDTO(
+    val total: Int, // 0~100
+    val components: Components, // 원점수
+    val weights: Weights, // 가중치
+) {
+    data class Components(
+        val sky: Double,
+        val precipitation: Double,
+        val wind: Double,
+        val humidity: Double,
+        val moon: Double,
+        val lightPollution: Double
+    )
+    data class Weights(
+        val sky: Double,
+        val precipitation: Double,
+        val wind: Double,
+        val humidity: Double,
+        val moon: Double,
+        val lightPollution: Double
+    )
+}

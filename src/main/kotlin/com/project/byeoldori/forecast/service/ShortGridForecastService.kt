@@ -5,10 +5,12 @@ import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
 import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.springframework.stereotype.Service
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
+import java.time.Duration
 
 // 단일 격자 셀 구조 (ShortGridCell)
 // TMP: 기온, TMX: 최고기온, TMN: 최저기온, VEC: 풍향, WSD: 풍속,
@@ -116,12 +118,13 @@ class ShortGridForecastService(
         tmfc: String,
         tmefList: List<String>
     ): Mono<List<Pair<String, MutableList<MutableList<ShortGridCell>>>>> {
-        val monoList = tmefList.map { tmef ->
-            fetchShortGrid(tmfc, tmef).map { grid -> Pair(tmef, grid) }
-        }
-        return Mono.zip(monoList) { arrayOfResults ->
-            arrayOfResults.map { it as Pair<String, MutableList<MutableList<ShortGridCell>>> }
-        }
+        return Flux.fromIterable(tmefList)
+            .concatMap { tmef ->
+                fetchShortGrid(tmfc, tmef)
+                    .map { grid -> Pair(tmef, grid) }
+                    .delayElement(Duration.ofMillis(100)) // 각 요청 사이에 100ms 딜레이를 줍니다.
+            }
+            .collectList()
     }
 
     /**
