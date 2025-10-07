@@ -18,9 +18,8 @@ class ForeCastService(
     private val lightPollution: LightPollution
 ) {
     fun getForecastDataByLocation(latitude: Double, longitude: Double): ForecastResponseDTO {
-
         if (!GeoBounds.isInKorea(latitude, longitude)) {
-            throw OutOfServiceAreaException(null)
+            throw OutOfServiceAreaException()
         }
 
         // 1) 위경도 -> 격자x 좌표 변환

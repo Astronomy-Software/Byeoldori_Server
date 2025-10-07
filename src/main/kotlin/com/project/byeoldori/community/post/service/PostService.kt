@@ -1,22 +1,17 @@
 package com.project.byeoldori.community.post.service
 
-import com.project.byeoldori.community.common.domain.PostSearchBy
-import com.project.byeoldori.community.common.dto.PageResponse
-import com.project.byeoldori.community.common.dto.toPageResponse
-import com.project.byeoldori.community.common.domain.PostType
+import com.project.byeoldori.common.exception.*
+import com.project.byeoldori.community.common.domain.*
+import com.project.byeoldori.community.common.dto.*
 import com.project.byeoldori.community.post.domain.*
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Sort
-import org.springframework.http.HttpStatus
+import org.springframework.data.domain.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
 
 @Service
@@ -42,11 +37,9 @@ class PostService(
         when (type) {
             PostType.REVIEW -> {
                 val d = req.review ?: ReviewDto()
-
                 val site = d.observationSiteId?.let {
                     siteRepo.findById(it).orElse(null)
                 }
-
                 reviewRepo.save(
                     ReviewPost(
                         post = post,
@@ -67,7 +60,7 @@ class PostService(
                         summary = d.summary,
                         difficulty = d.difficulty,
                         tags = d.tags,
-                        status = d.status ?: com.project.byeoldori.community.common.domain.EducationStatus.DRAFT
+                        status = d.status ?: EducationStatus.DRAFT
                     )
                 )
             }
@@ -124,13 +117,10 @@ class PostService(
 
     @Transactional
     fun detail(postId: Long): PostResponse {
-
         val updated = postRepo.increaseViewCount(postId)
-        if (updated == 0) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다.")
-        }
+        if (updated == 0) throw NotFoundException(ErrorCode.POST_NOT_FOUND)
 
-        val p = postRepo.findById(postId).orElseThrow()
+        val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
         val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(postId).map { it.url }
 
         val review = reviewRepo.findById(postId).orElse(null)?.let {
@@ -159,12 +149,9 @@ class PostService(
 
     @Transactional
     fun update(postId: Long, req: PostUpdateRequest, user: User) {
-        val p = postRepo.findById(postId).orElseThrow {
-            ResponseStatusException(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다.")
-        }
-        if (p.author.id != user.id) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "권한 없음")
-        }
+        val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
+        if (p.author.id != user.id) throw ForbiddenException()
+
         req.title?.let { p.title = it }
         req.content?.let { p.content = it }
 
@@ -180,19 +167,15 @@ class PostService(
 
     @Transactional
     fun delete(postId: Long, user: User) {
-        val p = postRepo.findById(postId).orElseThrow {
-            ResponseStatusException(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다.")
-        }
-        if (p.author.id != user.id) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "권한 없음")
-        }
+        val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
+        if (p.author.id != user.id) throw ForbiddenException()
         postRepo.delete(p)
     }
 
     private fun updateReviewPost(postId: Long, reviewDto: ReviewDto) {
-        val reviewPost = reviewRepo.findById(postId).orElseThrow {
-            ResponseStatusException(HttpStatus.NOT_FOUND, "수정할 리뷰 정보를 찾을 수 없습니다.")
-        }
+        val reviewPost = reviewRepo.findById(postId)
+            .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "수정할 리뷰 정보를 찾을 수 없습니다.") }
+
         reviewDto.location?.let { reviewPost.location = it }
         reviewDto.target?.let { reviewPost.target = it }
         reviewDto.equipment?.let { reviewPost.equipment = it }
@@ -200,9 +183,8 @@ class PostService(
         reviewDto.score?.let { reviewPost.score = it }
 
         if (reviewDto.observationSiteId != null) {
-            val site = siteRepo.findById(reviewDto.observationSiteId).orElseThrow {
-                ResponseStatusException(HttpStatus.NOT_FOUND, "연결할 관측지를 찾을 수 없습니다.")
-            }
+            val site = siteRepo.findById(reviewDto.observationSiteId)
+                .orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND, "연결할 관측지를 찾을 수 없습니다.") }
             reviewPost.observationSite = site
         } else {
             reviewPost.observationSite = null
@@ -210,9 +192,9 @@ class PostService(
     }
 
     private fun updateEducationPost(postId: Long, educationDto: EducationDto) {
-        val educationPost = eduRepo.findById(postId).orElseThrow {
-            ResponseStatusException(HttpStatus.NOT_FOUND, "수정할 교육 정보를 찾을 수 없습니다.")
-        }
+        val educationPost = eduRepo.findById(postId)
+            .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "수정할 교육 정보를 찾을 수 없습니다.") }
+
         educationDto.summary?.let { educationPost.summary = it }
         educationDto.difficulty?.let { educationPost.difficulty = it }
         educationDto.tags?.let { educationPost.tags = it }

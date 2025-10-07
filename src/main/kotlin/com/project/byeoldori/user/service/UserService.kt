@@ -1,5 +1,6 @@
 package com.project.byeoldori.user.service
 
+import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.security.CurrentUserResolver
 import com.project.byeoldori.security.JwtUtil
 import com.project.byeoldori.user.dto.*
@@ -29,11 +30,11 @@ class UserService(
 
     @Transactional
     fun signup(req: SignupRequestDto) {
-        require(req.password == req.passwordConfirm) { "비밀번호가 일치하지 않습니다." }
-        require(PasswordValidator.isValid(req.password)) { "비밀번호 정책을 확인하세요." }
-        require(!userRepository.existsByEmail(req.email)) { "이미 사용 중인 이메일입니다." }
+        if (req.password != req.passwordConfirm) throw InvalidInputException(ErrorCode.PASSWORD_MISMATCH.message)
+        if (!PasswordValidator.isValid(req.password)) throw InvalidInputException(ErrorCode.INVALID_PASSWORD_FORMAT.message)
+        if (userRepository.existsByEmail(req.email)) throw ConflictException(ErrorCode.EMAIL_ALREADY_EXISTS)
         if (req.nickname?.isNotBlank() == true) {
-            require(!userRepository.existsByNickname(req.nickname)) { "이미 사용 중인 닉네임입니다." }
+            if (userRepository.existsByNickname(req.nickname)) throw ConflictException(ErrorCode.NICKNAME_ALREADY_EXISTS)
         }
 
         val user = userRepository.save(
@@ -54,8 +55,8 @@ class UserService(
     @Transactional
     fun verifyEmail(tokenId: String) {
         val token = emailTokenRepo.findByIdAndUsedAtIsNull(tokenId)
-            .orElseThrow { IllegalArgumentException("토큰이 유효하지 않습니다.") }
-        require(token.isUsable()) { "토큰이 만료되었습니다." }
+            .orElseThrow { InvalidInputException(ErrorCode.INVALID_TOKEN.message) }
+        if (!token.isUsable()) throw InvalidInputException("토큰이 만료되었습니다.")
 
         token.usedAt = LocalDateTime.now()
         token.user.emailVerified = true
@@ -69,11 +70,11 @@ class UserService(
     @Transactional
     fun login(req: LoginRequestDto): AuthResponseDto {
         val user = userRepository.findByEmail(req.email)
-            .orElseThrow { IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.") }
+            .orElseThrow {NotFoundException(ErrorCode.USER_NOT_FOUND, "이메일 또는 비밀번호가 올바르지 않습니다.") }
 
-        require(user.emailVerified) { "이메일 인증 후 로그인 가능합니다." }
-        require(passwordEncoder.matches(req.password, user.passwordHash)) {
-            "이메일 또는 비밀번호가 올바르지 않습니다."
+        if (!user.emailVerified) throw ForbiddenException(ErrorCode.EMAIL_NOT_VERIFIED.message)
+        if (!passwordEncoder.matches(req.password, user.passwordHash)) {
+            throw InvalidInputException("이메일 또는 비밀번호가 올바르지 않습니다.")
         }
 
         val access = jwt.generateAccessToken(user.email)
@@ -105,13 +106,13 @@ class UserService(
     fun reissue(req: TokenReissueRequestDto): AuthResponseDto {
         val email = jwt.extractEmail(req.refreshToken)
         val user = userRepository.findByEmail(email)
-            .orElseThrow { IllegalArgumentException("사용자를 찾을 수 없습니다.") }
+            .orElseThrow { NotFoundException(ErrorCode.USER_NOT_FOUND) }
 
         val stored = refreshTokenRepo.findByUserIdForUpdate(user.id)
-            .orElseThrow { IllegalArgumentException("다시 로그인 필요") }
+            .orElseThrow { NotFoundException(ErrorCode.REFRESH_TOKEN_NOT_FOUND) }
 
-        require(stored.isActive()) { "리프레시 토큰이 만료되었거나 폐기되었습니다." }
-        require(stored.tokenHash == TokenHasher.sha256Hex(req.refreshToken)) { "리프레시 토큰이 일치하지 않습니다." }
+        if (!stored.isActive()) throw UnauthorizedException("리프레시 토큰이 만료되었거나 폐기되었습니다.")
+        if (stored.tokenHash != TokenHasher.sha256Hex(req.refreshToken)) throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
 
         val newAccess  = jwt.generateAccessToken(email)
         val newRefresh = jwt.generateRefreshToken(email)
@@ -136,13 +137,12 @@ class UserService(
     @Transactional
     fun resetPasswordByIdentity(req: PasswordResetRequestDto) {
         val user = userRepository.findByEmail(req.email)
-            .orElseThrow { IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.") }
+            .orElseThrow { NotFoundException(ErrorCode.ACCOUNT_INFO_MISMATCH) }
 
-
-        val nameMatches = (user.name ?: "").trim().equals(req.name.trim(), ignoreCase = true)
+        val nameMatches = (user.name).trim().equals(req.name.trim(), ignoreCase = true)
         val phoneMatches = PhoneNormalizer.normalize(user.phone) == PhoneNormalizer.normalize(req.phone)
         if (!nameMatches || !phoneMatches) {
-            throw IllegalArgumentException("입력하신 정보와 일치하는 계정을 찾을 수 없습니다.")
+            throw NotFoundException(ErrorCode.ACCOUNT_INFO_MISMATCH)
         }
 
         val tempPw = TemporaryPassword.generate(12)
@@ -152,7 +152,7 @@ class UserService(
 
         emailService.sendTemporaryPassword(
             to = user.email,
-            name = user.name ?: "사용자",
+            name = user.name,
             tempPassword = tempPw
         )
     }
@@ -162,15 +162,13 @@ class UserService(
         val user = currentUserResolver.getUser()
 
         if (!passwordEncoder.matches(req.currentPassword, user.passwordHash)) {
-            throw IllegalArgumentException("현재 비밀번호가 일치하지 않습니다.")
+            throw InvalidInputException(ErrorCode.CURRENT_PASSWORD_MISMATCH.message)
         }
-
         if (req.newPassword != req.confirmNewPassword) {
-            throw IllegalArgumentException("새 비밀번호와 재입력 비밀번호가 일치하지 않습니다.")
+            throw InvalidInputException(ErrorCode.PASSWORD_MISMATCH.message)
         }
-
         if (passwordEncoder.matches(req.newPassword, user.passwordHash)) {
-            throw IllegalArgumentException("새 비밀번호가 이전 비밀번호와 동일합니다.")
+            throw InvalidInputException(ErrorCode.NEW_PASSWORD_SAME_AS_OLD.message)
         }
 
         user.passwordHash = passwordEncoder.encode(req.newPassword)
@@ -188,7 +186,7 @@ class UserService(
         val user = currentUserResolver.getUser()
         req.nickname?.let {
             if (it.isNotBlank() && it != user.nickname) {
-                require(!userRepository.existsByNickname(it)) { "이미 사용 중인 닉네임입니다." }
+                if (userRepository.existsByNickname(it)) throw ConflictException(ErrorCode.NICKNAME_ALREADY_EXISTS)
             }
             user.nickname = it
         }
