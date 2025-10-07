@@ -51,7 +51,9 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: SSH deploy to EC2
+      - uses: actions/checkout@v4
+
+      - name: Ensure deploy dir exists
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -59,17 +61,39 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -Eeuo pipefail
-            
-            cd ~/byeoldori
-            
-            git pull --rebase
-            
-            cat > .env <<'EOF'
-            ${{ secrets.ENV_PROD }}
-            EOF
-            chmod 600 .env
-            
+            mkdir -p ~/byeoldori/ops
+
+      - name: Prepare .env for server
+        run: |
+          printf "%s" "${{ secrets.ENV_PROD }}" > .env
+
+      - name: Upload compose & env
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: |
+            docker-compose.prod.yml
+            ops/nginx.conf
+            .env
+          target: ~/byeoldori
+
+      - name: Pull & restart via Docker Compose
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -Eeuo pipefail
+            cd ~/byeoldori  
+          
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
+            docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload || \
+            docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
             docker image prune -af --filter "until=24h" || true
             docker compose -f docker-compose.prod.yml ps
