@@ -70,7 +70,7 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration().apply {
-            allowedOrigins = listOf("http://localhost:8080", "http://43.202.235.27") // 실제 운영시엔 origin을 제한
+            allowedOrigins = listOf("http://localhost:8080", "http://43.202.235.27", "http://byeoldori-app.duckdns.org") // 실제 운영시엔 origin을 제한
             allowedMethods = listOf("GET", "POST", "PUT", "PATH", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true
