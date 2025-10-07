@@ -29,8 +29,8 @@ class GridForecastScheduler(
     private val retryDelayMillis = retryProperties.delay * 1000L
 
     // 특정시각마다 업데이트가 많이 느릴때가있음. 시간을 잘 조정해봐야할것으로 보임.
-    // 매시각 10분마다 실행 -> 초단기예보 및 실황 , 일단 실황은 제외
-    @Scheduled(cron = "0 0/10 * * * *", zone = "Asia/Seoul")
+    // 매 10분 + 3분 간격으로 실행
+    @Scheduled(cron = "0 3/10 * * * *", zone = "Asia/Seoul")
     fun clockForUltraForecast() {
         logger.info("초단기예보 및 실황정보 받아오는중...")
 
@@ -45,8 +45,8 @@ class GridForecastScheduler(
         )
     }
 
-    // 2시부터 3시간간격으로 실행 -> 단기예보
-    @Scheduled(cron = "0 0 2/3 * * *", zone = "Asia/Seoul")
+    // 2시 15분부터 3시간 간격으로 실행 -> 단기예보
+    @Scheduled(cron = "0 15 2/3 * * *", zone = "Asia/Seoul")
     fun clockForShortForecast() {
         logger.info("단기예보 받아오는중...")
 
