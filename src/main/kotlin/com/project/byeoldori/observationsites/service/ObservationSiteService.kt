@@ -73,7 +73,7 @@ class ObservationSiteService(
     @Transactional
     fun deleteSiteById(id: Long): Boolean {
         if (!observationSiteRepository.existsById(id)) return false
-        userSavedSiteRepository.deleteBySiteId(id)   // 즐겨찾기 정리
+        userSavedSiteRepository.deleteAllBySite_Id(id)
         observationSiteRepository.deleteById(id)
         return true
     }
