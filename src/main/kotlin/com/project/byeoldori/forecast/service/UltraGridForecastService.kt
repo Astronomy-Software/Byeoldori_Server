@@ -9,6 +9,7 @@ import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
+import kotlin.math.max
 
 // 단일 격자 셀 구조
 data class UltraGridCell(
@@ -21,6 +22,12 @@ data class UltraGridCell(
     val sky: Int?
 )
 
+{
+    // 셀에 유효한 데이터가 있는지 확인하는 헬퍼 함수
+    fun hasData(): Boolean {
+        return t1h != null || vec != null || wsd != null || pty != null || rn1 != null || reh != null || sky != null
+    }
+}
 @Service
 class UltraGridForecastService(
     private val weatherData: WeatherData
@@ -126,27 +133,64 @@ class UltraGridForecastService(
      */
     fun getAllUltraTMEFDataForCell(x: Int, y: Int): List<UltraForecastResponseDTO> {
         return ultraReadWriteLock.read {
-            val result = mutableListOf<UltraForecastResponseDTO>()
-            for ((tmef, grid) in ultraTMEFGridMap) {
-                if (y in grid.indices && x in grid[y].indices) {
-                    val cell = grid[y][x]
-                    result.add(
-                        UltraForecastResponseDTO(
-                            tmef = tmef,
-                            t1h = cell.t1h,
-                            vec = cell.vec,
-                            wsd = cell.wsd,
-                            pty = cell.pty,
-                            rn1 = cell.rn1,
-                            reh = cell.reh,
-                            sky = cell.sky
-                        )
-                    )
+            // 가장 가까운 유효 데이터를 찾는 로직 호출
+            val nearestCellData = findNearestDataForEachTmef(x, y)
+
+            nearestCellData.map { (tmef, cell) ->
+                UltraForecastResponseDTO(
+                    tmef = tmef,
+                    t1h = cell.t1h,
+                    vec = cell.vec,
+                    wsd = cell.wsd,
+                    pty = cell.pty,
+                    rn1 = cell.rn1,
+                    reh = cell.reh,
+                    sky = cell.sky
+                )
+            }.sortedBy { it.tmef }
+        }
+    }
+
+    // 주변 탐색 로직 추가 -> 탐색 반경은 5칸(25km)
+    private fun findNearestDataForEachTmef(x: Int, y: Int, maxRadius: Int = 5): List<Pair<String, UltraGridCell>> {
+        val results = mutableListOf<Pair<String, UltraGridCell>>()
+
+        // 모든 예보 시간(tmef)에 대해 각각 가장 가까운 데이터를 탐색
+        for ((tmef, grid) in ultraTMEFGridMap) {
+            if (grid.isEmpty() || grid[0].isEmpty()) continue
+
+            var foundCell: UltraGridCell? = null
+
+            // 1. 요청된 좌표에서 먼저 확인
+            if (y in grid.indices && x in grid[y].indices && grid[y][x].hasData()) {
+                foundCell = grid[y][x]
+            } else {
+                // 2. 데이터가 없으면 주변을 나선형으로 탐색
+                for (radius in 1..maxRadius) {
+                    for (i in -radius..radius) {
+                        for (j in -radius..radius) {
+                            // 더 안쪽 원은 이미 탐색했으므로 건너뜀
+                            if (max(kotlin.math.abs(i), kotlin.math.abs(j)) < radius) continue
+
+                            val newX = x + j
+                            val newY = y + i
+
+                            if (newY in grid.indices && newX in grid[newY].indices && grid[newY][newX].hasData()) {
+                                foundCell = grid[newY][newX]
+                                break
+                            }
+                        }
+                        if (foundCell != null) break
+                    }
+                    if (foundCell != null) break
                 }
             }
-            result.sortBy { it.tmef }
-            result
+
+            if (foundCell != null) {
+                results.add(tmef to foundCell)
+            }
         }
+        return results
     }
 
     /**

@@ -27,7 +27,7 @@ object GridDataParser {
             val endIndex = startIndex + numCols
             for (j in startIndex until endIndex) {
                 val token = tokens[j]
-                if (token == "-99.00") {
+                if (token.startsWith("-99")) {
                     row.add(null)
                 } else {
                     try {

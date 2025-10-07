@@ -11,6 +11,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 import java.time.Duration
+import kotlin.math.max
 
 // 단일 격자 셀 구조 (ShortGridCell)
 // TMP: 기온, TMX: 최고기온, TMN: 최저기온, VEC: 풍향, WSD: 풍속,
@@ -28,7 +29,13 @@ data class ShortGridCell(
     val pcp: Float?,
     val sno: Float?,
     val reh: Int?
-)
+) {
+    // 셀에 유효한 데이터가 있는지 확인하는 헬퍼 함수
+    fun hasData(): Boolean {
+        return tmp != null || tmx != null || tmn != null || vec != null || wsd != null ||
+                sky != null || pty != null || pop != null || pcp != null || sno != null || reh != null
+    }
+}
 
 @Service
 class ShortGridForecastService(
@@ -149,32 +156,62 @@ class ShortGridForecastService(
      */
     fun getAllShortTMEFDataForCell(x: Int, y: Int): List<ShortForecastResponseDTO> {
         return shortReadWriteLock.read {
-            val result = mutableListOf<ShortForecastResponseDTO>()
-            for ((tmef, grid) in shortTMEFGridMap) {
-                if (y in grid.indices && x in grid[y].indices) {
-                    val cell = grid[y][x]
-                    result.add(
-                        ShortForecastResponseDTO(
-                            tmef = tmef,
-                            // 필드 매핑은 상황에 맞게 조정 (예시로 TMP를 t1h로 매핑)
-                            tmp = cell.tmp,
-                            tmx = cell.tmx,
-                            tmn = cell.tmn,
-                            vec = cell.vec,
-                            wsd = cell.wsd,
-                            sky = cell.sky,
-                            pty = cell.pty,
-                            pcp = cell.pcp,
-                            pop = cell.pop,
-                            sno = cell.sno,
-                            reh = cell.reh
-                        )
-                    )
+            // 가장 가까운 유효 데이터를 찾는 로직 호출
+            val nearestCellData = findNearestDataForEachTmef(x, y)
+
+            nearestCellData.map { (tmef, cell) ->
+                ShortForecastResponseDTO(
+                    tmef = tmef,
+                    tmp = cell.tmp,
+                    tmx = cell.tmx,
+                    tmn = cell.tmn,
+                    vec = cell.vec,
+                    wsd = cell.wsd,
+                    sky = cell.sky,
+                    pty = cell.pty,
+                    pcp = cell.pcp,
+                    pop = cell.pop,
+                    sno = cell.sno,
+                    reh = cell.reh
+                )
+            }.sortedBy { it.tmef }
+        }
+    }
+
+    private fun findNearestDataForEachTmef(x: Int, y: Int, maxRadius: Int = 5): List<Pair<String, ShortGridCell>> {
+        val results = mutableListOf<Pair<String, ShortGridCell>>()
+
+        for ((tmef, grid) in shortTMEFGridMap) {
+            if (grid.isEmpty() || grid[0].isEmpty()) continue
+
+            var foundCell: ShortGridCell? = null
+
+            if (y in grid.indices && x in grid[y].indices && grid[y][x].hasData()) {
+                foundCell = grid[y][x]
+            } else {
+                for (radius in 1..maxRadius) {
+                    for (i in -radius..radius) {
+                        for (j in -radius..radius) {
+                            if (max(kotlin.math.abs(i), kotlin.math.abs(j)) < radius) continue
+
+                            val newX = x + j
+                            val newY = y + i
+
+                            if (newY in grid.indices && newX in grid[newY].indices && grid[newY][newX].hasData()) {
+                                foundCell = grid[newY][newX]
+                                break
+                            }
+                        }
+                        if (foundCell != null) break
+                    }
+                    if (foundCell != null) break
                 }
             }
-            result.sortBy { it.tmef }
-            result
+            if (foundCell != null) {
+                results.add(tmef to foundCell)
+            }
         }
+        return results
     }
 
     /**
