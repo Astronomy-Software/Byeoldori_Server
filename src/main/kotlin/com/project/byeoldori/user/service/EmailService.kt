@@ -1,5 +1,6 @@
 package com.project.byeoldori.user.service
 
+import com.project.byeoldori.common.exception.*
 import jakarta.mail.MessagingException
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -42,7 +43,7 @@ class EmailService(
             mailSender.send(message)
         } catch (e: MessagingException) {
             logger.error("임시 비밀번호 메일 전송 실패: {}", e.message)
-            throw RuntimeException("이메일 전송에 실패했습니다.")
+            throw InternalServerException(ErrorCode.EMAIL_SEND_FAILED.message)
         }
     }
 
@@ -67,8 +68,8 @@ class EmailService(
 
             mailSender.send(message)
         } catch (e: MessagingException) {
-            logger.error("이메일 전송 실패: {}", e.message)
-            throw RuntimeException("이메일 전송에 실패했습니다.")
+            logger.error("이메일 인증 메일 전송 실패: {}", e.message)
+            throw InternalServerException(ErrorCode.EMAIL_SEND_FAILED.message)
         }
     }
 

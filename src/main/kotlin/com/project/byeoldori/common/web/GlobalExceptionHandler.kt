@@ -1,92 +1,39 @@
 package com.project.byeoldori.common.web
 
-import com.project.byeoldori.forecast.utils.region.GeoBounds
+import com.project.byeoldori.common.exception.ByeoldoriException
 import jakarta.servlet.http.HttpServletRequest
-import jakarta.validation.ConstraintViolationException
 import org.slf4j.LoggerFactory
-import org.springframework.core.Ordered
-import org.springframework.core.annotation.Order
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.http.converter.HttpMessageNotReadableException
-import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
-import org.springframework.web.bind.MissingServletRequestParameterException
-import org.springframework.web.bind.annotation.ControllerAdvice
 import org.springframework.web.bind.annotation.ExceptionHandler
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
-import java.time.Instant
+import org.springframework.web.bind.annotation.RestControllerAdvice
 
-data class ErrorInfo(
-    val code: String? = null,
-    val path: String? = null,
-    val timestamp: Instant = Instant.now(),
-    val details: Any? = null
-)
-
-@Order(Ordered.HIGHEST_PRECEDENCE)
-@ControllerAdvice
+@RestControllerAdvice
 class GlobalExceptionHandler {
 
     private val log = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
 
-    // 한국 서비스 영역 밖: 418
-    @ExceptionHandler(OutOfServiceAreaException::class)
-    fun handleOutOfServiceArea(
-        ex: OutOfServiceAreaException,
-        req: HttpServletRequest
-    ): ResponseEntity<ApiResponse<Unit>> {
-        val status = HttpStatus.I_AM_A_TEAPOT
-        val msg = "한국 내 좌표만 지원합니다. (위도: ${GeoBounds.LAT_MIN}~${GeoBounds.LAT_MAX}, 경도: ${GeoBounds.LON_MIN}~${GeoBounds.LON_MAX})"
-        return ResponseEntity.status(status)
-            .body(ApiResponse.fail(message = ex.message ?: msg, data = null))
+    // 직접 정의한 ByeoldoriException을 처리
+    @ExceptionHandler(ByeoldoriException::class)
+    fun handleByeoldoriException(e: ByeoldoriException): ResponseEntity<ApiResponse<Unit>> {
+        log.warn("Custom Exception: code={}, status={}, message={}", e.errorCode.name, e.errorCode.status, e.message)
+        return ResponseEntity.status(e.errorCode.status)
+            .body(ApiResponse.fail(message = e.message))
     }
 
-    // 잘못된 요청: 400
-    @ExceptionHandler(
-        MethodArgumentNotValidException::class,
-        ConstraintViolationException::class,
-        MissingServletRequestParameterException::class,
-        HttpMessageNotReadableException::class,
-        IllegalArgumentException::class,
-        MethodArgumentTypeMismatchException::class,
-    )
-    fun handleBadRequest(ex: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<ErrorInfo>> {
-        val status = HttpStatus.BAD_REQUEST
-        val errorMessage = if (ex is MethodArgumentNotValidException) {
-            ex.bindingResult.fieldErrors.firstOrNull()?.defaultMessage ?: "유효성 검사에 실패했습니다."
-        } else {
-            ex.message ?: "잘못된 요청입니다."
-        }
-
-        val body = ApiResponse.fail(
-            message = errorMessage, // 가공된 메시지를 사용합니다.
-            data = ErrorInfo(code = "BAD_REQUEST", path = req.requestURI)
-        )
-        return ResponseEntity.status(status).body(body)
+    // DTO의 @Valid 유효성 검증에 실패했을 때 발생하는 예외를 처리
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleMethodArgumentNotValid(e: MethodArgumentNotValidException): ResponseEntity<ApiResponse<Unit>> {
+        val message = e.bindingResult.fieldErrors.firstOrNull()?.defaultMessage ?: "입력값이 올바르지 않습니다."
+        log.warn("Validation Exception: {}", message)
+        return ResponseEntity.badRequest().body(ApiResponse.fail(message = message))
     }
 
-    // 허용되지 않은 메서드: 405
-    @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
-    fun handleMethodNotAllowed(ex: HttpRequestMethodNotSupportedException, req: HttpServletRequest)
-            : ResponseEntity<ApiResponse<ErrorInfo>> {
-        val status = HttpStatus.METHOD_NOT_ALLOWED
-        val body = ApiResponse.fail(
-            message = "허용되지 않은 메서드입니다: ${ex.method}",
-            data = ErrorInfo(code = "METHOD_NOT_ALLOWED", path = req.requestURI)
-        )
-        return ResponseEntity.status(status).body(body)
-    }
-
-    // 최종 안전망: 500
+    // 위에서 처리하지 못한 모든 예외를 처리하는 최후의 보루
     @ExceptionHandler(Exception::class)
-    fun handleUnknown(ex: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<ErrorInfo>> {
-        val status = HttpStatus.INTERNAL_SERVER_ERROR
-        log.error("Unhandled exception at ${req.requestURI}", ex)
-        val body = ApiResponse.fail(
-            message = "서버 내부 오류가 발생했습니다.",
-            data = ErrorInfo(code = "INTERNAL_ERROR", path = req.requestURI)
-        )
-        return ResponseEntity.status(status).body(body)
+    fun handleException(e: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
+        log.error("Unhandled Exception at ${req.requestURI}", e)
+        return ResponseEntity.internalServerError()
+            .body(ApiResponse.fail(message = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요."))
     }
 }

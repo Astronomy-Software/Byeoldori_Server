@@ -1,5 +1,6 @@
 package com.project.byeoldori.community.common.service
 
+import com.project.byeoldori.common.exception.*
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
@@ -22,25 +23,25 @@ class LocalStorageService(
 ) : StorageService {
 
     override fun storeImage(file: MultipartFile): String {
-        if (file.isEmpty) throw IllegalArgumentException("Empty file")
+        if (file.isEmpty) throw InvalidInputException("업로드할 파일이 비어있습니다.")
 
         // 1) MIME 화이트리스트 우선 체크
         val declared = (file.contentType ?: "").lowercase()
         if (declared.isNotBlank() && declared != "application/octet-stream" && declared !in allowedTypes) {
-            throw IllegalArgumentException("Unsupported content-type: $declared")
+            throw InvalidInputException(ErrorCode.INVALID_FILE_TYPE.message + ": $declared")
         }
 
         // 2) 매직넘버 스니핑(간단 검증)
         val sniff = sniffMagic(file)
-        if (sniff == null || sniff !in setOf("jpeg","png","webp","gif")) {
-            throw IllegalArgumentException("Invalid image file")
+        if (sniff == null || sniff !in setOf("jpeg", "png", "webp", "gif")) {
+            throw InvalidInputException("유효한 이미지 파일이 아닙니다.")
         }
 
         // 3) 이미지 픽셀 폭탄 방어 (옵션)
-        val img = ImageIO.read(file.inputStream) ?: throw IllegalArgumentException("Unreadable image")
+        val img = ImageIO.read(file.inputStream) ?: throw InvalidInputException("이미지를 읽을 수 없습니다.")
         val mega = (img.width.toLong() * img.height.toLong()) / 1_000_000
         if (mega > maxMegaPixels) {
-            throw IllegalArgumentException("Image too large (> ${maxMegaPixels}MP)")
+            throw InvalidInputException(ErrorCode.FILE_TOO_LARGE.message)
         }
 
         // 4) 저장 경로(날짜 폴더)
@@ -58,8 +59,7 @@ class LocalStorageService(
         }
 
         // 6) 공개 URL 조합
-        val url = listOf(publicBaseUrl.trimEnd('/'), datePath, filename).joinToString("/")
-        return url
+        return listOf(publicBaseUrl.trimEnd('/'), datePath, filename).joinToString("/")
     }
 
     private fun sniffMagic(file: MultipartFile): String? {

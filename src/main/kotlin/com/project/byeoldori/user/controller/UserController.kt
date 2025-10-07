@@ -24,7 +24,7 @@ class UserController(
 
     @PatchMapping("/me")
     @Operation(summary = "내 정보 수정")
-    fun update(@RequestBody req: UserUpdateRequestDto): ResponseEntity<ApiResponse<Unit>> {
+    fun update(@Valid @RequestBody req: UserUpdateRequestDto): ResponseEntity<ApiResponse<Unit>> {
         userService.updateMe(req)
         return ResponseEntity.ok(ApiResponse.ok("수정 완료"))
     }

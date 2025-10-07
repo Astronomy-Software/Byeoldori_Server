@@ -1,10 +1,9 @@
 package com.project.byeoldori.forecast.service
 
+import com.project.byeoldori.common.exception.InternalServerException
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.MidCombinedForecastDTO
-import com.project.byeoldori.forecast.entity.MidCombinedForecast
-import com.project.byeoldori.forecast.entity.MidForecast
-import com.project.byeoldori.forecast.entity.MidTempForecast
+import com.project.byeoldori.forecast.entity.*
 import com.project.byeoldori.forecast.utils.forecasts.MidForecastParser
 import com.project.byeoldori.forecast.utils.forecasts.MidTempForecastParser
 import com.project.byeoldori.forecast.utils.region.RegionMapper
@@ -27,9 +26,10 @@ class MidCombinedForecastService(
 
     @Transactional
     fun fetchAndSaveFromApi(): String {
-        val landResponse = weatherData.fetchMidLandForecast().block() ?: throw IllegalStateException("기상청 육상 API 호출 실패")
-        val tempResponse =
-            weatherData.fetchMidTemperatureForecast().block() ?: throw IllegalStateException("기상청 기온 API 호출 실패")
+        val landResponse = weatherData.fetchMidLandForecast().block()
+            ?: throw InternalServerException("기상청 중기 육상 예보 API 호출에 실패했습니다.")
+        val tempResponse = weatherData.fetchMidTemperatureForecast().block()
+            ?: throw InternalServerException("기상청 중기 기온 예보 API 호출에 실패했습니다.")
 
         val landList = midForecastParser.parse(landResponse)
         val tempList = midTempForecastParser.parse(tempResponse)

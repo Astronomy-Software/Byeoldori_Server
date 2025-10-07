@@ -6,6 +6,7 @@ import com.project.byeoldori.observationsites.service.UserSavedSiteService
 import com.project.byeoldori.user.entity.User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -28,7 +29,7 @@ class UserSavedSiteController(
     @PostMapping("/toggle")
     fun toggleSavedSite(
         @RequestAttribute("currentUser") user: User,
-        @RequestBody request: SiteToggleRequest
+        @Valid @RequestBody request: SiteToggleRequest
     ): ResponseEntity<ApiResponse<SiteToggleResponse>> {
         val response = userSavedSiteService.toggleSite(user, request)
         return ResponseEntity.ok(ApiResponse.ok(response))

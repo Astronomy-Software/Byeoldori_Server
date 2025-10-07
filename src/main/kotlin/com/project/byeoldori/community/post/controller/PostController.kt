@@ -58,7 +58,7 @@ class PostController(
     @Operation(summary = "수정")
     fun update(
         @PathVariable postId: Long,
-        @RequestBody req: PostUpdateRequest,
+        @Valid @RequestBody req: PostUpdateRequest,
         @RequestAttribute("currentUser") user: User
     ): ResponseEntity<ApiResponse<Unit>> {
         service.update(postId, req, user)
