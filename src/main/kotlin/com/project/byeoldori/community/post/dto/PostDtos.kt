@@ -53,7 +53,8 @@ data class PostSummaryResponse(
     val viewCount: Long,
     val likeCount: Long,
     val commentCount: Long,
-    val createdAt: LocalDateTime?
+    val createdAt: LocalDateTime?,
+    val liked: Boolean = false
 )
 
 data class PostResponse(
@@ -69,7 +70,8 @@ data class PostResponse(
     val likeCount: Long,
     val commentCount: Long,
     val createdAt: LocalDateTime?,
-    val updatedAt: LocalDateTime?
+    val updatedAt: LocalDateTime?,
+    val liked: Boolean = false
 )
 
 data class IdResponse(val id: Long)

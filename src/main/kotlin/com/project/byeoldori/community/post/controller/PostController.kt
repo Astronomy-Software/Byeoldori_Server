@@ -41,18 +41,22 @@ class PostController(
         @RequestParam(defaultValue = "20") size: Int,
         @RequestParam(defaultValue = "LATEST") sortBy: PostSortBy,
         @RequestParam(required = false) keyword: String?,
-        @RequestParam(required = false, defaultValue = "TITLE") searchBy: PostSearchBy
+        @RequestParam(required = false, defaultValue = "TITLE") searchBy: PostSearchBy,
+        @RequestAttribute("currentUser") user: User
     ): PageResponse<PostSummaryResponse> {
 
         val sort = Sort.by(Sort.Direction.DESC, sortBy.property)
         val pageable = PageRequest.of(page, size, sort)
 
-        return service.list(type, pageable, searchBy, keyword)
+        return service.list(type, pageable, searchBy, keyword, user)
     }
 
     @GetMapping("/posts/{postId}")
     @Operation(summary = "상세 조회")
-    fun detail(@PathVariable postId: Long): PostResponse = service.detail(postId)
+    fun detail(
+        @PathVariable postId: Long,
+        @RequestAttribute("currentUser") user: User
+    ): PostResponse = service.detail(postId, user)
 
     @PatchMapping("/posts/{postId}")
     @Operation(summary = "수정")
@@ -84,19 +88,17 @@ class PostController(
 
     @GetMapping("/home/reviews")
     @Operation(summary = "최신 관측 후기 게시글 홈 화면 조회", description = "커뮤니티 홈의 최신 리뷰 목록을 반환합니다.")
-    fun getRecentReviews(): List<PostSummaryResponse> {
-        return service.getRecentReviews()
-    }
+    fun getRecentReviews(
+        @RequestAttribute("currentUser") user: User
+    ): List<PostSummaryResponse> = service.getRecentReviews(user)
 
     @GetMapping("/home/educations")
     @Operation(summary = "최신 교육 게시글 홈 화면 조회", description = "커뮤니티 홈의 신규 교육 목록을 반환합니다.")
-    fun getNewEducations(): List<PostSummaryResponse> {
-        return service.getNewEducations()
-    }
+    fun getNewEducations(@RequestAttribute("currentUser") user: User
+    ): List<PostSummaryResponse> = service.getNewEducations(user)
 
     @GetMapping("/home/free-posts")
     @Operation(summary = "인기 자유게시글 목록 조회", description = "커뮤니티 홈의 인기 자유게시글 목록을 반환합니다.")
-    fun getPopularFreePosts(): List<PostSummaryResponse> {
-        return service.getPopularFreePosts()
-    }
+    fun getPopularFreePosts(@RequestAttribute("currentUser") user: User
+    ): List<PostSummaryResponse> = service.getPopularFreePosts(user)
 }
