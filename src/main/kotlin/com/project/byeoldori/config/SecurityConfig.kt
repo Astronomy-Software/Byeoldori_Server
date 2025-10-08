@@ -31,7 +31,9 @@ class SecurityConfig(
             "/swagger-ui/**",
             "/v3/api-docs/**",
             "/auth/**",
-            "/reset-password"
+            "/reset-password",
+            "/oauth2/**",
+            "/login/oauth2/code/**"
         )
     }
 
@@ -44,10 +46,22 @@ class SecurityConfig(
             .exceptionHandling { exceptionHandling ->
                 // 인증되지 않은 사용자가 보호된 리소스에 접근 시 401 Unauthorized 응답을 보내도록 설정
                 exceptionHandling.authenticationEntryPoint { _, response, _ ->
-                    response.status = HttpServletResponse.SC_UNAUTHORIZED
-                    response.contentType = MediaType.APPLICATION_JSON_VALUE
-                    response.characterEncoding = StandardCharsets.UTF_8.name()
-                    objectMapper.writeValue(response.writer, ApiResponse.fail<Unit>("사용자 인증이 필요합니다."))
+                    if (!response.isCommitted) {
+                        response.status = HttpServletResponse.SC_UNAUTHORIZED
+                        response.contentType = MediaType.APPLICATION_JSON_VALUE
+                        response.characterEncoding = StandardCharsets.UTF_8.name()
+                        objectMapper.writeValue(response.writer, ApiResponse.fail<Unit>("사용자 인증이 필요합니다."))
+                    }
+                }
+
+                // 인가 실패 403 에러
+                exceptionHandling.accessDeniedHandler { _, response, _ ->
+                    if (!response.isCommitted) {
+                        response.status = HttpServletResponse.SC_FORBIDDEN
+                        response.contentType = MediaType.APPLICATION_JSON_VALUE
+                        response.characterEncoding = StandardCharsets.UTF_8.name()
+                        objectMapper.writeValue(response.writer, ApiResponse.fail<Unit>("접근 권한이 없습니다."))
+                    }
                 }
             }
             .authorizeHttpRequests { authorize ->
@@ -72,7 +86,7 @@ class SecurityConfig(
         val configuration = CorsConfiguration().apply {
             allowedOrigins = listOf("http://localhost:8080", "http://43.202.235.27",
                 "http://byeoldori-app.duckdns.org", "https://byeoldori-app.duckdns.org") // 실제 운영시엔 origin을 제한
-            allowedMethods = listOf("GET", "POST", "PUT", "PATH", "DELETE", "OPTIONS")
+            allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true
         }

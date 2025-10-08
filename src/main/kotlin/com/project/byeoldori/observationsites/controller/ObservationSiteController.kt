@@ -31,8 +31,8 @@ class ObservationSiteController(
 
     @Operation(summary = "관측지 단건 조회(ID)", description = "하나의 관측지를 조회합니다.")
     @GetMapping("/{id}")
-    fun getOne(@PathVariable id: Long): ResponseEntity<ObservationSiteDetailDto> =
-        siteService.getSiteDetailById(id)?.let { ResponseEntity.ok(it) } ?: ResponseEntity.notFound().build()
+    fun getOne(@PathVariable id: Long): ResponseEntity<ApiResponse<ObservationSiteDetailDto>> =
+        ResponseEntity.ok(ApiResponse.ok(siteService.getSiteDetailById(id)))
 
     @Operation(summary = "관측지 검색", description = "키워드가 포함된 관측지 이름으로 검색합니다.")
     @GetMapping("/name")
@@ -44,19 +44,13 @@ class ObservationSiteController(
     fun updateById(
         @PathVariable id: Long,
         @RequestBody @Valid dto: ObservationSiteDto
-    ): ResponseEntity<ObservationSite> {
-        val updated = siteService.updateSiteById(id, dto)
-        return updated?.let { ResponseEntity.ok(it) } ?: ResponseEntity.notFound().build()
-    }
+    ): ResponseEntity<ApiResponse<ObservationSite>> =
+        ResponseEntity.ok(ApiResponse.ok(siteService.updateSiteById(id, dto)))
 
     @Operation(summary = "관측지 삭제 (ID)")
     @DeleteMapping("/{id}")
     fun deleteById(@PathVariable id: Long): ResponseEntity<ApiResponse<Unit>> {
-        return if (siteService.deleteSiteById(id)) {
-            ResponseEntity.ok(ApiResponse.ok("관측지가 삭제되었습니다."))
-        } else {
-            ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.fail("해당 ID의 관측지를 찾을 수 없습니다."))
-        }
+        siteService.deleteSiteById(id)
+        return ResponseEntity.ok(ApiResponse.ok("관측지가 삭제되었습니다."))
     }
 }
