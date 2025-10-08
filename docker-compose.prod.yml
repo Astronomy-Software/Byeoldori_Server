@@ -1,6 +1,7 @@
 services:
   app:
     image: ghcr.io/astronomy-software/byeoldori-server:latest
+    container_name: app
     restart: always
     env_file:
       - .env
@@ -35,7 +36,10 @@ services:
     volumes:
       - uploads:/data/uploads
 
-    networks: [backend]
+    networks:
+      backend:
+        aliases:
+          - app
 
   mysql:
     image: mysql:8.0
