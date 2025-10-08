@@ -1,7 +1,6 @@
 services:
   app:
     image: ghcr.io/astronomy-software/byeoldori-server:latest
-    container_name: byeoldori-app
     restart: always
     env_file:
       - .env
