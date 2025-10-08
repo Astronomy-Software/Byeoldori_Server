@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDate
 
 @Service
 @Transactional
@@ -25,10 +24,11 @@ class PostService(
     private val freePostRepo: FreePostRepository,
     private val siteRepo: ObservationSiteRepository,
     private val likeRepository: LikeRepository,
+    private val educationRatingRepo: EducationRatingRepository
 ) {
 
-    @Value("\${community.home.item-count:4}")
-    private val homeItemCount: Int = 4
+    @Value("\${community.home.item-count:20}")
+    private val homeItemCount: Int = 20
 
     @Transactional
     fun create(author: User, type: PostType, req: PostCreateRequest): Long {
@@ -49,18 +49,19 @@ class PostService(
                         location = d.location,
                         target = d.target,
                         equipment = d.equipment,
-                        observationDate = d.observationDate?.let(LocalDate::parse),
+                        observationDate = d.observationDate,
                         score = d.score
                     )
                 )
             }
             PostType.EDUCATION -> {
-                val d = req.education ?: EducationDto()
+                val d = req.education ?: EducationRequestDto()
                 eduRepo.save(
                     EducationPost(
                         post = post,
                         summary = d.summary,
                         difficulty = d.difficulty,
+                        target = d.target,
                         tags = d.tags,
                         status = d.status ?: EducationStatus.DRAFT
                     )
@@ -79,29 +80,23 @@ class PostService(
 
     @Transactional(readOnly = true)
     fun getRecentReviews(user: User? = null): List<PostSummaryResponse> {
-        val posts = postRepo.findAllByType(
-            PostType.REVIEW, PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
-        ).content
-        val liked = likedSet(user, posts.mapNotNull { it.id })
-        return posts.map { it.toSummaryResponse(liked = it.id != null && liked.contains(it.id!!)) }
+        val pageable = PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
+        val posts = postRepo.findAllByType(PostType.REVIEW, pageable)
+        return mapToSummaryResponse(posts.content, user)
     }
 
     @Transactional(readOnly = true)
     fun getNewEducations(user: User? = null): List<PostSummaryResponse> {
-        val posts = postRepo.findAllByType(
-            PostType.EDUCATION, PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
-        ).content
-        val liked = likedSet(user, posts.mapNotNull { it.id })
-        return posts.map { it.toSummaryResponse(liked = it.id != null && liked.contains(it.id!!)) }
+        val pageable = PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
+        val posts = postRepo.findAllByType(PostType.EDUCATION, pageable)
+        return mapToSummaryResponse(posts.content, user)
     }
 
     @Transactional(readOnly = true)
     fun getPopularFreePosts(user: User? = null): List<PostSummaryResponse> {
-        val posts = postRepo.findAllByType(
-            PostType.FREE, PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "viewCount"))
-        ).content
-        val liked = likedSet(user, posts.mapNotNull { it.id })
-        return posts.map { it.toSummaryResponse(liked = it.id != null && liked.contains(it.id!!)) }
+        val pageable = PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "viewCount"))
+        val posts = postRepo.findAllByType(PostType.FREE, pageable)
+        return mapToSummaryResponse(posts.content, user)
     }
 
     @Transactional(readOnly = true)
@@ -118,14 +113,10 @@ class PostService(
             }
         }
 
-        val ids = postPage.content.mapNotNull { it.id }
-        val liked = likedSet(user, ids)
-
-        val dtoList = postPage.content.map { p ->
-            p.toSummaryResponse(liked = p.id != null && liked.contains(p.id!!))
-        }
-        return PageImpl(dtoList, postPage.pageable, postPage.totalElements).toPageResponse()
+        val summaryList = mapToSummaryResponse(postPage.content, user)
+        return PageImpl(summaryList, postPage.pageable, postPage.totalElements).toPageResponse()
     }
+
 
     @Transactional
     fun detail(postId: Long, user: User? = null): PostResponse {
@@ -136,11 +127,9 @@ class PostService(
         val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(postId).map { it.url }
 
         val review = reviewRepo.findById(postId).orElse(null)?.let {
-            ReviewDto(it.location, it.observationSite?.id, it.target, it.equipment, it.observationDate?.toString(), it.score)
+            ReviewDto(it.location, it.observationSite?.id, it.target, it.equipment, it.observationDate, it.score)
         }
-        val education = eduRepo.findById(postId).orElse(null)?.let {
-            EducationDto(it.summary, it.difficulty, it.tags, it.status)
-        }
+        val education = eduRepo.findById(postId).orElse(null)?.let { EducationResponseDto.from(it) }
 
         val liked = if (user != null) likeRepository.existsByPostIdAndUserId(postId, user.id) else false
 
@@ -194,7 +183,7 @@ class PostService(
         reviewDto.location?.let { reviewPost.location = it }
         reviewDto.target?.let { reviewPost.target = it }
         reviewDto.equipment?.let { reviewPost.equipment = it }
-        reviewDto.observationDate?.let { reviewPost.observationDate = LocalDate.parse(it) }
+        reviewDto.observationDate?.let { reviewPost.observationDate = it }
         reviewDto.score?.let { reviewPost.score = it }
 
         if (reviewDto.observationSiteId != null) {
@@ -206,12 +195,13 @@ class PostService(
         }
     }
 
-    private fun updateEducationPost(postId: Long, educationDto: EducationDto) {
+    private fun updateEducationPost(postId: Long, educationDto: EducationRequestDto) {
         val educationPost = eduRepo.findById(postId)
             .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "수정할 교육 정보를 찾을 수 없습니다.") }
 
         educationDto.summary?.let { educationPost.summary = it }
         educationDto.difficulty?.let { educationPost.difficulty = it }
+        educationDto.target?.let { educationPost.target = it }
         educationDto.tags?.let { educationPost.tags = it }
         educationDto.status?.let { educationPost.status = it }
     }
@@ -249,7 +239,7 @@ class PostService(
         return likeRepository.findLikedPostIds(user.id, postIds).toSet()
     }
 
-    private fun CommunityPost.toSummaryResponse(liked: Boolean = false): PostSummaryResponse {
+    private fun CommunityPost.toSummaryResponse(liked: Boolean = false, score: Double? = 0.0): PostSummaryResponse {
         val summary = if (this.type == PostType.FREE) {
             this.content.take(30)
         } else {
@@ -259,7 +249,49 @@ class PostService(
         return PostSummaryResponse(
             id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
             contentSummary = summary, viewCount = this.viewCount, likeCount = this.likeCount, commentCount = this.commentCount,
-            createdAt = this.createdAt, liked = liked
+            createdAt = this.createdAt, liked = liked, score = score
         )
+    }
+
+    @Transactional
+    fun rateEducationPost(postId: Long, user: User, score: Int) {
+        val eduPost = eduRepo.findById(postId)
+            .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "평가할 교육 게시글을 찾을 수 없습니다.") }
+
+        if (eduPost.post.author.id == user.id) {
+            throw ForbiddenException("자신이 작성한 글에는 평점을 매길 수 없습니다.")
+        }
+        val rating = educationRatingRepo.findById(EducationRatingId(postId, user.id))
+            .orElse(null)
+
+        if (rating != null) {
+            rating.score = score
+        } else {
+            educationRatingRepo.save(EducationRating(educationPost = eduPost, user = user, score = score))
+            eduPost.ratingCount++
+        }
+
+        eduPost.averageScore = educationRatingRepo.findAverageScoreByPostId(postId)
+    }
+
+    private fun mapToSummaryResponse(posts: List<CommunityPost>, user: User?): List<PostSummaryResponse> {
+        if (posts.isEmpty()) return emptyList()
+
+        val postIds = posts.mapNotNull { it.id }
+        val likedPostIds = likedSet(user, postIds)
+
+        val postType = posts.first().type
+        val scoresMap = when (postType) {
+            PostType.REVIEW -> reviewRepo.findAllById(postIds).associate { it.id to (it.score?.toDouble() ?: 0.0) }
+            PostType.EDUCATION -> eduRepo.findAllById(postIds).associate { it.id to it.averageScore }
+            else -> emptyMap()
+        }
+
+        return posts.map { post ->
+            post.toSummaryResponse(
+                liked = likedPostIds.contains(post.id),
+                score = scoresMap[post.id] ?: 0.0
+            )
+        }
     }
 }
