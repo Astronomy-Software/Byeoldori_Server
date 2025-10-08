@@ -19,7 +19,8 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -47,7 +48,8 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Ensure deploy dir exists
         uses: appleboy/ssh-action@v1.2.0
@@ -70,10 +72,11 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: |
-            docker-compose.prod.yml
-            ops/nginx.conf
-            .env
+            ./docker-compose.prod.yml
+            ./ops/nginx.conf
+            ./.env
           target: ~/byeoldori
+          overwrite: true
 
       - name: Pull & restart via Docker Compose
         uses: appleboy/ssh-action@v1.2.0
