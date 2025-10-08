@@ -6,6 +6,7 @@ import com.project.byeoldori.community.common.dto.*
 import com.project.byeoldori.community.post.domain.*
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
+import com.project.byeoldori.community.like.repository.LikeRepository
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.beans.factory.annotation.Value
@@ -22,7 +23,8 @@ class PostService(
     private val eduRepo: EducationPostRepository,
     private val imgRepo: PostImageRepository,
     private val freePostRepo: FreePostRepository,
-    private val siteRepo: ObservationSiteRepository
+    private val siteRepo: ObservationSiteRepository,
+    private val likeRepository: LikeRepository,
 ) {
 
     @Value("\${community.home.item-count:4}")
@@ -76,31 +78,35 @@ class PostService(
     }
 
     @Transactional(readOnly = true)
-    fun getRecentReviews(): List<PostSummaryResponse> {
-        return postRepo.findAllByType(
-            PostType.REVIEW,
-            PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
-        ).content.map { it.toSummaryResponse() }
+    fun getRecentReviews(user: User? = null): List<PostSummaryResponse> {
+        val posts = postRepo.findAllByType(
+            PostType.REVIEW, PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
+        ).content
+        val liked = likedSet(user, posts.mapNotNull { it.id })
+        return posts.map { it.toSummaryResponse(liked = it.id != null && liked.contains(it.id!!)) }
     }
 
     @Transactional(readOnly = true)
-    fun getNewEducations(): List<PostSummaryResponse> {
-        return postRepo.findAllByType(
-            PostType.EDUCATION,
-            PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
-        ).content.map { it.toSummaryResponse() }
+    fun getNewEducations(user: User? = null): List<PostSummaryResponse> {
+        val posts = postRepo.findAllByType(
+            PostType.EDUCATION, PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
+        ).content
+        val liked = likedSet(user, posts.mapNotNull { it.id })
+        return posts.map { it.toSummaryResponse(liked = it.id != null && liked.contains(it.id!!)) }
     }
 
     @Transactional(readOnly = true)
-    fun getPopularFreePosts(): List<PostSummaryResponse> {
-        return postRepo.findAllByType(
-            PostType.FREE,
-            PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "viewCount"))
-        ).content.map { it.toSummaryResponse() }
+    fun getPopularFreePosts(user: User? = null): List<PostSummaryResponse> {
+        val posts = postRepo.findAllByType(
+            PostType.FREE, PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "viewCount"))
+        ).content
+        val liked = likedSet(user, posts.mapNotNull { it.id })
+        return posts.map { it.toSummaryResponse(liked = it.id != null && liked.contains(it.id!!)) }
     }
 
     @Transactional(readOnly = true)
-    fun list(type: PostType, pageable: Pageable, searchBy: PostSearchBy, keyword: String?): PageResponse<PostSummaryResponse> { // <- 수정
+    fun list(type: PostType, pageable: Pageable, searchBy: PostSearchBy, keyword: String?,
+             user: User? = null): PageResponse<PostSummaryResponse> {
 
         val postPage = if (keyword.isNullOrBlank()) {
             postRepo.findAllByType(type, pageable)
@@ -112,11 +118,17 @@ class PostService(
             }
         }
 
-        return postPage.map { it.toSummaryResponse() }.toPageResponse()
+        val ids = postPage.content.mapNotNull { it.id }
+        val liked = likedSet(user, ids)
+
+        val dtoList = postPage.content.map { p ->
+            p.toSummaryResponse(liked = p.id != null && liked.contains(p.id!!))
+        }
+        return PageImpl(dtoList, postPage.pageable, postPage.totalElements).toPageResponse()
     }
 
     @Transactional
-    fun detail(postId: Long): PostResponse {
+    fun detail(postId: Long, user: User? = null): PostResponse {
         val updated = postRepo.increaseViewCount(postId)
         if (updated == 0) throw NotFoundException(ErrorCode.POST_NOT_FOUND)
 
@@ -129,6 +141,8 @@ class PostService(
         val education = eduRepo.findById(postId).orElse(null)?.let {
             EducationDto(it.summary, it.difficulty, it.tags, it.status)
         }
+
+        val liked = if (user != null) likeRepository.existsByPostIdAndUserId(postId, user.id) else false
 
         return PostResponse(
             id = p.id!!,
@@ -143,7 +157,8 @@ class PostService(
             likeCount = p.likeCount,
             commentCount = p.commentCount,
             createdAt = p.createdAt,
-            updatedAt = p.updatedAt
+            updatedAt = p.updatedAt,
+            liked = liked
         )
     }
 
@@ -229,7 +244,12 @@ class PostService(
         }
     }
 
-    private fun CommunityPost.toSummaryResponse(): PostSummaryResponse {
+    private fun likedSet(user: User?, postIds: List<Long>): Set<Long> {
+        if (user == null || postIds.isEmpty()) return emptySet()
+        return likeRepository.findLikedPostIds(user.id, postIds).toSet()
+    }
+
+    private fun CommunityPost.toSummaryResponse(liked: Boolean = false): PostSummaryResponse {
         val summary = if (this.type == PostType.FREE) {
             this.content.take(30)
         } else {
@@ -239,7 +259,7 @@ class PostService(
         return PostSummaryResponse(
             id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
             contentSummary = summary, viewCount = this.viewCount, likeCount = this.likeCount, commentCount = this.commentCount,
-            createdAt = this.createdAt
+            createdAt = this.createdAt, liked = liked
         )
     }
 }
