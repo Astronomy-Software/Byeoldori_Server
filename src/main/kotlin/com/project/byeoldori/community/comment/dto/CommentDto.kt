@@ -16,5 +16,7 @@ data class CommentResponse(
     val createdAt: LocalDateTime,
     val parentId: Long?,
     val depth: Int,
-    val deleted: Boolean
+    val deleted: Boolean,
+    val likeCount: Long,
+    val liked: Boolean = false
 )

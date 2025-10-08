@@ -15,6 +15,8 @@ enum class ErrorCode(
     INVALID_PARENT_COMMENT(HttpStatus.BAD_REQUEST, "부모 댓글이 다른 게시글에 속해있습니다."),
     CANNOT_REPLY_TO_REPLY(HttpStatus.BAD_REQUEST, "대댓글에는 답글을 작성할 수 없습니다."),
     INVALID_FILE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다."),
+    INVALID_COMMENT_FOR_POST(HttpStatus.BAD_REQUEST, "해당 게시글에 속한 댓글이 아닙니다."),
+    CANNOT_LIKE_DELETED_COMMENT(HttpStatus.BAD_REQUEST, "삭제된 댓글에는 좋아요를 누를 수 없습니다."),
 
     // 401 Unauthorized - 인증 실패
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증 정보가 유효하지 않습니다."),

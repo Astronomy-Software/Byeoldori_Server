@@ -5,6 +5,8 @@ import com.project.byeoldori.community.comment.dto.CommentCreateRequest
 import com.project.byeoldori.community.comment.dto.CommentResponse
 import com.project.byeoldori.community.comment.service.CommentService
 import com.project.byeoldori.community.common.dto.PageResponse
+import com.project.byeoldori.community.like.dto.LikeToggleResponse
+import com.project.byeoldori.community.like.service.LikeService
 import com.project.byeoldori.user.entity.User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.*
 @Tag(name = "Comment", description = "커뮤니티 기능 댓글 관련 API")
 class CommentController(
     private val service: CommentService,
+    private val likeService: LikeService,
 ) {
     @PostMapping("/posts/{postId}/comments")
     @Operation(summary = "댓글/대댓글 작성", description = "댓글/대댓글을 작성합니다.")
@@ -35,8 +38,9 @@ class CommentController(
     fun list(
         @PathVariable postId: Long,
         @RequestParam(defaultValue = "1") page: Int,
-        @RequestParam(defaultValue = "15") size: Int
-    ): PageResponse<CommentResponse> = service.list(postId, page, size)
+        @RequestParam(defaultValue = "15") size: Int,
+        @RequestAttribute("currentUser") user: User
+    ): PageResponse<CommentResponse> = service.list(postId, page, size, user)
 
     @DeleteMapping("/posts/{postId}/comments/{commentId}")
     @Operation(summary = "댓글 삭제", description = "작성자만 삭제 가능합니다.")
@@ -47,5 +51,15 @@ class CommentController(
     ): ResponseEntity<ApiResponse<Unit>> {
         service.delete(postId, commentId, user)
         return ResponseEntity.ok(ApiResponse.ok("댓글이 삭제되었습니다."))
+    }
+
+    @PostMapping("/posts/{postId}/comments/{commentId}/likes-toggle")
+    @Operation(summary = "댓글 좋아요 토글", description = "댓글에 대한 좋아요를 토글합니다.")
+    fun toggleCommentLike(
+        @PathVariable postId: Long,
+        @PathVariable commentId: Long,
+        @RequestAttribute("currentUser") user: User
+    ): LikeToggleResponse {
+        return likeService.toggleCommentLike(postId, commentId, user)
     }
 }
