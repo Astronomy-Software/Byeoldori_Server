@@ -3,14 +3,10 @@ name: Deploy backend
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - "Dockerfile"
-      - "docker-compose.prod.yml"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "src/**"
-      - "ops/**"
-  workflow_dispatch: {}   # ← 필요 시 수동 실행
+    paths-ignore: # 문서 변경시에만 배포 미실행
+      - "**/*.md"
+      - "docs/**"
+  workflow_dispatch: {}   # 필요 시 수동 실행
 
 concurrency:
   group: deploy-backend-main

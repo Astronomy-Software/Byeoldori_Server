@@ -7,7 +7,7 @@ import com.project.byeoldori.observationsites.dto.*
 import com.project.byeoldori.observationsites.entity.ObservationSite
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import com.project.byeoldori.observationsites.repository.UserSavedSiteRepository
-import jakarta.transaction.Transactional
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.stereotype.Service
 
 @Service
@@ -35,8 +35,9 @@ class ObservationSiteService(
         observationSiteRepository.findByNameContaining(keyword)
 
     // 상세 정보 조회 메서드
-    fun getSiteDetailById(id: Long): ObservationSiteDetailDto? {
-        val site = observationSiteRepository.findById(id).orElse(null) ?: return null
+    fun getSiteDetailById(id: Long): ObservationSiteDetailDto {
+        val site = observationSiteRepository.findById(id)
+            .orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND) }
         val reviewCount = reviewPostRepository.countByObservationSiteId(id)
         val totalLikes = communityPostRepository.sumLikesBySiteId(id) ?: 0L
         val averageScore = reviewPostRepository.findAverageScoreBySiteId(id) ?: 0.0
@@ -54,8 +55,9 @@ class ObservationSiteService(
 
     // 관측지 업데이트
     @Transactional
-    fun updateSiteById(id: Long, dto: ObservationSiteDto): ObservationSite? {
-        val found = observationSiteRepository.findById(id).orElse(null) ?: return null
+    fun updateSiteById(id: Long, dto: ObservationSiteDto): ObservationSite {
+        val found = observationSiteRepository.findById(id)
+            .orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND) }
         val holder = observationSiteRepository.findByName(dto.name)
         if (holder != null && holder.id != id) {
             throw ConflictException(ErrorCode.SITE_NAME_ALREADY_EXISTS)
@@ -67,7 +69,9 @@ class ObservationSiteService(
     // 관측지 삭제
     @Transactional
     fun deleteSiteById(id: Long): Boolean {
-        if (!observationSiteRepository.existsById(id)) return false
+        if (!observationSiteRepository.existsById(id)) {
+            throw NotFoundException(ErrorCode.SITE_NOT_FOUND)
+        }
         userSavedSiteRepository.deleteAllBySite_Id(id)
         observationSiteRepository.deleteById(id)
         return true
