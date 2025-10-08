@@ -35,7 +35,7 @@ services:
 
     volumes:
       - uploads:/data/uploads
-
+      - ./.env:/app/.env:ro
     networks:
       backend:
         aliases:
