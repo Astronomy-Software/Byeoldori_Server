@@ -3,10 +3,10 @@ name: Deploy backend
 on:
   push:
     branches: [ "main" ]
-    paths-ignore: # 문서 변경시에만 배포 미실행
+    paths-ignore:
       - "**/*.md"
       - "docs/**"
-  workflow_dispatch: {}   # 필요 시 수동 실행
+  workflow_dispatch: {}   # ← 필요 시 수동 실행
 
 concurrency:
   group: deploy-backend-main
@@ -19,8 +19,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -51,34 +50,31 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Ensure deploy dir exists
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -Eeuo pipefail
-            mkdir -p ~/byeoldori/ops
-
-      - name: Prepare .env for server
+      - name: Verify files exist in Git
         run: |
-          printf "%s" "${{ secrets.ENV_PROD }}" > .env
+          set -e
+          git cat-file -e HEAD:docker-compose.prod.yml || (echo "::error::missing in repo: docker-compose.prod.yml" && exit 1)
+          git cat-file -e HEAD:ops/nginx.conf         || (echo "::error::missing in repo: ops/nginx.conf" && exit 1)
 
-      - name: Upload compose & env
+      - name: Bundle deploy artifacts
+        run: |
+          set -e
+          test -f docker-compose.prod.yml
+          test -f ops/nginx.conf
+          tar -czf deploy_bundle.tar.gz docker-compose.prod.yml ops/nginx.conf
+          tar -tzf deploy_bundle.tar.gz 
+
+      - name: Upload bundle
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: |
-            ./docker-compose.prod.yml
-            ./ops/nginx.conf
-            ./.env
+          source: ./deploy_bundle.tar.gz
           target: ~/byeoldori
           overwrite: true
 
-      - name: Pull & restart via Docker Compose
+      - name: Deploy remotely
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -87,12 +83,22 @@ jobs:
           script_stop: true
           script: |
             set -Eeuo pipefail
-            cd ~/byeoldori  
-          
+            mkdir -p ~/byeoldori/ops
+            cd ~/byeoldori
+            
+            tar -xzf deploy_bundle.tar.gz
+            rm -f deploy_bundle.tar.gz
+            
+            docker compose -f docker-compose.prod.yml config -q
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
-            docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload || \
-            docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+            
+            if docker compose -f docker-compose.prod.yml ps nginx >/dev/null 2>&1; then
+              sleep 2
+              docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
+              docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload || \
+              docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+            fi
+            
             docker image prune -af --filter "until=24h" || true
             docker compose -f docker-compose.prod.yml ps
