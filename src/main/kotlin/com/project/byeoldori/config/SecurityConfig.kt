@@ -3,7 +3,6 @@ package com.project.byeoldori.config
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.security.JwtAuthenticationFilter
-import com.project.byeoldori.security.OAuth2SuccessHandler
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -21,7 +20,6 @@ import java.nio.charset.StandardCharsets
 @Configuration
 @EnableWebSecurity
 class SecurityConfig(
-    private val oAuth2SuccessHandler: OAuth2SuccessHandler,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val objectMapper: ObjectMapper
 ){
@@ -32,8 +30,6 @@ class SecurityConfig(
             "/v3/api-docs/**",
             "/auth/**",
             "/reset-password",
-            "/oauth2/**",
-            "/login/oauth2/code/**"
         )
     }
 
@@ -73,9 +69,6 @@ class SecurityConfig(
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
-            .oauth2Login { oauth ->
-                oauth.successHandler(oAuth2SuccessHandler)
-            }
 
         return http.build()
     }
