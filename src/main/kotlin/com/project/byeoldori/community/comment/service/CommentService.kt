@@ -5,6 +5,7 @@ import com.project.byeoldori.community.comment.domain.Comment
 import com.project.byeoldori.community.comment.dto.CommentResponse
 import com.project.byeoldori.community.comment.repository.CommentRepository
 import com.project.byeoldori.community.common.dto.PageResponse
+import com.project.byeoldori.community.like.repository.CommentLikeRepository
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.data.domain.PageRequest
@@ -15,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class CommentService(
     private val postRepo: CommunityPostRepository,
-    private val commentRepo: CommentRepository
+    private val commentRepo: CommentRepository,
+    private val commentLikeRepo: CommentLikeRepository
 ) {
 
     @Transactional
@@ -37,37 +39,26 @@ class CommentService(
 
         post.commentCount++
 
-        return CommentResponse(
-            id = savedComment.id!!,
-            authorId = savedComment.author.id,
-            content = savedComment.content,
-            createdAt = savedComment.createdAt,
-            parentId = savedComment.parent?.id,
-            depth = savedComment.depth,
-            deleted = savedComment.deleted
-        )
+        return savedComment.toResponse(isLiked = false)
     }
 
     @Transactional(readOnly = true)
-    fun list(postId: Long, page: Int, size: Int): PageResponse<CommentResponse> {
+    fun list(postId: Long, page: Int, size: Int, user: User?): PageResponse<CommentResponse> {
         require(page > 0) { "페이지 번호는 1 이상이어야 합니다." }
 
         val sort = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"))
         val pageable = PageRequest.of(page - 1, size, sort)
         val result = commentRepo.findByPostId(postId, pageable)
 
+        val commentIds = result.content.mapNotNull { it.id }
+        val likedCommentIds = if (user != null && commentIds.isNotEmpty()) {
+            commentLikeRepo.findLikedCommentIds(user.id, commentIds).toSet()
+        } else {
+            emptySet()
+        }
+
         return PageResponse(
-            content = result.content.map {
-                CommentResponse(
-                    id = it.id!!,
-                    authorId = it.author.id,
-                    content = it.content,
-                    createdAt = it.createdAt,
-                    parentId = it.parent?.id,
-                    depth = it.depth,
-                    deleted = it.deleted
-                )
-            },
+            content = result.content.map { it.toResponse(likedCommentIds.contains(it.id)) }, // <-- [수정]
             page = page,
             size = size,
             totalElements = result.totalElements,
@@ -88,4 +79,16 @@ class CommentService(
             }
         }
     }
+
+    private fun Comment.toResponse(isLiked: Boolean) = CommentResponse(
+        id = this.id!!,
+        authorId = this.author.id,
+        content = if (this.deleted) "삭제된 댓글입니다." else this.content,
+        createdAt = this.createdAt,
+        parentId = this.parent?.id,
+        depth = this.depth,
+        deleted = this.deleted,
+        likeCount = this.likeCount,
+        liked = isLiked
+    )
 }

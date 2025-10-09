@@ -23,7 +23,8 @@ import org.springframework.web.bind.annotation.*
 @Tag(name = "Post", description = "커뮤니티 게시글 API")
 class PostController(
     private val service: PostService,
-    private val likeService: LikeService
+    private val likeService: LikeService,
+    private val postService: PostService
 ) {
     @PostMapping("/{type}/posts")
     @Operation(summary = "게시글 생성")
@@ -85,6 +86,17 @@ class PostController(
         @PathVariable postId: Long,
         @RequestAttribute("currentUser") user: User
     ): LikeToggleResponse = likeService.toggleAndCount(postId, user)
+
+    @PostMapping("/posts/{postId}/rate")
+    @Operation(summary = "교육 게시글 평점 매기기", description = "교육 게시글에 1~5점 사이의 평점을 매깁니다.")
+    fun rateEducation(
+        @PathVariable postId: Long,
+        @Valid @RequestBody req: RateEducationRequest,
+        @RequestAttribute("currentUser") user: User
+    ): ResponseEntity<ApiResponse<Unit>> {
+        postService.rateEducationPost(postId, user, req.score)
+        return ResponseEntity.ok(ApiResponse.ok("평점이 등록되었습니다."))
+    }
 
     @GetMapping("/home/reviews")
     @Operation(summary = "최신 관측 후기 게시글 홈 화면 조회", description = "커뮤니티 홈의 최신 리뷰 목록을 반환합니다.")

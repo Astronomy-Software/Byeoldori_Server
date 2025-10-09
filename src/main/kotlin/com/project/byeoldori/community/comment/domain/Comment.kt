@@ -1,5 +1,6 @@
 package com.project.byeoldori.community.comment.domain
 
+import com.project.byeoldori.community.like.domain.CommentLike
 import com.project.byeoldori.community.post.domain.CommunityPost
 import com.project.byeoldori.user.entity.User
 import jakarta.persistence.*
@@ -30,11 +31,17 @@ class Comment(
     var content: String,
 
     @Column(nullable = false)
+    var likeCount: Long = 0,
+
+    @Column(nullable = false)
     var depth: Int = 0, // 0=댓글, 1=대댓글
 
     @Column(nullable = false)
     var deleted: Boolean = false,
 
     @Column(name = "created_at", updatable = false)
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    val createdAt: LocalDateTime = LocalDateTime.now(),
+
+    @OneToMany(mappedBy = "comment", cascade = [CascadeType.ALL], orphanRemoval = true)
+    val likes: MutableList<CommentLike> = mutableListOf()
 )
