@@ -12,6 +12,7 @@ data class CommentCreateRequest(
 data class CommentResponse(
     val id: Long,
     val authorId: Long,
+    val authorNickname: String?,
     val content: String,
     val createdAt: LocalDateTime,
     val parentId: Long?,
