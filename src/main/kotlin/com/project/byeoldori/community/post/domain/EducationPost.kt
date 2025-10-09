@@ -18,8 +18,6 @@ class EducationPost(
     @OnDelete(action = OnDeleteAction.CASCADE)
     var post: CommunityPost,
 
-    var summary: String? = null,
-
     @Enumerated(EnumType.STRING)
     var difficulty: EducationDifficulty? = null,  // BEGINNER | INTERMEDIATE | ADVANCED
 

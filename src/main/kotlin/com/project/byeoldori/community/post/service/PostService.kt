@@ -59,7 +59,6 @@ class PostService(
                 eduRepo.save(
                     EducationPost(
                         post = post,
-                        summary = d.summary,
                         difficulty = d.difficulty,
                         target = d.target,
                         tags = d.tags,
@@ -199,7 +198,6 @@ class PostService(
         val educationPost = eduRepo.findById(postId)
             .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "수정할 교육 정보를 찾을 수 없습니다.") }
 
-        educationDto.summary?.let { educationPost.summary = it }
         educationDto.difficulty?.let { educationPost.difficulty = it }
         educationDto.target?.let { educationPost.target = it }
         educationDto.tags?.let { educationPost.tags = it }
