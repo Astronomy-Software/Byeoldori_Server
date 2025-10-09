@@ -23,6 +23,7 @@ enum class ErrorCode(
     LOGIN_REQUIRED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
     REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰을 찾을 수 없습니다. 다시 로그인해주세요."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "토큰이 유효하지 않습니다."),
+    GOOGLE_ID_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "유효하지 않은 Google ID 토큰입니다."),
 
     // 403 Forbidden - 권한 없음
     FORBIDDEN(HttpStatus.FORBIDDEN, "요청에 대한 권한이 없습니다."),
@@ -40,6 +41,8 @@ enum class ErrorCode(
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
     SITE_NAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 존재하는 관측지 이름입니다."),
+    ACCOUNT_ALREADY_EXISTS_WITH_DIFFERENT_PROVIDER(HttpStatus.CONFLICT, "이미 다른 방식으로 가입된 이메일입니다."),
+    LOGIN_METHOD_MISMATCH(HttpStatus.CONFLICT, "소셜 로그인 계정입니다. 해당 소셜 로그인을 이용해주세요."),
 
     // 413 파일 용량 업로드 초과
     FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "이미지 파일이 너무 큽니다. (최대 10MB)"),

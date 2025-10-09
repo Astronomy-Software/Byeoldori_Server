@@ -1,5 +1,6 @@
 package com.project.byeoldori.user.service
 
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier
 import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.security.CurrentUserResolver
 import com.project.byeoldori.security.JwtUtil
@@ -25,7 +26,8 @@ class UserService(
     private val passwordEncoder: PasswordEncoder,
     private val jwt: JwtUtil,
     private val emailService: EmailService,
-    private val currentUserResolver: CurrentUserResolver
+    private val currentUserResolver: CurrentUserResolver,
+    private val googleVerifier: GoogleIdTokenVerifier
 ) {
 
     @Transactional
@@ -70,40 +72,25 @@ class UserService(
     @Transactional
     fun login(req: LoginRequestDto): AuthResponseDto {
         val user = userRepository.findByEmail(req.email)
-            .orElseThrow {NotFoundException(ErrorCode.USER_NOT_FOUND, "이메일 또는 비밀번호가 올바르지 않습니다.") }
+            .orElseThrow { NotFoundException(ErrorCode.USER_NOT_FOUND, "이메일 또는 비밀번호가 올바르지 않습니다.") }
+
+        if (user.provider != null) {
+            throw ConflictException(ErrorCode.LOGIN_METHOD_MISMATCH, "${user.provider} 계정입니다. ${user.provider}으로 로그인해주세요.")
+        }
 
         if (!user.emailVerified) throw ForbiddenException(ErrorCode.EMAIL_NOT_VERIFIED.message)
         if (!passwordEncoder.matches(req.password, user.passwordHash)) {
             throw InvalidInputException("이메일 또는 비밀번호가 올바르지 않습니다.")
         }
 
-        val access = jwt.generateAccessToken(user.email)
-        val refresh = jwt.generateRefreshToken(user.email)
-        val hash = TokenHasher.sha256Hex(refresh)
-        val exp = jwt.extractExpiration(refresh)
-
-        val existing = refreshTokenRepo.findByUserIdForUpdate(user.id)
-        if (existing.isPresent) {
-            val t = existing.get()
-            t.tokenHash = hash
-            t.expiresAt  = exp
-            t.revokedAt  = null
-            t.rotatedAt  = null
-        } else {
-            refreshTokenRepo.save(RefreshToken(user = user, tokenHash = hash, expiresAt = exp))
-        }
-
-        user.lastLoginAt = LocalDateTime.now()
-        val zone = java.time.ZoneId.systemDefault()
-        return AuthResponseDto.of(
-            access, refresh,
-            jwt.extractExpiration(access).atZone(zone).toInstant(),
-            jwt.extractExpiration(refresh).atZone(zone).toInstant()
-        )
+        return issueTokensAndGetResponse(user)
     }
 
     @Transactional
     fun reissue(req: TokenReissueRequestDto): AuthResponseDto {
+        if (!jwt.validateToken(req.refreshToken) || !jwt.isTokenType(req.refreshToken, "refresh")) {
+            throw UnauthorizedException(ErrorCode.INVALID_TOKEN.message)
+        }
         val email = jwt.extractEmail(req.refreshToken)
         val user = userRepository.findByEmail(email)
             .orElseThrow { NotFoundException(ErrorCode.USER_NOT_FOUND) }
@@ -111,11 +98,15 @@ class UserService(
         val stored = refreshTokenRepo.findByUserIdForUpdate(user.id)
             .orElseThrow { NotFoundException(ErrorCode.REFRESH_TOKEN_NOT_FOUND) }
 
-        if (!stored.isActive()) throw UnauthorizedException("리프레시 토큰이 만료되었거나 폐기되었습니다.")
-        if (stored.tokenHash != TokenHasher.sha256Hex(req.refreshToken)) throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
+        if (stored.tokenHash != TokenHasher.sha256Hex(req.refreshToken)) {
+            throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
+        }
 
-        val newAccess  = jwt.generateAccessToken(email)
+        if (!stored.isActive()) throw UnauthorizedException("리프레시 토큰이 만료되었거나 폐기되었습니다.")
+
+        val newAccess = jwt.generateAccessToken(email)
         val newRefresh = jwt.generateRefreshToken(email)
+
         stored.tokenHash = TokenHasher.sha256Hex(newRefresh)
         stored.expiresAt = jwt.extractExpiration(newRefresh)
         stored.rotatedAt = LocalDateTime.now()
@@ -191,6 +182,7 @@ class UserService(
             user.nickname = it
         }
         req.birthdate?.let { user.birthdate = it }
+        req.phone?.let { user.phone = it }
     }
 
     @Transactional
@@ -199,5 +191,91 @@ class UserService(
         refreshTokenRepo.deleteByUserId(user.id)
         emailTokenRepo.deleteAllByUserId(user.id)
         userRepository.delete(user)
+    }
+
+    @Transactional
+    fun loginWithGoogleIdToken(idToken: String): AuthResponseDto {
+        if (idToken.isBlank()) {
+            throw InvalidInputException("idToken이 필요합니다.")
+        }
+        val verified = googleVerifier.verify(idToken)
+            ?: throw UnauthorizedException(ErrorCode.GOOGLE_ID_TOKEN_INVALID.message)
+        val payload = verified.payload
+
+        val sub = payload.subject // Google 고유 사용자 ID
+        val email = (payload.email ?: "").lowercase()
+        val emailVerifiedByGoogle: Boolean = when (val v = payload["email_verified"]) {
+            is Boolean -> v
+            is String -> v.equals("true", ignoreCase = true)
+            else -> payload.emailVerified == true
+        }
+        val nameFromGoogle = payload["name"]?.toString()
+        val pictureFromGoogle = payload["picture"]?.toString()
+
+        var user = userRepository.findByProviderAndProviderId("google", sub)
+
+        if (user == null && email.isNotBlank()) {
+            val byEmail = userRepository.findByEmail(email).orElse(null)
+            if (byEmail != null) {
+                // 구글 이메일이 검증된 경우에만 자동 병합
+                if (!emailVerifiedByGoogle) {
+                    // 추가 인증 필요: 자동 병합 금지
+                    throw ConflictException(
+                        ErrorCode.ACCOUNT_ALREADY_EXISTS_WITH_DIFFERENT_PROVIDER,
+                        "이미 가입된 이메일입니다. 이메일 인증을 완료하거나, 계정 설정에서 구글 계정을 연동해주세요."
+                    )
+                }
+                user = byEmail
+            }
+        }
+
+        if (user == null) {
+            user = User(
+                email = email,
+                passwordHash = "OAUTH2:google:$sub",
+                name = nameFromGoogle ?: "User",
+                phone = "",
+                nickname = nameFromGoogle ?: "User"
+            )
+        }
+
+        user.provider = "google"
+        user.providerId = sub
+        if (!pictureFromGoogle.isNullOrBlank() && user.profileImageUrl.isNullOrBlank()) {
+            user.profileImageUrl = pictureFromGoogle
+        }
+        if (emailVerifiedByGoogle && email.isNotBlank()) {
+            user.emailVerified = true      // 비어있을 때만 채움
+        }
+
+        userRepository.save(user)
+
+        return issueTokensAndGetResponse(user)
+    }
+
+    private fun issueTokensAndGetResponse(user: User): AuthResponseDto {
+        val access = jwt.generateAccessToken(user.email)
+        val refresh = jwt.generateRefreshToken(user.email)
+        val hash = TokenHasher.sha256Hex(refresh)
+        val exp = jwt.extractExpiration(refresh)
+
+        val existing = refreshTokenRepo.findByUserIdForUpdate(user.id)
+        if (existing.isPresent) {
+            val t = existing.get()
+            t.tokenHash = hash
+            t.expiresAt = exp
+            t.revokedAt = null
+            t.rotatedAt = null
+        } else {
+            refreshTokenRepo.save(RefreshToken(user = user, tokenHash = hash, expiresAt = exp))
+        }
+
+        user.lastLoginAt = LocalDateTime.now()
+        val zone = java.time.ZoneId.systemDefault()
+        return AuthResponseDto.of(
+            access, refresh,
+            jwt.extractExpiration(access).atZone(zone).toInstant(),
+            jwt.extractExpiration(refresh).atZone(zone).toInstant()
+        )
     }
 }

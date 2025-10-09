@@ -86,6 +86,8 @@ dependencies {
 
     // 달의 위상과 고도 계산을 위한 라이브러리
     implementation("org.apache.commons:commons-math3:3.6.1")
+
+    implementation("com.google.api-client:google-api-client:2.6.0")
 }
 
 kotlin {
