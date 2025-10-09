@@ -20,7 +20,6 @@ data class ReviewDto(
 )
 
 data class EducationRequestDto(
-    val summary: String? = null,
     val difficulty: EducationDifficulty? = null,
     val target: String? = null,
     val tags: String? = null,
@@ -28,7 +27,6 @@ data class EducationRequestDto(
 )
 
 data class EducationResponseDto(
-    val summary: String? = null,
     val difficulty: EducationDifficulty? = null,
     val target: String? = null,
     val tags: String? = null,
@@ -37,7 +35,6 @@ data class EducationResponseDto(
 ) {
     companion object {
         fun from(educationPost: EducationPost) = EducationResponseDto(
-            summary = educationPost.summary,
             difficulty = educationPost.difficulty,
             target = educationPost.target,
             tags = educationPost.tags,
