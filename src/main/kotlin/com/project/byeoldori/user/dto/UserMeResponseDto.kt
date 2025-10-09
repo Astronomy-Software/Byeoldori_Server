@@ -15,21 +15,28 @@ data class UserMeResponseDto(
     val lastLoginAt: LocalDateTime? = null,
     val roles: Set<String>,
     val createdAt: LocalDateTime,
-    val updatedAt: LocalDateTime
+    val updatedAt: LocalDateTime,
+    val onboardingRequired: Boolean
 ) {
     companion object {
-        fun from(u: User) = UserMeResponseDto(
-            id = u.id,
-            email = u.email,
-            name = u.name,
-            phone = u.phone,
-            nickname = u.nickname,
-            birthdate = u.birthdate,
-            emailVerified = u.emailVerified,
-            lastLoginAt = u.lastLoginAt,
-            roles = u.roles.toSet(),
-            createdAt = u.createdAt,
-            updatedAt = u.updatedAt
-        )
+        fun from(u: User): UserMeResponseDto {
+            // 닉네임이 비어있거나, 전화번호 정보가 비어있으면 true로 설정
+            val onboardingNeeded = u.nickname.isNullOrBlank() || u.phone.isBlank()
+
+            return UserMeResponseDto(
+                id = u.id,
+                email = u.email,
+                name = u.name,
+                phone = u.phone,
+                nickname = u.nickname,
+                birthdate = u.birthdate,
+                emailVerified = u.emailVerified,
+                lastLoginAt = u.lastLoginAt,
+                roles = u.roles.toSet(),
+                createdAt = u.createdAt,
+                updatedAt = u.updatedAt,
+                onboardingRequired = onboardingNeeded
+            )
+        }
     }
 }
