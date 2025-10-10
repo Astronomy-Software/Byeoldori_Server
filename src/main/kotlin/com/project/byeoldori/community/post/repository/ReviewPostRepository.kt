@@ -10,4 +10,7 @@ interface ReviewPostRepository : JpaRepository<ReviewPost, Long> {
 
     @Query("SELECT ROUND(AVG(r.score), 1) FROM ReviewPost r WHERE r.observationSite.id = :siteId AND r.score IS NOT NULL")
     fun findAverageScoreBySiteId(@Param("siteId") siteId: Long): Double?
+
+    @Query("SELECT r.id, r.observationSite.id FROM ReviewPost r WHERE r.id IN :postIds AND r.observationSite.id IS NOT NULL")
+    fun findObservationSiteIdsByPostIds(@Param("postIds") postIds: List<Long>): List<Array<Any>>
 }
