@@ -237,7 +237,7 @@ class PostService(
         return likeRepository.findLikedPostIds(user.id, postIds).toSet()
     }
 
-    private fun CommunityPost.toSummaryResponse(liked: Boolean = false, score: Double? = 0.0): PostSummaryResponse {
+    private fun CommunityPost.toSummaryResponse(observationSiteId: Long? = null, liked: Boolean = false, score: Double? = 0.0): PostSummaryResponse {
         val summary = if (this.type == PostType.FREE) {
             this.content.take(30)
         } else {
@@ -246,8 +246,8 @@ class PostService(
 
         return PostSummaryResponse(
             id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
-            contentSummary = summary, viewCount = this.viewCount, likeCount = this.likeCount, commentCount = this.commentCount,
-            createdAt = this.createdAt, liked = liked, score = score
+            observationSiteId = observationSiteId, contentSummary = summary, viewCount = this.viewCount, likeCount = this.likeCount,
+            commentCount = this.commentCount, createdAt = this.createdAt, liked = liked, score = score
         )
     }
 
@@ -285,8 +285,16 @@ class PostService(
             else -> emptyMap()
         }
 
+        val observationSiteIdMap = if (postType == PostType.REVIEW) {
+            reviewRepo.findObservationSiteIdsByPostIds(postIds)
+                .associate { (postId, siteId) -> (postId as Long) to (siteId as Long) }
+        } else {
+            emptyMap()
+        }
+
         return posts.map { post ->
             post.toSummaryResponse(
+                observationSiteId = observationSiteIdMap[post.id],
                 liked = likedPostIds.contains(post.id),
                 score = scoresMap[post.id] ?: 0.0
             )

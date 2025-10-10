@@ -75,6 +75,7 @@ data class PostSummaryResponse( // 홈 화면에서 조회
     val title: String,
     val authorId: Long,
     val authorNickname: String?,
+    val observationSiteId: Long? = null,
     val contentSummary: String? = null,
     val viewCount: Long,
     val likeCount: Long,
