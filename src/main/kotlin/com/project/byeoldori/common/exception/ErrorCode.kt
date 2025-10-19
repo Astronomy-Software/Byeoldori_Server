@@ -17,6 +17,8 @@ enum class ErrorCode(
     INVALID_FILE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다."),
     INVALID_COMMENT_FOR_POST(HttpStatus.BAD_REQUEST, "해당 게시글에 속한 댓글이 아닙니다."),
     CANNOT_LIKE_DELETED_COMMENT(HttpStatus.BAD_REQUEST, "삭제된 댓글에는 좋아요를 누를 수 없습니다."),
+    INVALID_TIME_RANGE(HttpStatus.BAD_REQUEST, "종료 시간은 시작 시간보다 빠를 수 없습니다."),
+    MAX_IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "업로드 가능한 최대 이미지 수를 초과했습니다."),
 
     // 401 Unauthorized - 인증 실패
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증 정보가 유효하지 않습니다."),
@@ -36,6 +38,7 @@ enum class ErrorCode(
     COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다."),
     SITE_NOT_FOUND(HttpStatus.NOT_FOUND, "관측지를 찾을 수 없습니다."),
     SAVED_SITE_NOT_FOUND(HttpStatus.NOT_FOUND, "즐겨찾기 목록에 없는 항목입니다."),
+    EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "계획/기록을 찾을 수 없습니다."),
 
     // 409 Conflict - 리소스 충돌
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
