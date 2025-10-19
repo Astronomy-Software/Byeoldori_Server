@@ -3,6 +3,7 @@ package com.project.byeoldori.community.post.service
 import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.community.common.domain.*
 import com.project.byeoldori.community.common.dto.*
+import com.project.byeoldori.community.common.service.StorageService
 import com.project.byeoldori.community.post.domain.*
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
@@ -13,6 +14,8 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 @Transactional
@@ -24,7 +27,8 @@ class PostService(
     private val freePostRepo: FreePostRepository,
     private val siteRepo: ObservationSiteRepository,
     private val likeRepository: LikeRepository,
-    private val educationRatingRepo: EducationRatingRepository
+    private val educationRatingRepo: EducationRatingRepository,
+    private val storage: StorageService
 ) {
 
     @Value("\${community.home.item-count:20}")
@@ -172,7 +176,27 @@ class PostService(
     fun delete(postId: Long, user: User) {
         val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
         if (p.author.id != user.id) throw ForbiddenException()
+
+        val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(p.id!!)
+        val urls = images.map { it.url }
+
+        if (images.isNotEmpty()) {
+            imgRepo.deleteAll(images)
+        }
+
         postRepo.delete(p)
+
+        if (urls.isNotEmpty()) {
+            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+                override fun afterCommit() {
+                    urls.forEach { url ->
+                        try {
+                            storage.deleteImageByUrl(url)
+                        } catch (_: Exception) { }
+                    }
+                }
+            })
+        }
     }
 
     private fun updateReviewPost(postId: Long, reviewDto: ReviewDto) {
@@ -210,6 +234,8 @@ class PostService(
 
         val requestedUrlSet = requestedUrls.toSet()
         val imagesToDelete = existingImages.filter { it.url !in requestedUrlSet }
+        val urlsToDelete = imagesToDelete.map { it.url }
+
         if (imagesToDelete.isNotEmpty()) {
             imgRepo.deleteAll(imagesToDelete)
         }
@@ -229,6 +255,15 @@ class PostService(
         }
         if (imagesToAdd.isNotEmpty()) {
             imgRepo.saveAll(imagesToAdd)
+        }
+        if (urlsToDelete.isNotEmpty()) {
+            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+                override fun afterCommit() {
+                    urlsToDelete.forEach { url ->
+                        try { storage.deleteImageByUrl(url) } catch (_: Exception) { }
+                    }
+                }
+            })
         }
     }
 

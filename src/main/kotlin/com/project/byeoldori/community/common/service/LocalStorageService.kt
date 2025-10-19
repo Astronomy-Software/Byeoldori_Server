@@ -1,6 +1,7 @@
 package com.project.byeoldori.community.common.service
 
 import com.project.byeoldori.common.exception.*
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
@@ -21,6 +22,8 @@ class LocalStorageService(
     private val allowedTypes: List<String>,
     @Value("\${storage.max-megapixels:50}") private val maxMegaPixels: Int
 ) : StorageService {
+
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     override fun storeImage(file: MultipartFile): String {
         if (file.isEmpty) throw InvalidInputException("업로드할 파일이 비어있습니다.")
@@ -60,6 +63,36 @@ class LocalStorageService(
 
         // 6) 공개 URL 조합
         return listOf(publicBaseUrl.trimEnd('/'), datePath, filename).joinToString("/")
+    }
+
+    override fun deleteImageByUrl(url: String) {
+        val baseUrl = publicBaseUrl.trimEnd('/')
+        // 1. URL이 우리 서버의 URL(publicBaseUrl)로 시작하는지 확인
+        if (!url.startsWith(baseUrl)) {
+            logger.warn("외부 URL이거나 형식이 잘못되어 삭제를 건너뜁니다: {}", url)
+            return
+        }
+
+        try {
+            // 2. Public URL에서 상대 경로(relative path) 추출
+            // e.g., "http://.../files/2025/10/19/uuid.jpg" -> "/2025/10/19/uuid.jpg"
+            val relativePath = url.substring(baseUrl.length)
+
+            // 3. BaseDir와 합쳐서 실제 파일 시스템 경로 생성
+            // e.g., "uploads" + "/2025/10/19/uuid.jpg"
+            val filePath = Paths.get(baseDir, relativePath).toAbsolutePath()
+
+            // 4. 파일 시스템에서 삭제
+            if (Files.exists(filePath)) {
+                Files.delete(filePath)
+                logger.info("파일 삭제 성공: {}", filePath)
+            } else {
+                logger.warn("삭제할 파일이 존재하지 않습니다: {}", filePath)
+            }
+        } catch (e: Exception) {
+            // Path 조작 실패, 권한 문제 등
+            logger.error("파일 삭제 중 오류 발생 (URL: {}): {}", url, e.message)
+        }
     }
 
     private fun sniffMagic(file: MultipartFile): String? {
