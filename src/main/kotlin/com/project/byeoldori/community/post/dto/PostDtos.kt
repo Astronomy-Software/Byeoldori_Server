@@ -82,7 +82,8 @@ data class PostSummaryResponse( // 홈 화면에서 조회
     val commentCount: Long,
     val createdAt: LocalDateTime?,
     val liked: Boolean = false,
-    val score: Double? = 0.0
+    val score: Double? = 0.0,
+    val thumbnailUrl: String? = null
 )
 
 data class PostResponse( // 상세 조회
