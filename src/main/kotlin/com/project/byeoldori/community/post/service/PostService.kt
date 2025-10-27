@@ -272,7 +272,8 @@ class PostService(
         return likeRepository.findLikedPostIds(user.id, postIds).toSet()
     }
 
-    private fun CommunityPost.toSummaryResponse(observationSiteId: Long? = null, liked: Boolean = false, score: Double? = 0.0): PostSummaryResponse {
+    private fun CommunityPost.toSummaryResponse(observationSiteId: Long? = null, liked: Boolean = false, score: Double? = 0.0, thumbnailUrl: String? = null
+    ): PostSummaryResponse {
         val summary = if (this.type == PostType.FREE) {
             this.content.take(30)
         } else {
@@ -282,7 +283,7 @@ class PostService(
         return PostSummaryResponse(
             id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
             observationSiteId = observationSiteId, contentSummary = summary, viewCount = this.viewCount, likeCount = this.likeCount,
-            commentCount = this.commentCount, createdAt = this.createdAt, liked = liked, score = score
+            commentCount = this.commentCount, createdAt = this.createdAt, liked = liked, score = score, thumbnailUrl = thumbnailUrl
         )
     }
 
@@ -327,11 +328,20 @@ class PostService(
             emptyMap()
         }
 
+        val thumbnailsMap = mutableMapOf<Long, String>()
+        imgRepo.findByPostIdInOrderByPostIdAscSortOrderAsc(postIds).forEach { img ->
+            val pid = img.post.id!!
+            if (!thumbnailsMap.containsKey(pid)) {
+                thumbnailsMap[pid] = img.url
+            }
+        }
+
         return posts.map { post ->
             post.toSummaryResponse(
                 observationSiteId = observationSiteIdMap[post.id],
                 liked = likedPostIds.contains(post.id),
-                score = scoresMap[post.id] ?: 0.0
+                score = scoresMap[post.id] ?: 0.0,
+                thumbnailUrl = thumbnailsMap[post.id!!]
             )
         }
     }
