@@ -3,6 +3,7 @@ package com.project.byeoldori.community.comment.controller
 import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.community.comment.dto.CommentCreateRequest
 import com.project.byeoldori.community.comment.dto.CommentResponse
+import com.project.byeoldori.community.comment.dto.CommentUpdateRequest
 import com.project.byeoldori.community.comment.service.CommentService
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.community.like.dto.LikeToggleResponse
@@ -61,5 +62,16 @@ class CommentController(
         @RequestAttribute("currentUser") user: User
     ): LikeToggleResponse {
         return likeService.toggleCommentLike(postId, commentId, user)
+    }
+
+    @PatchMapping("/posts/{postId}/comments/{commentId}")
+    @Operation(summary = "댓글 수정", description = "본인이 작성한 댓글 내용을 수정합니다.")
+    fun update(
+        @PathVariable postId: Long,
+        @PathVariable commentId: Long,
+        @Valid @RequestBody req: CommentUpdateRequest,
+        @RequestAttribute("currentUser") user: User
+    ): CommentResponse {
+        return service.update(postId, commentId, user, req.content)
     }
 }

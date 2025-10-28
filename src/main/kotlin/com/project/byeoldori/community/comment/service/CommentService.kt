@@ -80,6 +80,36 @@ class CommentService(
         }
     }
 
+    @Transactional
+    fun update(postId: Long, commentId: Long, requester: User, content: String): CommentResponse {
+        val comment = commentRepo.findById(commentId).orElseThrow {
+            NotFoundException(ErrorCode.COMMENT_NOT_FOUND)
+        }
+
+        if (comment.post.id != postId) {
+            throw InvalidInputException(ErrorCode.INVALID_COMMENT_FOR_POST.message)
+        }
+
+        if (comment.deleted) {
+            throw NotFoundException(ErrorCode.COMMENT_NOT_FOUND)
+        }
+
+        if (comment.author.id != requester.id) {
+            throw ForbiddenException(ErrorCode.OWN_COMMENT_ONLY.message)
+        }
+
+        val newContent = content.trim()
+        if (newContent.isBlank()) {
+            throw InvalidInputException(ErrorCode.COMMENT_CONTENT_EMPTY.message)
+        }
+        if (newContent != comment.content) {
+            comment.content = newContent
+        }
+
+        val isLiked = commentLikeRepo.existsByCommentIdAndUserId(comment.id!!, requester.id)
+        return comment.toResponse(isLiked)
+    }
+
     private fun Comment.toResponse(isLiked: Boolean) = CommentResponse(
         id = this.id!!,
         authorId = this.author.id,

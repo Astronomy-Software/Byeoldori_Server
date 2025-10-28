@@ -21,3 +21,8 @@ data class CommentResponse(
     val likeCount: Long,
     val liked: Boolean = false
 )
+
+data class CommentUpdateRequest(
+    @field:NotBlank(message = "내용은 비워둘 수 없습니다.")
+    val content: String
+)
