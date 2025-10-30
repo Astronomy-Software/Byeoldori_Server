@@ -5,7 +5,6 @@ import com.project.byeoldori.calendar.entity.*
 import com.project.byeoldori.calendar.dto.*
 import com.project.byeoldori.calendar.repository.CalendarImageRepository
 import com.project.byeoldori.calendar.repository.ObservationEventRepository
-import com.project.byeoldori.common.exception.ConflictException
 import com.project.byeoldori.common.exception.InvalidInputException
 import com.project.byeoldori.common.exception.NotFoundException
 import com.project.byeoldori.common.exception.ErrorCode
@@ -16,7 +15,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.multipart.MultipartFile
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -27,13 +25,11 @@ class CalendarService(
     private val photos: CalendarImageRepository,
     private val storage: StorageService,
     private val siteRepo: ObservationSiteRepository
-) {
+    ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     @Value("\${calendar.max-photos-per-event:10}")
     private val maxPhotosPerEvent: Int = 10
-    @Value("\${calendar.max-image-bytes:10485760}")
-    private val maxBytesPerImage: Long = 10L * 1024 * 1024
 
     @Transactional
     fun create(user: User, req: CreateEventRequest): Long {
@@ -45,16 +41,18 @@ class CalendarService(
         }
 
         val site = req.observationSiteId?.let {
-            siteRepo.findById(it)
-                .orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND) }
+            siteRepo.findById(it).orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND) }
         }
 
         val e = ObservationEvent(
             userId = user.id,
             title = req.title,
             startAt = startAtProcessed,
-            endAt = if (req.status == EventStatus.COMPLETED){ endAtProcessed ?: startAtProcessed }
-            else { endAtProcessed },
+            endAt = if (req.status == EventStatus.COMPLETED) {
+                endAtProcessed ?: startAtProcessed
+            } else {
+                endAtProcessed
+            },
             targetName = req.targetName,
             observationSite = site,
             lat = site?.latitude ?: req.lat,
@@ -63,45 +61,46 @@ class CalendarService(
             status = req.status,
             memo = req.memo
         )
-        return events.save(e).id!!
+
+        val saved = events.save(e)
+
+        val urls = req.imageUrls.orEmpty()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        if (urls.isNotEmpty()) {
+            val curCount: Long = photos.countByEventId(saved.id!!)
+            val room: Int = maxPhotosPerEvent - curCount.toInt()
+            if (room <= 0) return saved.id!!
+            val toAttach = if (urls.size > room) urls.take(room) else urls
+
+            val newImages = toAttach.map { u ->
+                CalendarImage(event = saved, url = u, contentType = null)
+            }
+            photos.saveAll(newImages)
+        }
+        return saved.id!!
     }
 
     @Transactional(readOnly = true)
     fun listByDate(user: User, date: LocalDate): List<EventResponse> {
         val from = date.atStartOfDay()
-            val to = date.plusDays(1).atStartOfDay()
-
+        val to = date.plusDays(1).atStartOfDay()
         val eventList = events.findAllByUserIdAndStartAtBetweenOrderByStartAtAsc(user.id, from, to)
-        if (eventList.isEmpty()) {
-            return emptyList()
-        }
-
-        val eventIds = eventList.mapNotNull { it.id }
-
-        val allPhotos = photos.findAllByEventIdIn(eventIds)
-        val photosMap = allPhotos.groupBy { it.event.id }
-
-        return eventList.map { event ->
-            val eventPhotos = photosMap[event.id] ?: emptyList()
-            EventResponse.from(event, eventPhotos)
-        }
+        return assemble(eventList)
     }
 
-    @Transactional(readOnly = true)
-    fun list(user: User, fromDate: LocalDate, toDate: LocalDate): List<EventResponse> {
-        val from = fromDate.atStartOfDay()
-        val to = toDate.plusDays(1).atStartOfDay()
+    private fun assemble(eventList: List<ObservationEvent>): List<EventResponse> {
+        if (eventList.isEmpty()) return emptyList()
 
-        val eventList = events.findAllByUserIdAndStartAtBetweenOrderByStartAtAsc(user.id, from, to)
-        if (eventList.isEmpty()) {
-            return emptyList()
-        }
-        val eventIds = eventList.mapNotNull { it.id }
-        val allPhotos = photos.findAllByEventIdIn(eventIds)
-        val photosMap = allPhotos.groupBy { it.event.id }
-        return eventList.map { event ->
-            val eventPhotos = photosMap[event.id] ?: emptyList()
-            EventResponse.from(event, eventPhotos)
+        val ids = eventList.mapNotNull { it.id }
+        val photosMap = photos.findAllByEventIdIn(ids)
+            .sortedWith(compareBy<CalendarImage>({ it.event.id }, { it.id }))
+            .groupBy { it.event.id }
+
+        return eventList.map { ev ->
+            EventResponse.from(ev, photosMap[ev.id] ?: emptyList())
         }
     }
 
@@ -151,12 +150,12 @@ class CalendarService(
         req.memo?.let { e.memo = it }
         req.status?.let { e.status = it }
 
-        val remainingImages = req.removeImageIds?.let { ids ->
+        // 1) 제거 요청 처리 (기존 로직 유지)
+        val currentImages = req.removeImageIds?.let { ids ->
             val exists = photos.findAllByEventIdOrderByIdAsc(e.id!!)
             val toDelete = exists.filter { it.id != null && ids.contains(it.id) }
 
             photos.deleteAll(toDelete)
-
             toDelete.forEach { img ->
                 try { storage.deleteImageByUrl(img.url) } catch (_: Exception) { }
             }
@@ -164,7 +163,25 @@ class CalendarService(
             exists.filterNot { toDelete.contains(it) }
         } ?: photos.findAllByEventIdOrderByIdAsc(e.id!!)
 
-        return EventResponse.from(e, remainingImages)
+        req.addImageUrls?.let { urls ->
+            val cleaned = urls
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+
+            val existingUrls = currentImages.map { it.url }.toSet()
+            val toAttach = cleaned.filterNot { existingUrls.contains(it) }
+
+            val room = maxPhotosPerEvent - currentImages.size
+            if (toAttach.size > room) {
+                throw InvalidInputException(ErrorCode.MAX_IMAGE_COUNT_EXCEEDED.message)
+            }
+
+            val newImages = toAttach.map { u -> CalendarImage(event = e, url = u, contentType = null) }
+            if (newImages.isNotEmpty()) photos.saveAll(newImages)
+        }
+        val resultImages = photos.findAllByEventIdOrderByIdAsc(e.id!!)
+        return EventResponse.from(e, resultImages)
     }
 
     @Transactional
@@ -188,33 +205,15 @@ class CalendarService(
     }
 
     @Transactional
-    fun uploadPhotos(user: User, eventId: Long, files: List<MultipartFile>): List<PhotoResponse> {
-        val e = findEventByIdAndUser(eventId, user)
-
-        val current = photos.findAllByEventIdOrderByIdAsc(e.id!!).size
-        if (current + files.size > maxPhotosPerEvent) {
-            throw InvalidInputException(ErrorCode.MAX_IMAGE_COUNT_EXCEEDED.message)
-        }
-
-        files.forEach { f ->
-            if (f.size > maxBytesPerImage) {
-                throw ConflictException(ErrorCode.FILE_TOO_LARGE, ErrorCode.FILE_TOO_LARGE.message)
-            }
-        }
-
-        val saved = files.map { f ->
-            val url = storage.storeImage(f)
-            photos.save(CalendarImage(event = e, url = url, contentType = f.contentType))
-        }
-        return saved.map { PhotoResponse(id = it.id!!, url = it.url, contentType = it.contentType) }
-    }
-
-    @Transactional
     fun complete(user: User, id: Long, observedAt: LocalDateTime?): EventResponse {
         val e = findEventByIdAndUser(id, user)
         e.status = EventStatus.COMPLETED
-        val observedAtProcessed = observedAt?.withSecond(0)?.withNano(0)
-        e.endAt = observedAtProcessed ?: e.startAt.withSecond(0).withNano(0)
+
+        val end = observedAt?.withSecond(0)?.withNano(0)
+            ?: e.endAt?.withSecond(0)?.withNano(0)
+            ?: e.startAt.withSecond(0).withNano(0)
+        e.endAt = end
+
         val images = photos.findAllByEventIdOrderByIdAsc(e.id!!)
         return EventResponse.from(e, images)
     }

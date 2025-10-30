@@ -23,7 +23,9 @@ data class CreateEventRequest(
     val lon: Double? = null,
     val placeName: String? = null,
     val memo: String? = null,
-    val status: EventStatus = EventStatus.PLANNED // COMPLETED는 '기록'
+    val status: EventStatus = EventStatus.PLANNED, // COMPLETED는 '기록'
+    @JsonAlias("addImageUrls", "imageUrls", "photos")
+    val imageUrls: List<String>? = null
 
 )
 
@@ -40,8 +42,9 @@ data class UpdateEventRequest(
     val placeName: String? = null,
     val memo: String? = null,
     val status: EventStatus? = null,
-    @JsonAlias("deleteImageIds", "removePhotos", "removePhotoIds")
-    val removeImageIds: List<Long>? = null
+    val removeImageIds: List<Long>? = null,
+    @JsonAlias("addPhotoUrls", "addImages", "addImageUrls")
+    val addImageUrls: List<String>? = null
 )
 
 data class PhotoResponse(
