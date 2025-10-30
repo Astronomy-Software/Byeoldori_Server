@@ -9,7 +9,6 @@ import jakarta.validation.Valid
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
-import org.springframework.web.multipart.MultipartFile
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -42,14 +41,6 @@ class CalendarController(
         @RequestAttribute("currentUser") user: User
     ): ApiResponse<EventResponse> = ApiResponse.ok(service.get(user, id))
 
-    @GetMapping("/events/list")
-    @Operation(summary = "목록 조회", description = "기간별 목록 조회(주간/기간별 목록 조회), YYYY-MM-DD")
-    fun list(
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) from: LocalDate,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
-        @RequestAttribute("currentUser") user: User
-    ): ApiResponse<List<EventResponse>> = ApiResponse.ok(service.list(user, from, to))
-
     @GetMapping("/events/month")
     @Operation(summary = "월별 요약", description = "한달 계획/기록을 달력에서 점으로 조회")
     fun monthlySummary(
@@ -74,14 +65,6 @@ class CalendarController(
         @PathVariable id: Long,
         @RequestAttribute("currentUser") user: User
     ): ApiResponse<Unit> { service.delete(user, id); return ApiResponse.ok() }
-
-    @PostMapping("/events/{id}/images", consumes = ["multipart/form-data"])
-    @Operation(summary = "사진 업로드")
-    fun uploadPhotos(
-        @PathVariable id: Long,
-        @RequestParam("files") files: List<MultipartFile>,
-        @RequestAttribute("currentUser") user: User
-    ): ApiResponse<List<PhotoResponse>> = ApiResponse.ok(service.uploadPhotos(user, id, files))
 
     @PostMapping("/events/{id}/complete")
     @Operation(summary = "계획 -> 완료 처리", description = "계획(PLANNED) → 완료(COMPLETED). observedAt로 종료시간 갱신 가능 " +
