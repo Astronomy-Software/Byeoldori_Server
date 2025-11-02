@@ -21,6 +21,7 @@ enum class ErrorCode(
     MAX_IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "업로드 가능한 최대 이미지 수를 초과했습니다."),
     OWN_COMMENT_ONLY(HttpStatus.FORBIDDEN, "본인 댓글만 수정할 수 있습니다."),
     COMMENT_CONTENT_EMPTY(HttpStatus.BAD_REQUEST, "내용은 비워둘 수 없습니다."),
+    STAR_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 천체는 존재하지 않습니다."),
 
     // 401 Unauthorized - 인증 실패
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증 정보가 유효하지 않습니다."),

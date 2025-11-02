@@ -9,6 +9,9 @@ import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
 import com.project.byeoldori.community.like.repository.LikeRepository
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
+import com.project.byeoldori.star.service.StarService
+import com.project.byeoldori.star.service.ContentTargetService
+import com.project.byeoldori.star.entity.ContentType
 import com.project.byeoldori.user.entity.User
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.*
@@ -28,7 +31,9 @@ class PostService(
     private val siteRepo: ObservationSiteRepository,
     private val likeRepository: LikeRepository,
     private val educationRatingRepo: EducationRatingRepository,
-    private val storage: StorageService
+    private val storage: StorageService,
+    private val starService: StarService,
+    private val contentTargetService: ContentTargetService,
 ) {
 
     @Value("\${community.home.item-count:20}")
@@ -43,33 +48,52 @@ class PostService(
         when (type) {
             PostType.REVIEW -> {
                 val d = req.review ?: ReviewDto()
-                val site = d.observationSiteId?.let {
-                    siteRepo.findById(it).orElse(null)
-                }
+
+                val site = d.observationSiteId?.let { siteRepo.findById(it).orElse(null) }
+
                 reviewRepo.save(
                     ReviewPost(
                         post = post,
                         observationSite = site,
                         location = d.location,
-                        target = d.target,
+                        targetName = null,
                         equipment = d.equipment,
                         observationDate = d.observationDate,
-                        score = d.score
+                        score = d.score,
+                        star = null
                     )
                 )
+
+                contentTargetService.upsertTargets(
+                    ContentType.REVIEW,
+                    post.id!!,
+                    d.targets?: emptyList(),
+                    adjustStarCounts = true
+                )
             }
+
             PostType.EDUCATION -> {
                 val d = req.education ?: EducationRequestDto()
+
                 eduRepo.save(
                     EducationPost(
                         post = post,
                         difficulty = d.difficulty,
-                        target = d.target,
+                        targetName = null,
                         tags = d.tags,
-                        status = d.status ?: EducationStatus.DRAFT
+                        status = d.status ?: EducationStatus.DRAFT,
+                        star = null
                     )
                 )
+
+                contentTargetService.upsertTargets(
+                    ContentType.EDUCATION,
+                    post.id!!,
+                    d.targets ?: emptyList(),
+                    adjustStarCounts = true
+                )
             }
+
             PostType.FREE -> {
                 freePostRepo.save(FreePost(post = post))
             }
@@ -103,15 +127,20 @@ class PostService(
     }
 
     @Transactional(readOnly = true)
-    fun list(type: PostType, pageable: Pageable, searchBy: PostSearchBy, keyword: String?,
-             user: User? = null): PageResponse<PostSummaryResponse> {
+    fun list(
+        type: PostType,
+        pageable: Pageable,
+        searchBy: PostSearchBy,
+        keyword: String?,
+        user: User? = null
+    ): PageResponse<PostSummaryResponse> {
 
         val postPage = if (keyword.isNullOrBlank()) {
             postRepo.findAllByType(type, pageable)
         } else {
             when (searchBy) {
-                PostSearchBy.TITLE -> postRepo.findByTypeAndTitleContaining(type, keyword, pageable)
-                PostSearchBy.CONTENT -> postRepo.findByTypeAndContentContaining(type, keyword, pageable)
+                PostSearchBy.TITLE    -> postRepo.findByTypeAndTitleContaining(type, keyword, pageable)
+                PostSearchBy.CONTENT  -> postRepo.findByTypeAndContentContaining(type, keyword, pageable)
                 PostSearchBy.NICKNAME -> postRepo.findByTypeAndAuthorNicknameContaining(type, keyword, pageable)
             }
         }
@@ -120,6 +149,31 @@ class PostService(
         return PageImpl(summaryList, postPage.pageable, postPage.totalElements).toPageResponse()
     }
 
+    @Transactional(readOnly = true)
+    fun listAllByStar(
+        type: PostType,
+        starObjectName: String,
+        user: User? = null
+    ): List<PostSummaryResponse> {
+        starService.validateExistAll(listOf(starObjectName))
+
+        val ids: List<Long> = when (type) {
+            PostType.REVIEW -> contentTargetService
+                .findContentIdsByStar(ContentType.REVIEW, starObjectName, Pageable.unpaged())
+                .content
+            PostType.EDUCATION -> contentTargetService
+                .findContentIdsByStar(ContentType.EDUCATION, starObjectName, Pageable.unpaged())
+                .content
+            PostType.FREE -> emptyList()
+        }
+        if (ids.isEmpty()) return emptyList()
+
+        val posts = postRepo.findAllById(ids)
+            .filter { it.type == type }
+            .sortedByDescending { it.createdAt }
+
+        return mapToSummaryResponse(posts, user)
+    }
 
     @Transactional
     fun detail(postId: Long, user: User? = null): PostResponse {
@@ -130,9 +184,33 @@ class PostService(
         val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(postId).map { it.url }
 
         val review = reviewRepo.findById(postId).orElse(null)?.let {
-            ReviewDto(it.location, it.observationSite?.id, it.target, it.equipment, it.observationDate, it.score)
+            val targets: List<String> = contentTargetService
+                .listTargetsOf(ContentType.REVIEW, postId)
+                .sortedBy { t -> t.sortOrder }
+                .map { t -> t.starObjectName ?: t.freeText ?: "" }
+                .filter { it.isNotBlank() }
+
+            ReviewDto(
+                location = it.location,
+                observationSiteId = it.observationSite?.id,
+                targets = targets,
+                equipment = it.equipment,
+                observationDate = it.observationDate,
+                score = it.score
+            )
         }
-        val education = eduRepo.findById(postId).orElse(null)?.let { EducationResponseDto.from(it) }
+        val education = eduRepo.findById(postId).orElse(null)?.let { ep ->
+            val targets = contentTargetService
+                .listTargetsOf(ContentType.EDUCATION, postId)
+                .sortedBy { t -> t.sortOrder }
+                .map { t -> t.starObjectName ?: t.freeText ?: "" }
+                .filter { it.isNotBlank() }
+            EducationResponseDto(
+                difficulty = ep.difficulty,
+                targets = targets, tags = ep.tags, status = ep.status, averageScore = ep.averageScore
+            )
+        }
+
 
         val liked = if (user != null) likeRepository.existsByPostIdAndUserId(postId, user.id) else false
 
@@ -163,12 +241,37 @@ class PostService(
         req.content?.let { p.content = it }
 
         when (p.type) {
-            PostType.REVIEW -> req.review?.let { updateReviewPost(postId, it) }
+            PostType.REVIEW    -> req.review?.let { updateReviewPost(postId, it) }
             PostType.EDUCATION -> req.education?.let { updateEducationPost(postId, it) }
             PostType.FREE -> { }
         }
+
         req.imageUrls?.let { requestedUrls ->
             updatePostImages(p, requestedUrls)
+        }
+
+        when (p.type) {
+            PostType.REVIEW -> {
+                req.review?.let { r ->
+                    contentTargetService.upsertTargets(
+                        ContentType.REVIEW,
+                        postId,
+                        r.targets ?: emptyList(),
+                        adjustStarCounts = true
+                    )
+                }
+            }
+            PostType.EDUCATION -> {
+                req.education?.let { e ->
+                    contentTargetService.upsertTargets(
+                        ContentType.EDUCATION,
+                        postId,
+                        e.targets ?: emptyList(),
+                        adjustStarCounts = true
+                    )
+                }
+            }
+            else -> {}
         }
     }
 
@@ -177,22 +280,37 @@ class PostService(
         val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
         if (p.author.id != user.id) throw ForbiddenException()
 
+        when (p.type) {
+            PostType.REVIEW -> {
+                val stars = contentTargetService
+                    .listTargetsOf(ContentType.REVIEW, postId)
+                    .mapNotNull { it.starObjectName }
+                    .toSet()
+                if (stars.isNotEmpty()) starService.decreseReview(stars.toList())
+                contentTargetService.upsertTargets(ContentType.REVIEW, postId, emptyList(), adjustStarCounts = false)
+            }
+            PostType.EDUCATION -> {
+                val stars = contentTargetService
+                    .listTargetsOf(ContentType.EDUCATION, postId)
+                    .mapNotNull { it.starObjectName }
+                    .toSet()
+                if (stars.isNotEmpty()) starService.decreseEducation(stars.toList())
+                contentTargetService.upsertTargets(ContentType.EDUCATION, postId, emptyList(), adjustStarCounts = false)
+            }
+            else -> {}
+        }
+
         val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(p.id!!)
         val urls = images.map { it.url }
 
-        if (images.isNotEmpty()) {
-            imgRepo.deleteAll(images)
-        }
-
+        if (images.isNotEmpty()) imgRepo.deleteAll(images)
         postRepo.delete(p)
 
         if (urls.isNotEmpty()) {
             TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
                 override fun afterCommit() {
                     urls.forEach { url ->
-                        try {
-                            storage.deleteImageByUrl(url)
-                        } catch (_: Exception) { }
+                        try { storage.deleteImageByUrl(url) } catch (_: Exception) { }
                     }
                 }
             })
@@ -204,7 +322,6 @@ class PostService(
             .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "수정할 리뷰 정보를 찾을 수 없습니다.") }
 
         reviewDto.location?.let { reviewPost.location = it }
-        reviewDto.target?.let { reviewPost.target = it }
         reviewDto.equipment?.let { reviewPost.equipment = it }
         reviewDto.observationDate?.let { reviewPost.observationDate = it }
         reviewDto.score?.let { reviewPost.score = it }
@@ -223,7 +340,6 @@ class PostService(
             .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "수정할 교육 정보를 찾을 수 없습니다.") }
 
         educationDto.difficulty?.let { educationPost.difficulty = it }
-        educationDto.target?.let { educationPost.target = it }
         educationDto.tags?.let { educationPost.tags = it }
         educationDto.status?.let { educationPost.status = it }
     }
@@ -244,13 +360,9 @@ class PostService(
         requestedUrls.forEachIndexed { newOrder, url ->
             val existingImage = existingImageMap[url]
             if (existingImage == null) {
-                // Case 1: 새로 추가된 이미지 -> Add 리스트에 추가
                 imagesToAdd.add(PostImage(post = post, url = url, sortOrder = newOrder))
-            } else {
-                // Case 2: 기존에 있던 이미지 -> 순서(sortOrder)가 바뀌었는지 확인하고 업데이트
-                if (existingImage.sortOrder != newOrder) {
-                    existingImage.sortOrder = newOrder
-                }
+            } else if (existingImage.sortOrder != newOrder) {
+                existingImage.sortOrder = newOrder
             }
         }
         if (imagesToAdd.isNotEmpty()) {
@@ -272,13 +384,13 @@ class PostService(
         return likeRepository.findLikedPostIds(user.id, postIds).toSet()
     }
 
-    private fun CommunityPost.toSummaryResponse(observationSiteId: Long? = null, liked: Boolean = false, score: Double? = 0.0, thumbnailUrl: String? = null
+    private fun CommunityPost.toSummaryResponse(
+        observationSiteId: Long? = null,
+        liked: Boolean = false,
+        score: Double? = 0.0,
+        thumbnailUrl: String? = null
     ): PostSummaryResponse {
-        val summary = if (this.type == PostType.FREE) {
-            this.content.take(30)
-        } else {
-            null
-        }
+        val summary = if (this.type == PostType.FREE) this.content.take(30) else null
 
         return PostSummaryResponse(
             id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
@@ -295,8 +407,7 @@ class PostService(
         if (eduPost.post.author.id == user.id) {
             throw ForbiddenException("자신이 작성한 글에는 평점을 매길 수 없습니다.")
         }
-        val rating = educationRatingRepo.findById(EducationRatingId(postId, user.id))
-            .orElse(null)
+        val rating = educationRatingRepo.findById(EducationRatingId(postId, user.id)).orElse(null)
 
         if (rating != null) {
             rating.score = score
@@ -331,9 +442,7 @@ class PostService(
         val thumbnailsMap = mutableMapOf<Long, String>()
         imgRepo.findByPostIdInOrderByPostIdAscSortOrderAsc(postIds).forEach { img ->
             val pid = img.post.id!!
-            if (!thumbnailsMap.containsKey(pid)) {
-                thumbnailsMap[pid] = img.url
-            }
+            if (!thumbnailsMap.containsKey(pid)) thumbnailsMap[pid] = img.url
         }
 
         return posts.map { post ->

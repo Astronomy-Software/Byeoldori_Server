@@ -12,7 +12,7 @@ import java.time.LocalDateTime
 data class ReviewDto(
     val location: String? = null,
     val observationSiteId: Long? = null,
-    val target: String? = null,
+    val targets: List<String>? = null,
     val equipment: String? = null,
     val observationDate: LocalDate? = null,
     @field:Min(1) @field:Max(5)
@@ -21,22 +21,22 @@ data class ReviewDto(
 
 data class EducationRequestDto(
     val difficulty: EducationDifficulty? = null,
-    val target: String? = null,
+    val targets: List<String>? = null,
     val tags: String? = null,
     val status: EducationStatus? = null // null → DRAFT
 )
 
 data class EducationResponseDto(
     val difficulty: EducationDifficulty? = null,
-    val target: String? = null,
+    val targets: List<String> = emptyList(),
     val tags: String? = null,
     val status: EducationStatus? = null,
     val averageScore: Double = 0.0
 ) {
     companion object {
-        fun from(educationPost: EducationPost) = EducationResponseDto(
+        fun from(educationPost: EducationPost,targets: List<String>) = EducationResponseDto(
             difficulty = educationPost.difficulty,
-            target = educationPost.target,
+            targets = targets,
             tags = educationPost.tags,
             status = educationPost.status,
             averageScore = educationPost.averageScore
