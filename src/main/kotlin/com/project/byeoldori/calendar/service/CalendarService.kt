@@ -268,4 +268,10 @@ class CalendarService(
         return events.findByIdAndUserId(id, user.id)
             .orElseThrow { NotFoundException(ErrorCode.EVENT_NOT_FOUND, ErrorCode.EVENT_NOT_FOUND.message) }
     }
+
+    @Transactional(readOnly = true)
+    fun getObservationCount(user: User): ObservationStatsResponse {
+        val count = events.countByUserIdAndStatus(user.id, EventStatus.COMPLETED)
+        return ObservationStatsResponse(observationCount = count)
+    }
 }

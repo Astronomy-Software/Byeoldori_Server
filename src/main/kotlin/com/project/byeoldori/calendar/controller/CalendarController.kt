@@ -19,7 +19,7 @@ class CalendarController(
     private val service: CalendarService
 ) {
     @PostMapping("/events")
-    @Operation(summary = "계획/기록 작성", description = "status: PLANNED(계획), COMPLETED(완료/기록 작성), CANCELED(계획 취소)")
+    @Operation(summary = "계획/기록 작성", description = "status: PLANNED(계획), COMPLETED(관측 완료/기록 작성), CANCELED(계획 취소)")
     fun create(
         @Valid @RequestBody req: CreateEventRequest,
         @RequestAttribute("currentUser") user: User
@@ -52,7 +52,7 @@ class CalendarController(
     }
 
     @PatchMapping("/events/{id}")
-    @Operation(summary = "계획 및 기록 수정")
+    @Operation(summary = "계획 및 기록 수정", description = "작성한 관측 계획/기록을 수정")
     fun update(
         @PathVariable id: Long,
         @RequestBody req: UpdateEventRequest,
@@ -60,7 +60,7 @@ class CalendarController(
     ): ApiResponse<EventResponse> = ApiResponse.ok(service.update(user, id, req))
 
     @DeleteMapping("/events/{id}")
-    @Operation(summary = "삭제")
+    @Operation(summary = "계획 및 기록 삭제", description = "작성한 관측 계획/기록을 삭제합니다.")
     fun delete(
         @PathVariable id: Long,
         @RequestAttribute("currentUser") user: User
@@ -75,4 +75,10 @@ class CalendarController(
         observedAt: LocalDateTime?,
         @RequestAttribute("currentUser") user: User
     ): ApiResponse<EventResponse> = ApiResponse.ok(service.complete(user, id, observedAt))
+
+    @GetMapping("/events/count")
+    @Operation(summary = "내 관측 횟수", description = "status=COMPLETED 인 관측 완료/기록 횟수 집계")
+    fun observationCount(
+        @RequestAttribute("currentUser") user: User
+    ): ApiResponse<ObservationStatsResponse> = ApiResponse.ok(service.getObservationCount(user))
 }
