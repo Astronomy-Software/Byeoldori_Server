@@ -85,6 +85,10 @@ data class EventResponse(
     }
 }
 
+data class ObservationStatsResponse(
+    val observationCount: Long
+)
+
 data class DaySummary(
     val date: LocalDate,
     val planned: Long = 0,

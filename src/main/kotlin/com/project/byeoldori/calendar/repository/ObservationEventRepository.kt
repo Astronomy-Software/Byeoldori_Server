@@ -1,5 +1,6 @@
 package com.project.byeoldori.calendar.repository
 
+import com.project.byeoldori.calendar.entity.EventStatus
 import com.project.byeoldori.calendar.entity.ObservationEvent
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.LocalDateTime
@@ -27,4 +28,6 @@ interface ObservationEventRepository : JpaRepository<ObservationEvent, Long> {
     fun findAllByUserIdAndStarObjectNameAndStartAtBetweenOrderByStartAtAsc(
         userId: Long, starObjectName: String, from: LocalDateTime, to: LocalDateTime
     ): List<ObservationEvent>
+
+    fun countByUserIdAndStatus(userId: Long, status: EventStatus): Long
 }
