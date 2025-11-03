@@ -17,8 +17,8 @@ data class CreateEventRequest(
     val startAt: LocalDateTime,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     val endAt: LocalDateTime? = null,
-    val targetName: String? = null,
     val observationSiteId: Long? = null,
+    val targets: List<String>? = null,
     val lat: Double? = null,
     val lon: Double? = null,
     val placeName: String? = null,
@@ -35,7 +35,7 @@ data class UpdateEventRequest(
     val startAt: LocalDateTime? = null,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     val endAt: LocalDateTime? = null,
-    val targetName: String? = null,
+    val targets: List<String>? = null,
     val observationSiteId: Long? = null,
     val lat: Double? = null,
     val lon: Double? = null,
@@ -60,7 +60,7 @@ data class EventResponse(
     val startAt: LocalDateTime,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     val endAt: LocalDateTime?,
-    val targetName: String?,
+    val targets: List<String> = emptyList(),
     val observationSiteId: Long?,
     val observationSiteName: String?,
     val lat: Double?, val lon: Double?, val placeName: String?,
@@ -71,11 +71,11 @@ data class EventResponse(
 
 ) {
     companion object {
-        fun from(e: ObservationEvent, images: List<CalendarImage>): EventResponse {
+        fun from(e: ObservationEvent, images: List<CalendarImage>, targets: List<String>): EventResponse {
             return EventResponse(
                 id = e.id!!, title = e.title, startAt = e.startAt, endAt = e.endAt,
-                targetName = e.targetName, lat = e.lat, lon = e.lon, placeName = e.placeName,
-                status = e.status, memo = e.memo,
+                targets = targets, lat = e.lat, lon = e.lon,
+                placeName = e.placeName, status = e.status, memo = e.memo,
                 photos = images.map { PhotoResponse(it.id!!, it.url, it.contentType) },
                 createdAt = e.createdAt, updatedAt = e.updatedAt,
                 observationSiteId = e.observationSite?.id,

@@ -19,4 +19,12 @@ interface ObservationEventRepository : JpaRepository<ObservationEvent, Long> {
         from: LocalDateTime,
         to: LocalDateTime
     ): List<EventStartStatusView>
+
+    fun findAllByUserIdAndStarObjectNameOrderByStartAtAsc(
+        userId: Long, starObjectName: String
+    ): List<ObservationEvent>
+
+    fun findAllByUserIdAndStarObjectNameAndStartAtBetweenOrderByStartAtAsc(
+        userId: Long, starObjectName: String, from: LocalDateTime, to: LocalDateTime
+    ): List<ObservationEvent>
 }
