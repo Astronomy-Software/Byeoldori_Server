@@ -51,24 +51,18 @@ class CalendarService(
             title = req.title,
             startAt = startAtProcessed,
             endAt = if (req.status == EventStatus.COMPLETED) endAtProcessed ?: startAtProcessed else endAtProcessed,
-            targetName = null,
             observationSite = site,
             lat = site?.latitude ?: req.lat,
             lon = site?.longitude ?: req.lon,
             placeName = site?.name ?: req.placeName,
             status = req.status,
             memo = req.memo
-        ).apply {
-            this.star = null
-        }
+        )
 
         val saved = events.save(e)
-        contentTargets.upsertTargets(
-            ContentType.EVENT,
-            saved.id!!,
-            req.targets ?: emptyList(),
-            adjustStarCounts = false
-        )
+
+        contentTargets.upsertTargets(ContentType.EVENT, saved.id!!, req.targets ?: emptyList())
+
         val urls = req.imageUrls.orEmpty()
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -106,7 +100,7 @@ class CalendarService(
             val targets = contentTargets
                 .listTargetsOf(ContentType.EVENT, ev.id!!)
                 .sortedBy { it.sortOrder }
-                .map { it.starObjectName ?: it.freeText ?: "" }
+                .map { it.starObjectName }
                 .filter { it.isNotBlank() }
 
             EventResponse.from(ev, photosMap[ev.id] ?: emptyList(), targets)
@@ -120,7 +114,7 @@ class CalendarService(
         val targets = contentTargets
             .listTargetsOf(ContentType.EVENT, e.id!!)
             .sortedBy { it.sortOrder }
-            .map { it.starObjectName ?: it.freeText ?: "" }
+            .map { it.starObjectName }
             .filter { it.isNotBlank() }
         return EventResponse.from(e, images, targets)
     }
@@ -166,8 +160,7 @@ class CalendarService(
             contentTargets.upsertTargets(
                 ContentType.EVENT,
                 e.id!!,
-                t,
-                adjustStarCounts = false
+                t
             )
         }
 
@@ -199,7 +192,7 @@ class CalendarService(
         val targets = contentTargets
             .listTargetsOf(ContentType.EVENT, e.id!!)
             .sortedBy { it.sortOrder }
-            .map { it.starObjectName ?: it.freeText ?: "" }
+            .map { it.starObjectName }
             .filter { it.isNotBlank() }
 
         return EventResponse.from(e, resultImages, targets)
@@ -208,7 +201,7 @@ class CalendarService(
     @Transactional
     fun delete(user: User, id: Long) {
         val e = findEventByIdAndUser(id, user)
-        contentTargets.upsertTargets(ContentType.EVENT, e.id!!, emptyList(), adjustStarCounts = false)
+        contentTargets.upsertTargets(ContentType.EVENT, e.id!!, emptyList())
 
         val children = photos.findAllByEventIdOrderByIdAsc(e.id!!)
         val urlsToDelete = children.map { it.url }
@@ -237,7 +230,7 @@ class CalendarService(
         val targets = contentTargets
             .listTargetsOf(ContentType.EVENT, e.id!!)
             .sortedBy { it.sortOrder }
-            .map { it.starObjectName ?: it.freeText ?: "" }
+            .map { it.starObjectName }
             .filter { it.isNotBlank() }
 
         return EventResponse.from(e, images, targets)
