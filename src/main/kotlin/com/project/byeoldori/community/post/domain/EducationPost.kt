@@ -2,7 +2,6 @@ package com.project.byeoldori.community.post.domain
 
 import com.project.byeoldori.community.common.domain.EducationDifficulty
 import com.project.byeoldori.community.common.domain.EducationStatus
-import com.project.byeoldori.star.entity.Star
 import jakarta.persistence.*
 import org.hibernate.annotations.OnDelete
 import org.hibernate.annotations.OnDeleteAction
@@ -18,14 +17,7 @@ class EducationPost(
     @JoinColumn(name = "post_id")
     @OnDelete(action = OnDeleteAction.CASCADE)
     var post: CommunityPost,
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "star_object_name", referencedColumnName = "object_name")
-    var star: Star? = null,
-
-    @Column(name = "target_name")
-    var targetName: String? = null,
-
+    
     @Enumerated(EnumType.STRING)
     var difficulty: EducationDifficulty? = null,  // BEGINNER | INTERMEDIATE | ADVANCED
 

@@ -21,13 +21,5 @@ interface ObservationEventRepository : JpaRepository<ObservationEvent, Long> {
         to: LocalDateTime
     ): List<EventStartStatusView>
 
-    fun findAllByUserIdAndStarObjectNameOrderByStartAtAsc(
-        userId: Long, starObjectName: String
-    ): List<ObservationEvent>
-
-    fun findAllByUserIdAndStarObjectNameAndStartAtBetweenOrderByStartAtAsc(
-        userId: Long, starObjectName: String, from: LocalDateTime, to: LocalDateTime
-    ): List<ObservationEvent>
-
     fun countByUserIdAndStatus(userId: Long, status: EventStatus): Long
 }

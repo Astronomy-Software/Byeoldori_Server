@@ -9,7 +9,6 @@ import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
 import com.project.byeoldori.community.like.repository.LikeRepository
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
-import com.project.byeoldori.star.service.StarService
 import com.project.byeoldori.star.service.ContentTargetService
 import com.project.byeoldori.star.entity.ContentType
 import com.project.byeoldori.user.entity.User
@@ -32,7 +31,6 @@ class PostService(
     private val likeRepository: LikeRepository,
     private val educationRatingRepo: EducationRatingRepository,
     private val storage: StorageService,
-    private val starService: StarService,
     private val contentTargetService: ContentTargetService,
 ) {
 
@@ -56,19 +54,16 @@ class PostService(
                         post = post,
                         observationSite = site,
                         location = d.location,
-                        targetName = null,
                         equipment = d.equipment,
                         observationDate = d.observationDate,
-                        score = d.score,
-                        star = null
+                        score = d.score
                     )
                 )
 
                 contentTargetService.upsertTargets(
                     ContentType.REVIEW,
                     post.id!!,
-                    d.targets?: emptyList(),
-                    adjustStarCounts = true
+                    d.targets?: emptyList()
                 )
             }
 
@@ -79,10 +74,8 @@ class PostService(
                     EducationPost(
                         post = post,
                         difficulty = d.difficulty,
-                        targetName = null,
                         tags = d.tags,
                         status = d.status ?: EducationStatus.DRAFT,
-                        star = null
                     )
                 )
 
@@ -90,7 +83,6 @@ class PostService(
                     ContentType.EDUCATION,
                     post.id!!,
                     d.targets ?: emptyList(),
-                    adjustStarCounts = true
                 )
             }
 
@@ -155,7 +147,6 @@ class PostService(
         starObjectName: String,
         user: User? = null
     ): List<PostSummaryResponse> {
-        starService.validateExistAll(listOf(starObjectName))
 
         val ids: List<Long> = when (type) {
             PostType.REVIEW -> contentTargetService
@@ -187,7 +178,7 @@ class PostService(
             val targets: List<String> = contentTargetService
                 .listTargetsOf(ContentType.REVIEW, postId)
                 .sortedBy { t -> t.sortOrder }
-                .map { t -> t.starObjectName ?: t.freeText ?: "" }
+                .map { t -> t.starObjectName }
                 .filter { it.isNotBlank() }
 
             ReviewDto(
@@ -203,7 +194,7 @@ class PostService(
             val targets = contentTargetService
                 .listTargetsOf(ContentType.EDUCATION, postId)
                 .sortedBy { t -> t.sortOrder }
-                .map { t -> t.starObjectName ?: t.freeText ?: "" }
+                .map { t -> t.starObjectName }
                 .filter { it.isNotBlank() }
             EducationResponseDto(
                 difficulty = ep.difficulty,
@@ -256,8 +247,7 @@ class PostService(
                     contentTargetService.upsertTargets(
                         ContentType.REVIEW,
                         postId,
-                        r.targets ?: emptyList(),
-                        adjustStarCounts = true
+                        r.targets ?: emptyList()
                     )
                 }
             }
@@ -266,8 +256,7 @@ class PostService(
                     contentTargetService.upsertTargets(
                         ContentType.EDUCATION,
                         postId,
-                        e.targets ?: emptyList(),
-                        adjustStarCounts = true
+                        e.targets ?: emptyList()
                     )
                 }
             }
@@ -282,20 +271,10 @@ class PostService(
 
         when (p.type) {
             PostType.REVIEW -> {
-                val stars = contentTargetService
-                    .listTargetsOf(ContentType.REVIEW, postId)
-                    .mapNotNull { it.starObjectName }
-                    .toSet()
-                if (stars.isNotEmpty()) starService.decreseReview(stars.toList())
-                contentTargetService.upsertTargets(ContentType.REVIEW, postId, emptyList(), adjustStarCounts = false)
+                contentTargetService.upsertTargets(ContentType.REVIEW, postId, emptyList())
             }
             PostType.EDUCATION -> {
-                val stars = contentTargetService
-                    .listTargetsOf(ContentType.EDUCATION, postId)
-                    .mapNotNull { it.starObjectName }
-                    .toSet()
-                if (stars.isNotEmpty()) starService.decreseEducation(stars.toList())
-                contentTargetService.upsertTargets(ContentType.EDUCATION, postId, emptyList(), adjustStarCounts = false)
+                contentTargetService.upsertTargets(ContentType.EDUCATION, postId, emptyList())
             }
             else -> {}
         }

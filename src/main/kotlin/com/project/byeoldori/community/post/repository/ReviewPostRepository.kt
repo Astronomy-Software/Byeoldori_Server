@@ -1,8 +1,6 @@
 package com.project.byeoldori.community.post.repository
 
 import com.project.byeoldori.community.post.domain.ReviewPost
-import org.springframework.data.domain.Sort
-import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -15,7 +13,4 @@ interface ReviewPostRepository : JpaRepository<ReviewPost, Long> {
 
     @Query("SELECT r.id, r.observationSite.id FROM ReviewPost r WHERE r.id IN :postIds AND r.observationSite.id IS NOT NULL")
     fun findObservationSiteIdsByPostIds(@Param("postIds") postIds: List<Long>): List<Array<Any>>
-
-    @EntityGraph(attributePaths = ["post"])
-    fun findAllByStarObjectName(starObjectName: String, sort: Sort): List<ReviewPost>
 }
