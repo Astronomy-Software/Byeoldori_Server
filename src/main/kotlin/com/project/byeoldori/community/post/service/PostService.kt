@@ -379,19 +379,33 @@ class PostService(
     }
 
     @Transactional
-    fun rateEducationPost(postId: Long, user: User, score: Int) {
+    fun evaluateEducationPost(postId: Long, user: User, req: EvaluateEducationRequest) {
         val eduPost = eduRepo.findById(postId)
             .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "평가할 교육 게시글을 찾을 수 없습니다.") }
 
         if (eduPost.post.author.id == user.id) {
             throw ForbiddenException("자신이 작성한 글에는 평점을 매길 수 없습니다.")
         }
-        val rating = educationRatingRepo.findById(EducationRatingId(postId, user.id)).orElse(null)
 
-        if (rating != null) {
-            rating.score = score
+        fun clean(s: String?): String? = s?.trim()?.takeIf { it.isNotBlank() }
+
+        val key = EducationRatingId(postId, user.id)
+        val existing = educationRatingRepo.findById(key).orElse(null)
+
+        if (existing != null) {
+            existing.score = req.score
+            existing.pros = clean(req.pros)
+            existing.cons = clean(req.cons)
         } else {
-            educationRatingRepo.save(EducationRating(educationPost = eduPost, user = user, score = score))
+            educationRatingRepo.save(
+                EducationRating(
+                    educationPost = eduPost,
+                    user = user,
+                    score = req.score,
+                    pros = clean(req.pros),
+                    cons = clean(req.cons)
+                )
+            )
             eduPost.ratingCount++
         }
 

@@ -63,10 +63,12 @@ data class PostUpdateRequest(
     val imageUrls: List<String>? = null
 )
 
-data class RateEducationRequest(
-    @field:Min(value = 1, message = "평점은 1 이상이어야 합니다.")
-    @field:Max(value = 5, message = "평점은 5 이하여야 합니다.")
-    val score: Int
+data class EvaluateEducationRequest(
+    @field:Min(value = 1, message = "평점은 1점 이상이어야 합니다.")
+    @field:Max(value = 5, message = "평점은 5점 이하여야 합니다.")
+    val score: Int,
+    val pros: String? = null,
+    val cons: String? = null
 )
 
 data class PostSummaryResponse( // 홈 화면에서 조회

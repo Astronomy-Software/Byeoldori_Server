@@ -87,15 +87,15 @@ class PostController(
         @RequestAttribute("currentUser") user: User
     ): LikeToggleResponse = likeService.toggleAndCount(postId, user)
 
-    @PostMapping("/posts/{postId}/rate")
-    @Operation(summary = "교육 게시글 평점 매기기", description = "교육 게시글에 1~5점 사이의 평점을 매깁니다.")
-    fun rateEducation(
+    @PostMapping("/posts/{postId}/evaluations")
+    @Operation(summary = "교육 콘텐츠 평가", description = "별점(1~5) + 좋았던 점 + 개선해야 할 점을 등록/수정합니다.")
+    fun evaluateEducation(
         @PathVariable postId: Long,
-        @Valid @RequestBody req: RateEducationRequest,
+        @Valid @RequestBody req: EvaluateEducationRequest,
         @RequestAttribute("currentUser") user: User
     ): ResponseEntity<ApiResponse<Unit>> {
-        postService.rateEducationPost(postId, user, req.score)
-        return ResponseEntity.ok(ApiResponse.ok("평점이 등록되었습니다."))
+        postService.evaluateEducationPost(postId, user, req)
+        return ResponseEntity.ok(ApiResponse.ok("평가가 등록 되었습니다."))
     }
 
     @GetMapping("/home/reviews")
