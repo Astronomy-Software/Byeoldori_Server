@@ -19,6 +19,12 @@ class EducationRating(
     @JoinColumn(name = "user_id")
     val user: User,
 
+    @Column(columnDefinition = "text")
+    var pros: String? = null,
+
+    @Column(columnDefinition = "text")
+    var cons: String? = null,
+
     @Column(nullable = false)
     var score: Int,
 

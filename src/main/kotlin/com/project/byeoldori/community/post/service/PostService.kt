@@ -22,6 +22,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 @Transactional
 class PostService(
+    @Value("\${storage.public-base-url}") private val publicBaseUrl: String,
     private val postRepo: CommunityPostRepository,
     private val reviewRepo: ReviewPostRepository,
     private val eduRepo: EducationPostRepository,
@@ -321,6 +322,23 @@ class PostService(
         educationDto.difficulty?.let { educationPost.difficulty = it }
         educationDto.tags?.let { educationPost.tags = it }
         educationDto.status?.let { educationPost.status = it }
+
+        // JSON URL 세팅 (null/미포함이면 무시)
+        educationDto.contentUrl?.let { raw ->
+            val url = raw.trim()
+            validateJsonUrl(url)
+            educationPost.contentUrl = url
+        }
+    }
+
+    private fun validateJsonUrl(url: String) {
+        if (!url.startsWith(publicBaseUrl.trimEnd('/'))) {
+            throw InvalidInputException("허용되지 않은 파일 URL입니다.")
+        }
+
+        if (!url.lowercase().endsWith(".json")) {
+            throw InvalidInputException("JSON(.json) 파일만 연결할 수 있습니다.")
+        }
     }
 
     private fun updatePostImages(post: CommunityPost, requestedUrls: List<String>) {
@@ -379,19 +397,33 @@ class PostService(
     }
 
     @Transactional
-    fun rateEducationPost(postId: Long, user: User, score: Int) {
+    fun evaluateEducationPost(postId: Long, user: User, req: EvaluateEducationRequest) {
         val eduPost = eduRepo.findById(postId)
             .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "평가할 교육 게시글을 찾을 수 없습니다.") }
 
         if (eduPost.post.author.id == user.id) {
             throw ForbiddenException("자신이 작성한 글에는 평점을 매길 수 없습니다.")
         }
-        val rating = educationRatingRepo.findById(EducationRatingId(postId, user.id)).orElse(null)
 
-        if (rating != null) {
-            rating.score = score
+        fun clean(s: String?): String? = s?.trim()?.takeIf { it.isNotBlank() }
+
+        val key = EducationRatingId(postId, user.id)
+        val existing = educationRatingRepo.findById(key).orElse(null)
+
+        if (existing != null) {
+            existing.score = req.score
+            existing.pros = clean(req.pros)
+            existing.cons = clean(req.cons)
         } else {
-            educationRatingRepo.save(EducationRating(educationPost = eduPost, user = user, score = score))
+            educationRatingRepo.save(
+                EducationRating(
+                    educationPost = eduPost,
+                    user = user,
+                    score = req.score,
+                    pros = clean(req.pros),
+                    cons = clean(req.cons)
+                )
+            )
             eduPost.ratingCount++
         }
 

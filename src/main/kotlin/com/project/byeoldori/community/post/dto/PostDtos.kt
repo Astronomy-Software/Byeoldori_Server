@@ -23,7 +23,8 @@ data class EducationRequestDto(
     val difficulty: EducationDifficulty? = null,
     val targets: List<String>? = null,
     val tags: String? = null,
-    val status: EducationStatus? = null // null → DRAFT
+    val status: EducationStatus? = null, // null → DRAFT
+    val contentUrl: String? = null // 생성시 입력하지 않음
 )
 
 data class EducationResponseDto(
@@ -31,7 +32,8 @@ data class EducationResponseDto(
     val targets: List<String> = emptyList(),
     val tags: String? = null,
     val status: EducationStatus? = null,
-    val averageScore: Double = 0.0
+    val averageScore: Double = 0.0,
+    val contentUrl: String? = null
 ) {
     companion object {
         fun from(educationPost: EducationPost,targets: List<String>) = EducationResponseDto(
@@ -39,7 +41,8 @@ data class EducationResponseDto(
             targets = targets,
             tags = educationPost.tags,
             status = educationPost.status,
-            averageScore = educationPost.averageScore
+            averageScore = educationPost.averageScore,
+            contentUrl = educationPost.contentUrl
         )
     }
 }
@@ -63,10 +66,12 @@ data class PostUpdateRequest(
     val imageUrls: List<String>? = null
 )
 
-data class RateEducationRequest(
-    @field:Min(value = 1, message = "평점은 1 이상이어야 합니다.")
-    @field:Max(value = 5, message = "평점은 5 이하여야 합니다.")
-    val score: Int
+data class EvaluateEducationRequest(
+    @field:Min(value = 1, message = "평점은 1점 이상이어야 합니다.")
+    @field:Max(value = 5, message = "평점은 5점 이하여야 합니다.")
+    val score: Int,
+    val pros: String? = null,
+    val cons: String? = null
 )
 
 data class PostSummaryResponse( // 홈 화면에서 조회

@@ -27,6 +27,9 @@ class EducationPost(
     @Column(nullable = false)
     var status: EducationStatus = EducationStatus.DRAFT,
 
+    @Column(name = "content_url", length = 1024)
+    var contentUrl: String? = null,
+
     @Column(name = "average_score", nullable = false)
     var averageScore: Double = 0.0, // 평균 평점
 
