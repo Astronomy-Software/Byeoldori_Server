@@ -214,20 +214,10 @@ class PostService(
         val liked = if (user != null) likeRepository.existsByPostIdAndUserId(postId, user.id) else false
 
         return PostResponse(
-            id = p.id!!,
-            type = p.type,
-            title = p.title,
-            content = p.content,
-            authorId = p.author.id,
-            images = images,
-            review = review,
-            education = education,
-            viewCount = p.viewCount,
-            likeCount = p.likeCount,
-            commentCount = p.commentCount,
-            createdAt = p.createdAt,
-            updatedAt = p.updatedAt,
-            liked = liked
+            id = p.id!!, type = p.type, title = p.title, content = p.content, authorId = p.author.id,
+            authorNickname = p.author.nickname, authorProfileImageUrl = p.author.profileImageUrl, images = images,
+            review = review, education = education, viewCount = p.viewCount, likeCount = p.likeCount,
+            commentCount = p.commentCount, createdAt = p.createdAt, updatedAt = p.updatedAt, liked = liked
         )
     }
 
@@ -332,7 +322,7 @@ class PostService(
 
         // JSON URL 세팅 (null/미포함이면 무시)
         if (educationDto.contentUrl != null) {
-            val raw = educationDto.contentUrl!!.trim()
+            val raw = educationDto.contentUrl.trim()
             if (raw.isEmpty()) {
                 // 비우고 싶을 때 빈 문자열로 오면 null 처리
                 educationPost.contentUrl = null
@@ -403,6 +393,7 @@ class PostService(
 
         return PostSummaryResponse(
             id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
+            authorProfileImageUrl = this.author.profileImageUrl,
             observationSiteId = observationSiteId, contentSummary = summary, viewCount = this.viewCount, likeCount = this.likeCount,
             commentCount = this.commentCount, createdAt = this.createdAt, liked = liked, score = score, thumbnailUrl = thumbnailUrl
         )
