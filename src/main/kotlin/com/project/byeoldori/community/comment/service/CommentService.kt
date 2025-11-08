@@ -111,15 +111,9 @@ class CommentService(
     }
 
     private fun Comment.toResponse(isLiked: Boolean) = CommentResponse(
-        id = this.id!!,
-        authorId = this.author.id,
-        authorNickname = this.author.nickname,
-        content = if (this.deleted) "삭제된 댓글입니다." else this.content,
-        createdAt = this.createdAt,
-        parentId = this.parent?.id,
-        depth = this.depth,
-        deleted = this.deleted,
-        likeCount = this.likeCount,
-        liked = isLiked
+        id = this.id!!, authorId = this.author.id, authorNickname = this.author.nickname,
+        authorProfileImageUrl = this.author.profileImageUrl, content = if (this.deleted) "삭제된 댓글입니다." else this.content,
+        createdAt = this.createdAt, parentId = this.parent?.id, depth = this.depth, deleted = this.deleted,
+        likeCount = this.likeCount, liked = isLiked
     )
 }
