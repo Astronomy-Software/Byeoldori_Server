@@ -116,4 +116,40 @@ class LocalStorageService(
             return null
         }
     }
+
+    override fun storeJson(file: MultipartFile): String {
+        if (file.isEmpty) throw InvalidInputException("빈 파일입니다.")
+        val ct = (file.contentType ?: "").lowercase()
+        if (ct != "application/json") {
+            throw InvalidInputException("application/JSON만 업로드할 수 있습니다.")
+        }
+
+        val today = LocalDate.now()
+        val dir = Paths.get(
+            baseDir, "json",
+            today.year.toString(),
+            "%02d".format(today.monthValue),
+            "%02d".format(today.dayOfMonth)
+        )
+        Files.createDirectories(dir)
+
+        val filename = UUID.randomUUID().toString().replace("-", "") + ".json"
+        val target = dir.resolve(filename)
+
+        file.inputStream.use {
+            Files.copy(it, target, StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        // 공개 URL 생성
+        val url = listOf(
+            publicBaseUrl.trimEnd('/'),
+            "json",
+            today.year.toString(),
+            "%02d".format(today.monthValue),
+            "%02d".format(today.dayOfMonth),
+            filename
+        ).joinToString("/")
+
+        return url
+    }
 }

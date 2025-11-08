@@ -23,7 +23,8 @@ data class EducationRequestDto(
     val difficulty: EducationDifficulty? = null,
     val targets: List<String>? = null,
     val tags: String? = null,
-    val status: EducationStatus? = null // null → DRAFT
+    val status: EducationStatus? = null, // null → DRAFT
+    val contentUrl: String? = null // 생성시 입력하지 않음
 )
 
 data class EducationResponseDto(
@@ -31,7 +32,8 @@ data class EducationResponseDto(
     val targets: List<String> = emptyList(),
     val tags: String? = null,
     val status: EducationStatus? = null,
-    val averageScore: Double = 0.0
+    val averageScore: Double = 0.0,
+    val contentUrl: String? = null
 ) {
     companion object {
         fun from(educationPost: EducationPost,targets: List<String>) = EducationResponseDto(
@@ -39,7 +41,8 @@ data class EducationResponseDto(
             targets = targets,
             tags = educationPost.tags,
             status = educationPost.status,
-            averageScore = educationPost.averageScore
+            averageScore = educationPost.averageScore,
+            contentUrl = educationPost.contentUrl
         )
     }
 }

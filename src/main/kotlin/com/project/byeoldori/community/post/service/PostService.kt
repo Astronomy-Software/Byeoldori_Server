@@ -22,6 +22,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 @Transactional
 class PostService(
+    @Value("\${storage.public-base-url}") private val publicBaseUrl: String,
     private val postRepo: CommunityPostRepository,
     private val reviewRepo: ReviewPostRepository,
     private val eduRepo: EducationPostRepository,
@@ -321,6 +322,23 @@ class PostService(
         educationDto.difficulty?.let { educationPost.difficulty = it }
         educationDto.tags?.let { educationPost.tags = it }
         educationDto.status?.let { educationPost.status = it }
+
+        // JSON URL 세팅 (null/미포함이면 무시)
+        educationDto.contentUrl?.let { raw ->
+            val url = raw.trim()
+            validateJsonUrl(url)
+            educationPost.contentUrl = url
+        }
+    }
+
+    private fun validateJsonUrl(url: String) {
+        if (!url.startsWith(publicBaseUrl.trimEnd('/'))) {
+            throw InvalidInputException("허용되지 않은 파일 URL입니다.")
+        }
+
+        if (!url.lowercase().endsWith(".json")) {
+            throw InvalidInputException("JSON(.json) 파일만 연결할 수 있습니다.")
+        }
     }
 
     private fun updatePostImages(post: CommunityPost, requestedUrls: List<String>) {
