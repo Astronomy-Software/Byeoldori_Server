@@ -71,14 +71,21 @@ class PostService(
             PostType.EDUCATION -> {
                 val d = req.education ?: EducationRequestDto()
 
-                eduRepo.save(
-                    EducationPost(
-                        post = post,
-                        difficulty = d.difficulty,
-                        tags = d.tags,
-                        status = d.status ?: EducationStatus.DRAFT,
-                    )
+                val ep = EducationPost(
+                    post = post,
+                    difficulty = d.difficulty,
+                    tags = d.tags,
+                    status = d.status ?: EducationStatus.DRAFT,
                 )
+
+                d.contentUrl?.trim()?.let { url ->
+                    if (url.isNotEmpty()) {
+                        validateJsonUrl(url)
+                        ep.contentUrl = url
+                    }
+                }
+
+                eduRepo.save(ep)
 
                 contentTargetService.upsertTargets(
                     ContentType.EDUCATION,
@@ -199,7 +206,7 @@ class PostService(
                 .filter { it.isNotBlank() }
             EducationResponseDto(
                 difficulty = ep.difficulty,
-                targets = targets, tags = ep.tags, status = ep.status, averageScore = ep.averageScore
+                targets = targets, tags = ep.tags, status = ep.status, averageScore = ep.averageScore, contentUrl = ep.contentUrl
             )
         }
 
@@ -324,10 +331,15 @@ class PostService(
         educationDto.status?.let { educationPost.status = it }
 
         // JSON URL 세팅 (null/미포함이면 무시)
-        educationDto.contentUrl?.let { raw ->
-            val url = raw.trim()
-            validateJsonUrl(url)
-            educationPost.contentUrl = url
+        if (educationDto.contentUrl != null) {
+            val raw = educationDto.contentUrl!!.trim()
+            if (raw.isEmpty()) {
+                // 비우고 싶을 때 빈 문자열로 오면 null 처리
+                educationPost.contentUrl = null
+            } else {
+                validateJsonUrl(raw)
+                educationPost.contentUrl = raw
+            }
         }
     }
 
