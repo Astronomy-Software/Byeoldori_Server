@@ -8,6 +8,7 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.multipart.MultipartFile
 
 @RestController
 @RequestMapping("/users")
@@ -27,6 +28,13 @@ class UserController(
     fun update(@Valid @RequestBody req: UserUpdateRequestDto): ResponseEntity<ApiResponse<Unit>> {
         userService.updateMe(req)
         return ResponseEntity.ok(ApiResponse.ok("수정 완료"))
+    }
+
+    @PostMapping("/me/profile-image", consumes = ["multipart/form-data"])
+    @Operation(summary = "프로필 이미지 업로드/교체")
+    fun uploadProfileImage(@RequestPart("image") image: MultipartFile): ApiResponse<ProfileImageUploadResponse> {
+        val url = userService.updateProfileImage(image)
+        return ApiResponse.ok(ProfileImageUploadResponse(url))
     }
 
     @PostMapping("/logout")

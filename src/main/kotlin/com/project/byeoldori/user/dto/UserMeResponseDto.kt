@@ -16,6 +16,7 @@ data class UserMeResponseDto(
     val roles: Set<String>,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime,
+    val profileImageUrl: String? = null,
     val onboardingRequired: Boolean
 ) {
     companion object {
@@ -35,6 +36,7 @@ data class UserMeResponseDto(
                 roles = u.roles.toSet(),
                 createdAt = u.createdAt,
                 updatedAt = u.updatedAt,
+                profileImageUrl = u.profileImageUrl,
                 onboardingRequired = onboardingNeeded
             )
         }
