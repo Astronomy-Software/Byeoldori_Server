@@ -7,3 +7,7 @@ data class UserUpdateRequestDto(
     val birthdate: LocalDate? = null,
     val phone: String? = null
 )
+
+data class ProfileImageUploadResponse(
+    val profileImageUrl: String
+)

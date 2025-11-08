@@ -2,6 +2,7 @@ package com.project.byeoldori.user.service
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier
 import com.project.byeoldori.common.exception.*
+import com.project.byeoldori.community.common.service.StorageService
 import com.project.byeoldori.security.CurrentUserResolver
 import com.project.byeoldori.security.JwtUtil
 import com.project.byeoldori.user.dto.*
@@ -13,13 +14,19 @@ import com.project.byeoldori.user.utils.PasswordValidator
 import com.project.byeoldori.user.utils.PhoneNormalizer
 import com.project.byeoldori.user.utils.TemporaryPassword
 import com.project.byeoldori.user.utils.TokenHasher
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.multipart.MultipartFile
 import java.time.LocalDateTime
 
 @Service
 class UserService(
+    @Value("\${storage.public-base-url}") private val publicBaseUrl: String,
+    private val currentUser: CurrentUserResolver,
+    private val storage: StorageService,
     private val userRepository: UserRepository,
     private val emailTokenRepo: EmailVerificationTokenRepository,
     private val refreshTokenRepo: RefreshTokenRepository,
@@ -29,6 +36,8 @@ class UserService(
     private val currentUserResolver: CurrentUserResolver,
     private val googleVerifier: GoogleIdTokenVerifier
 ) {
+
+    private val log = LoggerFactory.getLogger(UserService::class.java)
 
     @Transactional
     fun signup(req: SignupRequestDto) {
@@ -183,6 +192,27 @@ class UserService(
         }
         req.birthdate?.let { user.birthdate = it }
         req.phone?.let { user.phone = it }
+    }
+
+    @Transactional
+    fun updateProfileImage(image: MultipartFile): String {
+        if (image.isEmpty) throw InvalidInputException("이미지 파일이 비어있습니다.")
+
+        val user = currentUser.getUser()
+        val oldUrl = user.profileImageUrl
+
+        // 저장 (형식/용량/픽셀 검증은 StorageService 구현이 처리)
+        val newUrl = storage.storeImage(image)
+        user.profileImageUrl = newUrl
+
+        if (!oldUrl.isNullOrBlank() && oldUrl.startsWith(publicBaseUrl.trimEnd('/'))) {
+            try {
+                storage.deleteImageByUrl(oldUrl)
+            } catch (e: Exception) {
+                log.warn("이전 프로필 이미지 삭제 실패: {}", e.message)
+            }
+        }
+        return newUrl
     }
 
     @Transactional
