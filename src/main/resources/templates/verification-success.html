@@ -4,34 +4,72 @@
     <meta charset="UTF-8">
     <title>이메일 인증 완료</title>
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f4f4f4;
         }
-        .container {
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 20px;
+            padding: 52px 48px;
             text-align: center;
-            padding: 40px;
-            border-radius: 8px;
-            background-color: white;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            max-width: 420px;
+            width: 90%;
+            color: #fff;
+        }
+        .icon {
+            font-size: 56px;
+            margin-bottom: 20px;
         }
         h2 {
-            color: #4CAF50; /* Green color */
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            letter-spacing: -0.3px;
         }
         p {
-            color: #333;
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        .counter {
+            margin-top: 28px;
+            font-size: 13px;
+            color: rgba(255,255,255,0.4);
+        }
+        .counter span {
+            color: #a78bfa;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
-<div class="container">
-    <h2>✅ 이메일 인증이 완료되었습니다.</h2>
-    <p>앱으로 돌아가서 계속 진행해주세요.</p>
+<div class="card">
+    <div class="icon">✨</div>
+    <h2>이메일 인증 완료</h2>
+    <p>별도리에 오신 걸 환영합니다.</p>
+    <p>앱으로 돌아가서 로그인해주세요.</p>
+    <p class="counter"><span id="sec">3</span>초 후 자동으로 창이 닫힙니다.</p>
 </div>
+<script>
+    var sec = 3;
+    var el = document.getElementById('sec');
+    var timer = setInterval(function () {
+        sec--;
+        el.textContent = sec;
+        if (sec <= 0) {
+            clearInterval(timer);
+            window.close();
+        }
+    }, 1000);
+</script>
 </body>
 </html>
