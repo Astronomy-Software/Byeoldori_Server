@@ -59,9 +59,16 @@ jobs:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           image: ${{ env.IMAGE }}:${{ github.sha }}
-          add_cloudsql_instances: ${{ env.CLOUD_SQL_INSTANCE }}
-          service_account: byeoldori-cloudrun@byeoldori-server.iam.gserviceaccount.com
-          flags: --min-instances=1 --max-instances=5 --memory=1Gi --cpu=1 --timeout=300 --vpc-connector=byeoldori-connector --vpc-egress=private-ranges-only
+          flags: >-
+            --min-instances=1
+            --max-instances=5
+            --memory=1Gi
+            --cpu=1
+            --timeout=300
+            --vpc-connector=byeoldori-connector
+            --vpc-egress=private-ranges-only
+            --service-account=byeoldori-cloudrun@byeoldori-server.iam.gserviceaccount.com
+            --add-cloudsql-instances=${{ env.CLOUD_SQL_INSTANCE }}
           env_vars: |
             SERVER_PORT=8080
             JPA_DDL_AUTO=update
