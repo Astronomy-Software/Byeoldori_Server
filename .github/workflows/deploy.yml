@@ -53,16 +53,20 @@ jobs:
       - name: Verify files exist in Git
         run: |
           set -e
-          git cat-file -e HEAD:docker-compose.prod.yml || (echo "::error::missing in repo: docker-compose.prod.yml" && exit 1)
-          git cat-file -e HEAD:ops/nginx.conf         || (echo "::error::missing in repo: ops/nginx.conf" && exit 1)
+          git cat-file -e HEAD:docker-compose.prod.yml          || (echo "::error::missing: docker-compose.prod.yml" && exit 1)
+          git cat-file -e HEAD:ops/nginx.conf                   || (echo "::error::missing: ops/nginx.conf" && exit 1)
+          git cat-file -e HEAD:ops/stellarium/Dockerfile        || (echo "::error::missing: ops/stellarium/Dockerfile" && exit 1)
+          git cat-file -e HEAD:ops/stellarium/entrypoint.sh     || (echo "::error::missing: ops/stellarium/entrypoint.sh" && exit 1)
+          git cat-file -e HEAD:ops/stellarium/config.ini        || (echo "::error::missing: ops/stellarium/config.ini" && exit 1)
 
       - name: Bundle deploy artifacts
         run: |
           set -e
-          test -f docker-compose.prod.yml
-          test -f ops/nginx.conf
-          tar -czf deploy_bundle.tar.gz docker-compose.prod.yml ops/nginx.conf
-          tar -tzf deploy_bundle.tar.gz 
+          tar -czf deploy_bundle.tar.gz \
+            docker-compose.prod.yml \
+            ops/nginx.conf \
+            ops/stellarium/
+          tar -tzf deploy_bundle.tar.gz
 
       - name: Upload bundle
         uses: appleboy/scp-action@v0.1.7
@@ -83,22 +87,26 @@ jobs:
           script_stop: true
           script: |
             set -Eeuo pipefail
-            mkdir -p ~/byeoldori/ops
+            mkdir -p ~/byeoldori/ops/stellarium
             cd ~/byeoldori
-            
+
             tar -xzf deploy_bundle.tar.gz
             rm -f deploy_bundle.tar.gz
-            
+
             docker compose -f docker-compose.prod.yml config -q
-            docker compose -f docker-compose.prod.yml pull
+
+            # stellarium은 로컬 빌드, 나머지는 pull
+            docker compose -f docker-compose.prod.yml build stellarium
+            docker compose -f docker-compose.prod.yml pull --ignore-buildable
+
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            
+
             if docker compose -f docker-compose.prod.yml ps nginx >/dev/null 2>&1; then
               sleep 2
               docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
               docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload || \
               docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
             fi
-            
+
             docker image prune -af --filter "until=24h" || true
             docker compose -f docker-compose.prod.yml ps
