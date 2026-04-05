@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.*
 class PostController(
     private val service: PostService,
     private val likeService: LikeService,
-    private val postService: PostService
 ) {
     @PostMapping("/{type}/posts")
     @Operation(summary = "게시글 생성")

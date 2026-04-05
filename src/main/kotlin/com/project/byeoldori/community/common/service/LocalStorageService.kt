@@ -1,6 +1,7 @@
 package com.project.byeoldori.community.common.service
 
 import com.project.byeoldori.common.exception.*
+import com.project.byeoldori.community.common.util.ImageMagicDetector
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -35,7 +36,7 @@ class LocalStorageService(
         }
 
         // 2) 매직넘버 스니핑(간단 검증)
-        val sniff = sniffMagic(file)
+        val sniff = ImageMagicDetector.detect(file)
         if (sniff == null || sniff !in setOf("jpeg", "png", "webp", "gif")) {
             throw InvalidInputException("유효한 이미지 파일이 아닙니다.")
         }
@@ -92,28 +93,6 @@ class LocalStorageService(
         } catch (e: Exception) {
             // Path 조작 실패, 권한 문제 등
             logger.error("파일 삭제 중 오류 발생 (URL: {}): {}", url, e.message)
-        }
-    }
-
-    private fun sniffMagic(file: MultipartFile): String? {
-        file.inputStream.use { input ->
-            val header = ByteArray(16)
-            val read = input.read(header, 0, header.size)
-            if (read < 12) return null
-            // JPEG: FF D8
-            if (header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte()) return "jpeg"
-            // PNG: 89 50 4E 47 0D 0A 1A 0A
-            if (header[0] == 0x89.toByte() && header[1] == 0x50.toByte() &&
-                header[2] == 0x4E.toByte() && header[3] == 0x47.toByte() &&
-                header[4] == 0x0D.toByte() && header[5] == 0x0A.toByte() &&
-                header[6] == 0x1A.toByte() && header[7] == 0x0A.toByte()) return "png"
-            // GIF: "GIF87a" or "GIF89a"
-            if (header.copyOfRange(0,6).toString(Charsets.US_ASCII).startsWith("GIF8")) return "gif"
-            // WEBP: "RIFF"...."WEBP"
-            val riff = String(header.copyOfRange(0,4), Charsets.US_ASCII)
-            val webp = String(header.copyOfRange(8,12), Charsets.US_ASCII)
-            if (riff == "RIFF" && webp == "WEBP") return "webp"
-            return null
         }
     }
 

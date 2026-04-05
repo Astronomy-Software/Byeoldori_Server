@@ -283,15 +283,7 @@ class PostService(
         if (images.isNotEmpty()) imgRepo.deleteAll(images)
         postRepo.delete(p)
 
-        if (urls.isNotEmpty()) {
-            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
-                override fun afterCommit() {
-                    urls.forEach { url ->
-                        try { storage.deleteImageByUrl(url) } catch (_: Exception) { }
-                    }
-                }
-            })
-        }
+        deleteImagesAfterCommit(urls)
     }
 
     private fun updateReviewPost(postId: Long, reviewDto: ReviewDto) {
@@ -367,15 +359,18 @@ class PostService(
         if (imagesToAdd.isNotEmpty()) {
             imgRepo.saveAll(imagesToAdd)
         }
-        if (urlsToDelete.isNotEmpty()) {
-            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
-                override fun afterCommit() {
-                    urlsToDelete.forEach { url ->
-                        try { storage.deleteImageByUrl(url) } catch (_: Exception) { }
-                    }
+        deleteImagesAfterCommit(urlsToDelete)
+    }
+
+    private fun deleteImagesAfterCommit(urls: List<String>) {
+        if (urls.isEmpty()) return
+        TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+            override fun afterCommit() {
+                urls.forEach { url ->
+                    try { storage.deleteImageByUrl(url) } catch (_: Exception) { }
                 }
-            })
-        }
+            }
+        })
     }
 
     private fun likedSet(user: User?, postIds: List<Long>): Set<Long> {
@@ -439,14 +434,14 @@ class PostService(
         val postIds = posts.mapNotNull { it.id }
         val likedPostIds = likedSet(user, postIds)
 
-        val postType = posts.first().type
-        val scoresMap = when (postType) {
-            PostType.REVIEW -> reviewRepo.findAllById(postIds).associate { it.id to (it.score?.toDouble() ?: 0.0) }
-            PostType.EDUCATION -> eduRepo.findAllById(postIds).associate { it.id to it.averageScore }
-            else -> emptyMap()
-        }
+        val hasReview = posts.any { it.type == PostType.REVIEW }
+        val hasEducation = posts.any { it.type == PostType.EDUCATION }
 
-        val observationSiteIdMap = if (postType == PostType.REVIEW) {
+        val scoresMap = mutableMapOf<Long, Double>()
+        if (hasReview) reviewRepo.findAllById(postIds).forEach { scoresMap[it.id] = it.score?.toDouble() ?: 0.0 }
+        if (hasEducation) eduRepo.findAllById(postIds).forEach { scoresMap[it.id] = it.averageScore }
+
+        val observationSiteIdMap = if (hasReview) {
             reviewRepo.findObservationSiteIdsByPostIds(postIds)
                 .associate { (postId, siteId) -> (postId as Long) to (siteId as Long) }
         } else {

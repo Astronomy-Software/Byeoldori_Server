@@ -21,7 +21,8 @@ import java.nio.charset.StandardCharsets
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    @org.springframework.beans.factory.annotation.Value("\${cors.allowed-origins}") private val allowedOrigins: List<String>
 ){
     // 로그인 없이 접근해야만 하는 최소한의 경로
     companion object {
@@ -77,8 +78,7 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration().apply {
-            allowedOrigins = listOf("http://localhost:8080", "http://43.202.235.27",
-                "http://byeoldori-app.duckdns.org", "https://byeoldori-app.duckdns.org") // 실제 운영시엔 origin을 제한
+            allowedOrigins = allowedOrigins
             allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true
