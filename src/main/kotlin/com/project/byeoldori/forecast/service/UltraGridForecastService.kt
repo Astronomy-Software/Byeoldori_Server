@@ -120,7 +120,7 @@ class UltraGridForecastService(
                         ultraTMEFGridMap[tmef] = grid
                     }
                 }
-                println("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
+                logger.info("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
             }
     }
 
@@ -229,19 +229,16 @@ class UltraGridForecastService(
         return combined
     }
 
-    /**
-     * (디버깅용) 중앙 셀 출력
-     */
     private fun printCenterUltraGridCell(grid: MutableList<MutableList<UltraGridCell>>) {
+        if (!logger.isDebugEnabled) return
         val numRows = grid.size
         val numCols = if (numRows > 0) grid[0].size else 0
         if (numRows == 0 || numCols == 0) {
-            println("격자 데이터가 비어있습니다.")
+            logger.debug("격자 데이터가 비어있습니다.")
             return
         }
         val centerRow = (numRows - 1) / 2
         val centerCol = (numCols - 1) / 2
-        val centerCell = grid[centerRow][centerCol]
-        println("중앙 셀 (x: $centerCol , y: $centerRow): $centerCell")
+        logger.debug("중앙 셀 (x: $centerCol , y: $centerRow): ${grid[centerRow][centerCol]}")
     }
 }

@@ -101,20 +101,25 @@ class MidCombinedForecastService(
         combinedForecastRepository.deleteByCreatedAtBefore(cutoffTime)
     }
 
+    @Transactional(readOnly = true)
     fun findAll(): List<MidCombinedForecastDTO> {
-        val forecasts = combinedForecastRepository.findAll()
-        return forecasts.map { forecast ->
-            MidCombinedForecastDTO(
-                tmFc = forecast.tmFc,
-                tmEf = forecast.tmEf,
-                doRegId = forecast.doRegId,
-                siRegId = forecast.siRegId,
-                sky = forecast.sky,
-                pre = forecast.pre,
-                rnSt = forecast.rnSt,
-                min = forecast.min,
-                max = forecast.max
-            )
-        }
+        return combinedForecastRepository.findAll().map { toDto(it) }
     }
+
+    @Transactional(readOnly = true)
+    fun findBySiRegId(siRegId: String): List<MidCombinedForecastDTO> {
+        return combinedForecastRepository.findBySiRegId(siRegId).map { toDto(it) }
+    }
+
+    private fun toDto(forecast: MidCombinedForecast) = MidCombinedForecastDTO(
+        tmFc = forecast.tmFc,
+        tmEf = forecast.tmEf,
+        doRegId = forecast.doRegId,
+        siRegId = forecast.siRegId,
+        sky = forecast.sky,
+        pre = forecast.pre,
+        rnSt = forecast.rnSt,
+        min = forecast.min,
+        max = forecast.max
+    )
 }

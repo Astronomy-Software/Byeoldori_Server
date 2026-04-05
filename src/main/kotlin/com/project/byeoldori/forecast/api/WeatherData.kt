@@ -31,20 +31,6 @@ class WeatherData(
             .bodyToMono(String::class.java)
     }
 
-//    // 초단기 격자 예보조회
-//    fun fetchUltraShortForecast(tmfc: String, tmef: String, vars: String): Mono<String> {
-//        return weatherApiClient.get()
-//            .uri { builder ->
-//                builder.path("/cgi-bin/url/nph-dfs_vsrt_grd")
-//                    .queryParam("tmfc", tmfc)
-//                    .queryParam("tmef", tmef)
-//                    .queryParam("vars", vars)
-//                    .queryParam("authKey", weatherApiKey)
-//                    .build()
-//            }
-//            .retrieve()
-//            .bodyToMono(String::class.java)
-//    }
     fun fetchUltraShortForecast(tmfc: String, tmef: String, vars: String): Mono<String> {
         return weatherApiClient.get()
             .uri { builder ->
@@ -101,7 +87,6 @@ class WeatherData(
 
     // 중기 육상 예보 조회
     fun fetchMidLandForecast(): Mono<String> {
-        print(weatherApiKey)
         return weatherApiClient.get()
             .uri { builder ->
                 builder.path("/url/fct_afs_wl.php")
@@ -110,6 +95,9 @@ class WeatherData(
             }
             .retrieve()
             .bodyToMono(String::class.java)
+            .doOnSubscribe { logger.info("중기 육상 예보 API 호출 시작") }
+            .doOnSuccess { logger.info("중기 육상 예보 API 호출 성공") }
+            .doOnError { logger.error("중기 육상 예보 API 호출 실패", it) }
     }
 
     // 중기 기온 예보 조회
@@ -122,5 +110,8 @@ class WeatherData(
             }
             .retrieve()
             .bodyToMono(String::class.java)
+            .doOnSubscribe { logger.info("중기 기온 예보 API 호출 시작") }
+            .doOnSuccess { logger.info("중기 기온 예보 API 호출 성공") }
+            .doOnError { logger.error("중기 기온 예보 API 호출 실패", it) }
     }
 }

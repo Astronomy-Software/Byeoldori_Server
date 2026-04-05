@@ -32,8 +32,8 @@ class ForeCastService(
         val ultraForecast: List<UltraForecastResponseDTO> = ultraGridForecastService.getAllUltraTMEFDataForCell(x, y)
         val shortForecast: List<ShortForecastResponseDTO> = shortGridForecastService.getAllShortTMEFDataForCell(x, y)
 
-        // 3) 중기 예보 필터링
-        val midCombinedForecast = midCombinedForecastService.findAll().filter { it.siRegId == siRegId }
+        // 3) 중기 예보 조회 (siRegId 기준으로 DB에서 직접 조회)
+        val midCombinedForecast = midCombinedForecastService.findBySiRegId(siRegId)
 
         // 4) 광공해 점수
         val lightScore = lightPollution.getLightPollutionScore(latitude, longitude)

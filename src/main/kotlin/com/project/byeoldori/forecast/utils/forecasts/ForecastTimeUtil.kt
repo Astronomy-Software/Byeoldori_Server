@@ -32,7 +32,6 @@ object ForecastTimeUtil {
 
     fun getTMFCTimeForShort(): String {
         val current = LocalDateTime.now()
-        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
 
         // 패턴 시간(2,5,8,11,14,17,20,23)
         val patternHours = setOf(2, 5, 8, 11, 14, 17, 20, 23)
@@ -96,8 +95,6 @@ object ForecastTimeUtil {
             temp = temp.plusHours(1)
         }
 
-        // 5) 포맷팅 (yyyyMMddHHmm)
-        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
         return result.map { it.format(formatter) }
     }
 }

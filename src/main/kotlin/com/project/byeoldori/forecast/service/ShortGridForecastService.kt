@@ -4,6 +4,7 @@ import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
 import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
@@ -49,6 +50,7 @@ class ShortGridForecastService(
     private val shortTMEFGridMap = mutableMapOf<String, MutableList<MutableList<ShortGridCell>>>()
     // ReadWriteLock을 사용해 읽기와 쓰기를 분리
     private val shortReadWriteLock = ReentrantReadWriteLock()
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     /**
      * (1) 단일 tmef에 대한 단기예보 격자 데이터 가져오기
@@ -146,7 +148,7 @@ class ShortGridForecastService(
                         shortTMEFGridMap[tmef] = grid
                     }
                 }
-                println("모든 short tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
+                logger.info("모든 short tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
             }
     }
 
@@ -257,27 +259,24 @@ class ShortGridForecastService(
         return combined
     }
 
-    /**
-     * (디버깅용) 중앙 셀 출력
-     */
     private fun printCenterShortGridCell(grid: MutableList<MutableList<ShortGridCell>>) {
+        if (!logger.isDebugEnabled) return
         val numRows = grid.size
         val numCols = if (numRows > 0) grid[0].size else 0
         if (numRows == 0 || numCols == 0) {
-            println("격자 데이터가 비어있습니다.")
+            logger.debug("격자 데이터가 비어있습니다.")
             return
         }
         val centerRow = (numRows - 1) / 2
         val centerCol = (numCols - 1) / 2
-        val centerCell = grid[centerRow][centerCol]
-        println("중앙 셀 (x: $centerCol , y: $centerRow): $centerCell")
+        logger.debug("중앙 셀 (x: $centerCol , y: $centerRow): ${grid[centerRow][centerCol]}")
     }
 
     /**
      * Iterable 버전의 zip 헬퍼 함수
      * 여러 Mono의 결과를 List로 결합한 후 combinator 함수를 통해 최종 결과를 생성합니다.
      */
-    fun <T, R> zipMonos(
+    private fun <T, R> zipMonos(
         monos: Iterable<Mono<T>>,
         combinator: (List<T>) -> R
     ): Mono<R> {
