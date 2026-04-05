@@ -61,16 +61,3 @@ fun latLonToGrid(lat: Double, lon: Double): Pair<Int, Int> {
     return Pair(gridX, gridY)
 }
 
-fun main() {
-    try {
-        val (x, y) = latLonToGrid(37.5, 127.0) // 테스트용 위경도
-        println("격자 좌표 (x, y): ($x, $y)")
-    } catch (e: IllegalArgumentException) {
-        println("오류: ${e.message}")
-    }
-    val (x1 , y1) = latLonToGrid(36.6256271, 127.4541687)
-    println("격자 좌표 (x , y): ($x1, $y1)")
-
-    val (x2 , y2 ) = latLonToGrid(37.56844167320551, 126.98164676467968)
-    println("격자 좌표 (x , y): ($x2, $y2)")
-}

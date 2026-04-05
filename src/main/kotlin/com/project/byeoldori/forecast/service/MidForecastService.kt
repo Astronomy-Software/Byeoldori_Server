@@ -60,6 +60,7 @@ class MidForecastService(
         return savedList.map { it.toResponseDTO() }
     }
 
+    @Transactional(readOnly = true)
     fun findAll(): List<MidForecastResponseDTO> {
         return midForecastRepository.findAll()
             .map { it.toResponseDTO() }
@@ -71,6 +72,7 @@ class MidForecastService(
         midForecastRepository.deleteByCreatedAtBefore(cutoffTime)
     }
 
+    @Transactional(readOnly = true)
     fun findAllEntity(): List<MidForecast> {
         return midForecastRepository.findAll()
     }

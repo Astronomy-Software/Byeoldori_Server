@@ -1,16 +1,16 @@
 package com.project.byeoldori.forecast.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
-    import com.project.byeoldori.forecast.api.WeatherData
-    import com.project.byeoldori.forecast.dto.MidTempForecastResponseDTO
-    import com.project.byeoldori.forecast.entity.MidTempForecast
-    import com.project.byeoldori.forecast.utils.forecasts.MidTempForecastParser
-    import com.project.byeoldori.forecast.repository.MidTempForecastRepository
-    import org.slf4j.LoggerFactory
-    import org.springframework.stereotype.Service
-    import org.springframework.transaction.annotation.Transactional
-    import reactor.core.publisher.Mono
-    import java.time.LocalDateTime
+import com.project.byeoldori.forecast.api.WeatherData
+import com.project.byeoldori.forecast.dto.MidTempForecastResponseDTO
+import com.project.byeoldori.forecast.entity.MidTempForecast
+import com.project.byeoldori.forecast.utils.forecasts.MidTempForecastParser
+import com.project.byeoldori.forecast.repository.MidTempForecastRepository
+import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import reactor.core.publisher.Mono
+import java.time.LocalDateTime
 
 @Service
 class MidTempForecastService(
@@ -57,6 +57,7 @@ class MidTempForecastService(
         return savedList.map { it.toResponseDTO() }
     }
 
+    @Transactional(readOnly = true)
     fun findAll(): List<MidTempForecastResponseDTO> {
         return midTempForecastRepository.findAll()
             .map { it.toResponseDTO() }
@@ -70,6 +71,7 @@ class MidTempForecastService(
         logger.info("24시간 지난 중기 기온 예보 $deletedCount 건 삭제 완료")
     }
 
+    @Transactional(readOnly = true)
     fun findAllEntity(): List<MidTempForecast> {
         return midTempForecastRepository.findAll()
     }

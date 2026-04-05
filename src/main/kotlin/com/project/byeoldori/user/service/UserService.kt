@@ -120,7 +120,6 @@ class UserService(
         stored.expiresAt = jwt.extractExpiration(newRefresh)
         stored.rotatedAt = LocalDateTime.now()
 
-        val zone = this.zone
         return AuthResponseDto.of(
             newAccess, newRefresh,
             jwt.extractExpiration(newAccess).atZone(zone).toInstant(),
@@ -301,7 +300,6 @@ class UserService(
         }
 
         user.lastLoginAt = LocalDateTime.now()
-        val zone = this.zone
         return AuthResponseDto.of(
             access, refresh,
             jwt.extractExpiration(access).atZone(zone).toInstant(),
