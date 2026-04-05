@@ -25,7 +25,7 @@ import java.time.LocalDateTime
 @Service
 class UserService(
     @Value("\${storage.public-base-url}") private val publicBaseUrl: String,
-    private val currentUser: CurrentUserResolver,
+    private val currentUserResolver: CurrentUserResolver,
     private val storage: StorageService,
     private val userRepository: UserRepository,
     private val emailTokenRepo: EmailVerificationTokenRepository,
@@ -33,11 +33,11 @@ class UserService(
     private val passwordEncoder: PasswordEncoder,
     private val jwt: JwtUtil,
     private val emailService: EmailService,
-    private val currentUserResolver: CurrentUserResolver,
     private val googleVerifier: GoogleIdTokenVerifier
 ) {
 
     private val log = LoggerFactory.getLogger(UserService::class.java)
+    private val zone = java.time.ZoneId.systemDefault()
 
     @Transactional
     fun signup(req: SignupRequestDto) {
@@ -120,7 +120,7 @@ class UserService(
         stored.expiresAt = jwt.extractExpiration(newRefresh)
         stored.rotatedAt = LocalDateTime.now()
 
-        val zone = java.time.ZoneId.systemDefault()
+        val zone = this.zone
         return AuthResponseDto.of(
             newAccess, newRefresh,
             jwt.extractExpiration(newAccess).atZone(zone).toInstant(),
@@ -198,7 +198,7 @@ class UserService(
     fun updateProfileImage(image: MultipartFile): String {
         if (image.isEmpty) throw InvalidInputException("이미지 파일이 비어있습니다.")
 
-        val user = currentUser.getUser()
+        val user = currentUserResolver.getUser()
         val oldUrl = user.profileImageUrl
 
         // 저장 (형식/용량/픽셀 검증은 StorageService 구현이 처리)
@@ -301,7 +301,7 @@ class UserService(
         }
 
         user.lastLoginAt = LocalDateTime.now()
-        val zone = java.time.ZoneId.systemDefault()
+        val zone = this.zone
         return AuthResponseDto.of(
             access, refresh,
             jwt.extractExpiration(access).atZone(zone).toInstant(),

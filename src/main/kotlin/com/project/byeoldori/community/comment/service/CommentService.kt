@@ -69,7 +69,7 @@ class CommentService(
     @Transactional
     fun delete(postId: Long, commentId: Long, requester: User) {
         val c = commentRepo.findById(commentId).orElseThrow { NotFoundException(ErrorCode.COMMENT_NOT_FOUND) }
-        if (c.post.id != postId) throw InvalidInputException("댓글이 해당 게시글에 속하지 않습니다.")
+        validateCommentBelongsToPost(c, postId)
         if (c.author.id != requester.id) throw ForbiddenException("본인 댓글만 삭제할 수 있습니다.")
         if (!c.deleted) {
             c.deleted = true
@@ -86,9 +86,7 @@ class CommentService(
             NotFoundException(ErrorCode.COMMENT_NOT_FOUND)
         }
 
-        if (comment.post.id != postId) {
-            throw InvalidInputException(ErrorCode.INVALID_COMMENT_FOR_POST.message)
-        }
+        validateCommentBelongsToPost(comment, postId)
 
         if (comment.deleted) {
             throw NotFoundException(ErrorCode.COMMENT_NOT_FOUND)
@@ -108,6 +106,10 @@ class CommentService(
 
         val isLiked = commentLikeRepo.existsByCommentIdAndUserId(comment.id!!, requester.id)
         return comment.toResponse(isLiked)
+    }
+
+    private fun validateCommentBelongsToPost(comment: Comment, postId: Long) {
+        if (comment.post.id != postId) throw InvalidInputException(ErrorCode.INVALID_COMMENT_FOR_POST.message)
     }
 
     private fun Comment.toResponse(isLiked: Boolean) = CommentResponse(

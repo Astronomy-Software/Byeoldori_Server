@@ -111,12 +111,7 @@ class CalendarService(
     fun get(user: User, id: Long): EventResponse {
         val e = findEventByIdAndUser(id, user)
         val images = photos.findAllByEventIdOrderByIdAsc(e.id!!)
-        val targets = contentTargets
-            .listTargetsOf(ContentType.EVENT, e.id!!)
-            .sortedBy { it.sortOrder }
-            .map { it.starObjectName }
-            .filter { it.isNotBlank() }
-        return EventResponse.from(e, images, targets)
+        return EventResponse.from(e, images, getTargetNames(e.id!!))
     }
 
     @Transactional
@@ -189,13 +184,7 @@ class CalendarService(
         }
 
         val resultImages = photos.findAllByEventIdOrderByIdAsc(e.id!!)
-        val targets = contentTargets
-            .listTargetsOf(ContentType.EVENT, e.id!!)
-            .sortedBy { it.sortOrder }
-            .map { it.starObjectName }
-            .filter { it.isNotBlank() }
-
-        return EventResponse.from(e, resultImages, targets)
+        return EventResponse.from(e, resultImages, getTargetNames(e.id!!))
     }
 
     @Transactional
@@ -227,13 +216,7 @@ class CalendarService(
         e.endAt = end
 
         val images = photos.findAllByEventIdOrderByIdAsc(e.id!!)
-        val targets = contentTargets
-            .listTargetsOf(ContentType.EVENT, e.id!!)
-            .sortedBy { it.sortOrder }
-            .map { it.starObjectName }
-            .filter { it.isNotBlank() }
-
-        return EventResponse.from(e, images, targets)
+        return EventResponse.from(e, images, getTargetNames(e.id!!))
     }
 
     @Transactional(readOnly = true)
@@ -256,6 +239,12 @@ class CalendarService(
         }
         return map.values.sortedBy { it.date }
     }
+
+    private fun getTargetNames(eventId: Long): List<String> =
+        contentTargets.listTargetsOf(ContentType.EVENT, eventId)
+            .sortedBy { it.sortOrder }
+            .map { it.starObjectName }
+            .filter { it.isNotBlank() }
 
     private fun findEventByIdAndUser(id: Long, user: User): ObservationEvent {
         return events.findByIdAndUserId(id, user.id)
