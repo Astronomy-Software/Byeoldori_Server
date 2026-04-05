@@ -12,7 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
 class ByeoldoriApplication
 
 fun main(args: Array<String>) {
-	val dotenv = Dotenv.load() // 환경변수 자동설정
+	val dotenv = Dotenv.configure().ignoreIfMissing().load()
 	dotenv.entries().forEach { entry ->
 		System.setProperty(entry.key, entry.value)
 	}
