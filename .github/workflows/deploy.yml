@@ -6,30 +6,40 @@ on:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
-  workflow_dispatch: {}   # ← 필요 시 수동 실행
+  workflow_dispatch: {}
 
 concurrency:
   group: deploy-backend-main
   cancel-in-progress: true
 
+env:
+  PROJECT_ID: byeoldori-server
+  REGION: asia-northeast3
+  REGISTRY: asia-northeast3-docker.pkg.dev
+  IMAGE: asia-northeast3-docker.pkg.dev/byeoldori-server/byeoldori-repo/server
+  SERVICE_NAME: byeoldori-server
+  CLOUD_SQL_INSTANCE: byeoldori-server:asia-northeast3:byeoldori-mysql
+
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      id-token: write
+
     steps:
       - uses: actions/checkout@v4
 
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -38,75 +48,36 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/astronomy-software/byeoldori-server:latest
-            ghcr.io/astronomy-software/byeoldori-server:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Verify files exist in Git
-        run: |
-          set -e
-          git cat-file -e HEAD:docker-compose.prod.yml          || (echo "::error::missing: docker-compose.prod.yml" && exit 1)
-          git cat-file -e HEAD:ops/nginx.conf                   || (echo "::error::missing: ops/nginx.conf" && exit 1)
-          git cat-file -e HEAD:ops/stellarium/Dockerfile        || (echo "::error::missing: ops/stellarium/Dockerfile" && exit 1)
-          git cat-file -e HEAD:ops/stellarium/entrypoint.sh     || (echo "::error::missing: ops/stellarium/entrypoint.sh" && exit 1)
-          git cat-file -e HEAD:ops/stellarium/config.ini        || (echo "::error::missing: ops/stellarium/config.ini" && exit 1)
-
-      - name: Bundle deploy artifacts
-        run: |
-          set -e
-          tar -czf deploy_bundle.tar.gz \
-            docker-compose.prod.yml \
-            ops/nginx.conf \
-            ops/stellarium/
-          tar -tzf deploy_bundle.tar.gz
-
-      - name: Upload bundle
-        uses: appleboy/scp-action@v0.1.7
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: ./deploy_bundle.tar.gz
-          target: ~/byeoldori
-          overwrite: true
-
-      - name: Deploy remotely
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -Eeuo pipefail
-            mkdir -p ~/byeoldori/ops/stellarium
-            cd ~/byeoldori
-
-            tar -xzf deploy_bundle.tar.gz
-            rm -f deploy_bundle.tar.gz
-
-            docker compose -f docker-compose.prod.yml config -q
-
-            # stellarium은 로컬 빌드, 나머지는 pull
-            docker compose -f docker-compose.prod.yml build stellarium
-            docker compose -f docker-compose.prod.yml pull --ignore-buildable
-
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-            if docker compose -f docker-compose.prod.yml ps nginx >/dev/null 2>&1; then
-              sleep 2
-              docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
-              docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload || \
-              docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
-            fi
-
-            docker image prune -af --filter "until=24h" || true
-            docker compose -f docker-compose.prod.yml ps
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE }}:${{ github.sha }}
+          add_cloudsql_instances: ${{ env.CLOUD_SQL_INSTANCE }}
+          service_account: byeoldori-cloudrun@byeoldori-server.iam.gserviceaccount.com
+          flags: --min-instances=1 --max-instances=5 --memory=1Gi --cpu=1 --timeout=300 --vpc-connector=byeoldori-connector --vpc-egress=private-ranges-only
+          env_vars: |
+            SERVER_PORT=8080
+            JPA_DDL_AUTO=update
+            SPRING_REDIS_HOST=${{ secrets.REDIS_HOST }}
+            SPRING_REDIS_PORT=6379
+          secrets: |
+            SPRING_DATASOURCE_URL=SPRING_DATASOURCE_URL:latest
+            SPRING_DATASOURCE_USERNAME=SPRING_DATASOURCE_USERNAME:latest
+            SPRING_DATASOURCE_PASSWORD=SPRING_DATASOURCE_PASSWORD:latest
+            JWT_SECRET=JWT_SECRET:latest
+            WEATHER_API_KEY=WEATHER_API_KEY:latest
+            MAIL_USERNAME=MAIL_USERNAME:latest
+            MAIL_PASSWORD=MAIL_PASSWORD:latest
+            GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest
+            GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest
+            APP_HOST_URL=APP_HOST_URL:latest
+            PUBLIC_BASE_URL=PUBLIC_BASE_URL:latest
+            STORAGE_TYPE=STORAGE_TYPE:latest
+            GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest
