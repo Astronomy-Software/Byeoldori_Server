@@ -56,6 +56,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
     implementation("com.google.cloud.sql:mysql-socket-factory-connector-j-8:1.19.1")
     implementation("com.google.cloud:google-cloud-storage:2.43.1")
+    implementation("com.google.protobuf:protobuf-java:3.25.5")
     annotationProcessor("org.projectlombok:lombok")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
