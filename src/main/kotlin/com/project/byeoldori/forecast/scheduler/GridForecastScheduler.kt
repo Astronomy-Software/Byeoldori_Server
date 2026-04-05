@@ -79,14 +79,14 @@ class GridForecastScheduler(
         midForecastService.deleteOldForecasts()
     }
 
-    // 매 정각마다 24시간 지난 중기 기온 예보 삭제
-    @Scheduled(cron = "0 30 6,18 * * *", zone = "Asia/Seoul")
+    // 06:30 / 18:30마다 24시간 지난 중기 기온 예보 삭제
+    @Scheduled(cron = "0 31 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidTempForecasts() {
         logger.info("24시간 지난 중기 기온 데이터 삭제 시작")
         midTempForecastService.deleteOldForecasts()
     }
 
-    // 매 정각마다 24시간 지난 중기 통합 예보 삭제
+    // 06:35 / 18:35마다 24시간 지난 중기 통합 예보 삭제
     @Scheduled(cron = "0 35 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidCombinedForecasts() {
         logger.info("24시간 지난 중기 병합 예보 삭제 시작")

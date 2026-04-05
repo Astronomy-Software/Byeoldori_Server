@@ -4,7 +4,6 @@ import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.service.UserService
 import io.swagger.v3.oas.annotations.Operation
-import jakarta.servlet.http.HttpSession
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -12,8 +11,7 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/auth")
 class AuthController(
-    private val userService: UserService,
-    private val session: HttpSession
+    private val userService: UserService
 ) {
 
     @PostMapping("/signup")
@@ -60,7 +58,6 @@ class AuthController(
     }
     @Operation(summary = "구글 ID 토큰 로그인", description = "앱에서 받은 Google ID Token을 검증하고 Access/Refresh 토큰을 발급합니다.")
     @PostMapping("/google")
-    @ResponseBody
     fun loginWithGoogle(@RequestBody req: GoogleLoginRequest): ResponseEntity<ApiResponse<AuthResponseDto>> {
         val tokens = userService.loginWithGoogleIdToken(req.idToken)
         return ResponseEntity.ok(ApiResponse.ok(tokens))

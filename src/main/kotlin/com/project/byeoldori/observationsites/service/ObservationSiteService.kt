@@ -27,14 +27,17 @@ class ObservationSiteService(
     }
 
     // 모든 관측지 조회
+    @Transactional(readOnly = true)
     fun getAllSites(): List<ObservationSite> =
         observationSiteRepository.findAll()
 
     // 관측지 검색
+    @Transactional(readOnly = true)
     fun searchByName(keyword: String): List<ObservationSite> =
         observationSiteRepository.findByNameContaining(keyword)
 
     // 상세 정보 조회 메서드
+    @Transactional(readOnly = true)
     fun getSiteDetailById(id: Long): ObservationSiteDetailDto {
         val site = observationSiteRepository.findById(id)
             .orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND) }
@@ -68,12 +71,11 @@ class ObservationSiteService(
 
     // 관측지 삭제
     @Transactional
-    fun deleteSiteById(id: Long): Boolean {
+    fun deleteSiteById(id: Long) {
         if (!observationSiteRepository.existsById(id)) {
             throw NotFoundException(ErrorCode.SITE_NOT_FOUND)
         }
         userSavedSiteRepository.deleteAllBySite_Id(id)
         observationSiteRepository.deleteById(id)
-        return true
     }
 }

@@ -2,6 +2,7 @@ package com.project.byeoldori.observationsites.init
 
 import com.project.byeoldori.observationsites.entity.ObservationSite
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
+import org.slf4j.LoggerFactory
 import org.springframework.boot.CommandLineRunner
 import org.springframework.stereotype.Component
 
@@ -9,6 +10,8 @@ import org.springframework.stereotype.Component
 class ObservationSiteSeeder(
     private val siteRepository: ObservationSiteRepository
 ) : CommandLineRunner {
+
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     override fun run(vararg args: String?) {
         val sampleSites = listOf(
@@ -35,6 +38,6 @@ class ObservationSiteSeeder(
 
         siteRepository.saveAll(newSites)
 
-        println("새로 삽입된 관측지 수: ${newSites.size}")
+        logger.info("새로 삽입된 관측지 수: ${newSites.size}")
     }
 }
