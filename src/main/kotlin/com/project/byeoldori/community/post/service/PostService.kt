@@ -438,8 +438,8 @@ class PostService(
         val hasEducation = posts.any { it.type == PostType.EDUCATION }
 
         val scoresMap = mutableMapOf<Long, Double>()
-        if (hasReview) reviewRepo.findAllById(postIds).forEach { scoresMap[it.id] = it.score?.toDouble() ?: 0.0 }
-        if (hasEducation) eduRepo.findAllById(postIds).forEach { scoresMap[it.id] = it.averageScore }
+        if (hasReview) reviewRepo.findAllById(postIds).forEach { scoresMap[it.id!!] = it.score?.toDouble() ?: 0.0 }
+        if (hasEducation) eduRepo.findAllById(postIds).forEach { scoresMap[it.id!!] = it.averageScore }
 
         val observationSiteIdMap = if (hasReview) {
             reviewRepo.findObservationSiteIdsByPostIds(postIds)

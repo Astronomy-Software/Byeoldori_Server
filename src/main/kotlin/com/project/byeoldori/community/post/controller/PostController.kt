@@ -93,7 +93,7 @@ class PostController(
         @Valid @RequestBody req: EvaluateEducationRequest,
         @RequestAttribute("currentUser") user: User
     ): ResponseEntity<ApiResponse<Unit>> {
-        postService.evaluateEducationPost(postId, user, req)
+        service.evaluateEducationPost(postId, user, req)
         return ResponseEntity.ok(ApiResponse.ok("평가가 등록 되었습니다."))
     }
 
