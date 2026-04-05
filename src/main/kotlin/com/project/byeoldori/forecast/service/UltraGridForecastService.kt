@@ -4,6 +4,7 @@ import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.UltraForecastResponseDTO
 import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -37,6 +38,7 @@ class UltraGridForecastService(
      * tmef -> 2차원 GridCell 매핑
      * 여러 tmef에 대한 격자를 저장해둠
      */
+    private val logger = LoggerFactory.getLogger(this::class.java)
     private val ultraTMEFGridMap = mutableMapOf<String, MutableList<MutableList<UltraGridCell>>>()
     // 전역에 락 객체 정의 (업데이트 시에만 사용)
     private val ultraReadWriteLock = ReentrantReadWriteLock()
