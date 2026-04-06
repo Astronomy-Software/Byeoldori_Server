@@ -248,6 +248,21 @@ POST /auth/find-email
 
 ---
 
+## 2.8 FCM 토큰 관리 (로그인 필요)
+
+```
+POST   /fcm/token    # 디바이스 토큰 등록
+DELETE /fcm/token    # 디바이스 토큰 삭제 (로그아웃 시 호출)
+```
+
+**Request Body**
+
+```json
+{ "token": "Firebase FCM 디바이스 토큰", "deviceType": "android" }
+```
+
+---
+
 ## 3. 유저 (User)
 
 > 모든 API에 `Authorization` 헤더가 필요합니다.
@@ -883,6 +898,37 @@ GET /weather/ForecastData?lat=37.5665&lon=126.9780
 | `shortForecastResponse` | 단기 예보 (3시간 단위) |
 | `midCombinedForecastDTO` | 중기 예보 |
 | `suitability` | 관측 적합도 점수 (0~100) |
+
+---
+
+### 8.2 날씨 예보 요약
+
+```
+GET /weather/summary?lat=37.5665&lon=126.9780
+```
+
+현재 관측 적합도, 하늘 상태, 기온, 다음 관측 적합 시각을 요약 반환합니다.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "data": {
+    "suitability": 82,
+    "sky": "맑음",
+    "temperature": 14,
+    "nextGoodTime": "202604062100"
+  }
+}
+```
+
+| 필드 | 설명 |
+|---|---|
+| `suitability` | 현재 관측 적합도 (0~100) |
+| `sky` | 현재 하늘 상태 (맑음/구름조금/구름많음/흐림) |
+| `temperature` | 현재 기온 (°C) |
+| `nextGoodTime` | 적합도 70 이상인 다음 시각 (yyyyMMddHHmm), 없으면 null |
 
 ---
 

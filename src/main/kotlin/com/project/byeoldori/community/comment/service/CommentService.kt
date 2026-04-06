@@ -7,6 +7,7 @@ import com.project.byeoldori.community.comment.repository.CommentRepository
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.community.like.repository.CommentLikeRepository
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
+import com.project.byeoldori.notification.service.NotificationService
 import com.project.byeoldori.user.entity.User
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -17,7 +18,8 @@ import org.springframework.transaction.annotation.Transactional
 class CommentService(
     private val postRepo: CommunityPostRepository,
     private val commentRepo: CommentRepository,
-    private val commentLikeRepo: CommentLikeRepository
+    private val commentLikeRepo: CommentLikeRepository,
+    private val notificationService: NotificationService
 ) {
 
     @Transactional
@@ -38,6 +40,15 @@ class CommentService(
         )
 
         post.commentCount++
+
+        // 본인 게시글이 아닌 경우 작성자에게 알림 발송
+        if (post.author.id != author.id) {
+            notificationService.notifyNewComment(
+                postAuthorId = post.author.id,
+                commenterName = author.nickname ?: author.name,
+                preview = content.take(30)
+            )
+        }
 
         return savedComment.toResponse(isLiked = false)
     }

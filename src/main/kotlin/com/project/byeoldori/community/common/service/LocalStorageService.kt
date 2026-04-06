@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
+import net.coobird.thumbnailator.Thumbnails
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
@@ -60,6 +61,21 @@ class LocalStorageService(
         // MultipartFile 스트림은 한 번 읽으면 소진되므로, 위에서 read한 후 다시 InputStream을 열어야 함
         file.inputStream.use { input ->
             Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        // 7) 썸네일 생성 (400x400, JPEG, EXIF 스트리핑)
+        try {
+            val thumbDir = Paths.get(baseDir, "thumbnails", datePath)
+            Files.createDirectories(thumbDir)
+            val thumbTarget = thumbDir.resolve("${UUID.randomUUID()}.jpg")
+            Thumbnails.of(img)
+                .size(400, 400)
+                .keepAspectRatio(true)
+                .outputFormat("jpeg")
+                .outputQuality(0.85)
+                .toFile(thumbTarget.toFile())
+        } catch (e: Exception) {
+            logger.warn("썸네일 생성 실패 (원본 저장은 정상): {}", e.message)
         }
 
         // 6) 공개 URL 조합

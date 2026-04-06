@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
+import net.coobird.thumbnailator.Thumbnails
+import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.*
@@ -55,6 +57,26 @@ class GcsStorageService(
 
         file.inputStream.use { input ->
             storage.create(blobInfo, input.readBytes())
+        }
+
+        // 썸네일 생성 (400x400, JPEG, EXIF 스트리핑 포함)
+        try {
+            val thumbBytes = ByteArrayOutputStream().also { out ->
+                Thumbnails.of(img)
+                    .size(400, 400)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpeg")
+                    .outputQuality(0.85)
+                    .toOutputStream(out)
+            }.toByteArray()
+            val thumbName = "thumbnails/$datePath/${UUID.randomUUID()}.jpg"
+            val thumbInfo = BlobInfo.newBuilder(bucketName, thumbName)
+                .setContentType("image/jpeg")
+                .build()
+            storage.create(thumbInfo, thumbBytes)
+            logger.debug("썸네일 생성 완료: {}", thumbName)
+        } catch (e: Exception) {
+            logger.warn("썸네일 생성 실패 (원본 업로드는 정상): {}", e.message)
         }
 
         return "${publicBaseUrl.trimEnd('/')}/$objectName"

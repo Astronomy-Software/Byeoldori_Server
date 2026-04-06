@@ -9,6 +9,7 @@ import com.project.byeoldori.community.like.repository.CommentLikeRepository
 import com.project.byeoldori.community.like.repository.LikeRepository
 import com.project.byeoldori.community.post.domain.CommunityPost
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
+import com.project.byeoldori.notification.service.NotificationService
 import com.project.byeoldori.user.entity.User
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -19,6 +20,7 @@ class LikeService(
     private val commentRepository: CommentRepository,
     private val postRepository: CommunityPostRepository,
     private val commentLikeRepository: CommentLikeRepository,
+    private val notificationService: NotificationService
 ) {
 
     @Transactional
@@ -64,6 +66,14 @@ class LikeService(
 
         val likeCount = commentLikeRepository.countByCommentId(commentId)
         comment.likeCount = likeCount
+
+        // 좋아요 추가 시 댓글 작성자에게 알림 (본인 아닐 때)
+        if (!existed && comment.author.id != user.id) {
+            notificationService.notifyCommentLiked(
+                commentAuthorId = comment.author.id,
+                likerName = user.nickname ?: user.name
+            )
+        }
 
         return LikeToggleResponse(
             liked = !existed,

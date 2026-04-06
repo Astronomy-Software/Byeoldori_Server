@@ -139,8 +139,8 @@ class PostService(
             postRepo.findAllByType(type, pageable)
         } else {
             when (searchBy) {
-                PostSearchBy.TITLE    -> postRepo.findByTypeAndTitleContaining(type, keyword, pageable)
-                PostSearchBy.CONTENT  -> postRepo.findByTypeAndContentContaining(type, keyword, pageable)
+                PostSearchBy.TITLE    -> postRepo.searchByTitle(type.name, "$keyword*", pageable)
+                PostSearchBy.CONTENT  -> postRepo.searchByContent(type.name, "$keyword*", pageable)
                 PostSearchBy.NICKNAME -> postRepo.findByTypeAndAuthorNicknameContaining(type, keyword, pageable)
             }
         }

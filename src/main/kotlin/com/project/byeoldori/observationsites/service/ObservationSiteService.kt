@@ -33,10 +33,16 @@ class ObservationSiteService(
     fun getAllSites(pageable: Pageable): Page<ObservationSiteResponseDto> =
         observationSiteRepository.findAll(pageable).map { it.toResponseDto() }
 
-    // 관측지 검색
+    // 관측지 검색 (FULLTEXT, 2자 미만 키워드는 LIKE fallback)
     @Transactional(readOnly = true)
-    fun searchByName(keyword: String): List<ObservationSiteResponseDto> =
-        observationSiteRepository.findByNameContaining(keyword).map { it.toResponseDto() }
+    fun searchByName(keyword: String): List<ObservationSiteResponseDto> {
+        val list = if (keyword.length >= 2) {
+            observationSiteRepository.searchByName("$keyword*")
+        } else {
+            observationSiteRepository.findByNameContaining(keyword)
+        }
+        return list.map { it.toResponseDto() }
+    }
 
     // 상세 정보 조회 메서드
     @Transactional(readOnly = true)

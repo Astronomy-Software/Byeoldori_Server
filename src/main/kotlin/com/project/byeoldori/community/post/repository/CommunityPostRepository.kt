@@ -12,8 +12,22 @@ import org.springframework.data.repository.query.Param
 interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     fun findAllByType(type: PostType, pageable: Pageable): Page<CommunityPost>
 
-    fun findByTypeAndTitleContaining(type: PostType, title: String, pageable: Pageable): Page<CommunityPost>
-    fun findByTypeAndContentContaining(type: PostType, content: String, pageable: Pageable): Page<CommunityPost>
+    // FULLTEXT 검색 (MATCH-AGAINST, Boolean Mode)
+    @Query(
+        value = "SELECT * FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE)",
+        countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE)",
+        nativeQuery = true
+    )
+    fun searchByTitle(@Param("type") type: String, @Param("keyword") keyword: String, pageable: Pageable): Page<CommunityPost>
+
+    @Query(
+        value = "SELECT * FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE)",
+        countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE)",
+        nativeQuery = true
+    )
+    fun searchByContent(@Param("type") type: String, @Param("keyword") keyword: String, pageable: Pageable): Page<CommunityPost>
+
+    // 닉네임 검색은 FULLTEXT 부적합 (짧은 값) → 기존 LIKE 유지
     fun findByTypeAndAuthorNicknameContaining(type: PostType, nickname: String, pageable: Pageable): Page<CommunityPost>
 
     @Query("SELECT SUM(p.likeCount) FROM ReviewPost r JOIN r.post p WHERE r.observationSite.id = :siteId")

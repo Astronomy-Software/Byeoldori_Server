@@ -2,6 +2,8 @@ package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.common.web.OutOfServiceAreaException
 import com.project.byeoldori.forecast.dto.*
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import com.project.byeoldori.forecast.utils.region.GeoBounds
 import com.project.byeoldori.forecast.utils.region.RegionMapper
 import com.project.byeoldori.forecast.utils.score.WeatherScoreCalculator
@@ -50,5 +52,51 @@ class ForeCastService(
             m.copy(suitability = s.total) }
 
         return ForecastResponseDTO(ultraScored, shortScored, midScored)
+    }
+
+    fun getWeatherSummary(latitude: Double, longitude: Double): WeatherSummaryDto {
+        val full = getForecastDataByLocation(latitude, longitude)
+        val fmt = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
+        val now = LocalDateTime.now()
+        val nowStr = now.format(fmt)
+
+        // 현재 이후 단기 예보 중 가장 가까운 시간대
+        val current = full.shortForecastResponse
+            .filter { it.tmef >= nowStr }
+            .minByOrNull { it.tmef }
+            ?: full.ultraForecastResponse
+                .filter { it.tmef >= nowStr }
+                .minByOrNull { it.tmef }
+                ?.let { u ->
+                    ShortForecastResponseDTO(
+                        tmef = u.tmef, tmp = u.t1h, tmx = null, tmn = null,
+                        vec = u.vec?.toFloat(), wsd = u.wsd, sky = u.sky,
+                        pty = u.pty, pop = null, pcp = null, sno = null, reh = u.reh,
+                        suitability = u.suitability
+                    )
+                }
+
+        val skyText = when (current?.sky) {
+            1 -> "맑음"; 2 -> "구름조금"; 3 -> "구름많음"; 4 -> "흐림"; else -> "정보없음"
+        }
+
+        // 다음 관측 적합 시각: 단기 또는 초단기에서 suitability >= 70 인 첫 번째 미래 시각
+        val goodShort = full.shortForecastResponse
+            .filter { it.tmef > nowStr && it.suitability >= 70 }
+            .minByOrNull { it.tmef }?.tmef
+        val goodUltra = full.ultraForecastResponse
+            .filter { it.tmef > nowStr && it.suitability >= 70 }
+            .minByOrNull { it.tmef }?.tmef
+        val nextGoodTime = when {
+            goodUltra != null && (goodShort == null || goodUltra < goodShort) -> goodUltra
+            else -> goodShort
+        }
+
+        return WeatherSummaryDto(
+            suitability = current?.suitability ?: 0,
+            sky = skyText,
+            temperature = current?.tmp,
+            nextGoodTime = nextGoodTime
+        )
     }
 }

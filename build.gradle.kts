@@ -83,6 +83,15 @@ dependencies {
 
     testImplementation("com.h2database:h2:2.3.232")
 
+    // FCM 푸시 알림
+    implementation("com.google.firebase:firebase-admin:9.2.0")
+
+    // 이미지 썸네일 생성 (EXIF 스트리핑 포함)
+    implementation("net.coobird:thumbnailator:0.4.20")
+
+    // 구조화 로깅 (JSON 출력)
+    implementation("net.logstash.logback:logstash-logback-encoder:7.4")
+
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     implementation("org.springframework.boot:spring-boot-starter-mail")
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
