@@ -7,12 +7,12 @@ import com.project.byeoldori.security.CurrentUserResolver
 import com.project.byeoldori.security.JwtUtil
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.entity.EmailVerificationToken
+import com.project.byeoldori.user.entity.PasswordResetToken
 import com.project.byeoldori.user.entity.RefreshToken
 import com.project.byeoldori.user.entity.User
 import com.project.byeoldori.user.repository.*
 import com.project.byeoldori.user.utils.PasswordValidator
 import com.project.byeoldori.user.utils.PhoneNormalizer
-import com.project.byeoldori.user.utils.TemporaryPassword
 import com.project.byeoldori.user.utils.TokenHasher
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -34,7 +34,8 @@ class UserService(
     private val jwt: JwtUtil,
     private val emailService: EmailService,
     private val googleVerifier: GoogleIdTokenVerifier,
-    private val cachedUserLookupService: CachedUserLookupService
+    private val cachedUserLookupService: CachedUserLookupService,
+    private val passwordResetTokenRepo: PasswordResetTokenRepository
 ) {
 
     private val log = LoggerFactory.getLogger(UserService::class.java)
@@ -140,22 +141,41 @@ class UserService(
         val user = userRepository.findByEmail(req.email)
             .orElseThrow { NotFoundException(ErrorCode.ACCOUNT_INFO_MISMATCH) }
 
-        val nameMatches = (user.name).trim().equals(req.name.trim(), ignoreCase = true)
+        val nameMatches = user.name.trim().equals(req.name.trim(), ignoreCase = true)
         val phoneMatches = PhoneNormalizer.normalize(user.phone) == PhoneNormalizer.normalize(req.phone)
         if (!nameMatches || !phoneMatches) {
             throw NotFoundException(ErrorCode.ACCOUNT_INFO_MISMATCH)
         }
 
-        val tempPw = TemporaryPassword.generate(12)
-        user.passwordHash = passwordEncoder.encode(tempPw)
+        // 기존 미사용 토큰 정리 후 새 토큰 발급
+        passwordResetTokenRepo.deleteAllByUserId(user.id)
+        val resetToken = passwordResetTokenRepo.save(PasswordResetToken(user = user))
 
-        refreshTokenRepo.deleteByUserId(user.id)
-
-        emailService.sendTemporaryPassword(
+        emailService.sendPasswordResetLink(
             to = user.email,
             name = user.name,
-            tempPassword = tempPw
+            token = resetToken.id
         )
+    }
+
+    @Transactional
+    fun confirmPasswordReset(req: PasswordResetConfirmDto) {
+        if (req.newPassword != req.confirmNewPassword) {
+            throw InvalidInputException(ErrorCode.PASSWORD_MISMATCH.message)
+        }
+        if (!PasswordValidator.isValid(req.newPassword)) {
+            throw InvalidInputException(ErrorCode.INVALID_PASSWORD_FORMAT.message)
+        }
+
+        val token = passwordResetTokenRepo.findByIdAndUsedAtIsNull(req.token)
+            .orElseThrow { InvalidInputException(ErrorCode.INVALID_TOKEN.message) }
+        if (!token.isUsable()) throw InvalidInputException("재설정 링크가 만료되었습니다.")
+
+        token.user.passwordHash = passwordEncoder.encode(req.newPassword)
+        token.usedAt = java.time.LocalDateTime.now()
+
+        refreshTokenRepo.deleteByUserId(token.user.id)
+        cachedUserLookupService.evictByEmail(token.user.email)
     }
 
     @Transactional
@@ -224,6 +244,7 @@ class UserService(
         val email = user.email
         refreshTokenRepo.deleteByUserId(user.id)
         emailTokenRepo.deleteAllByUserId(user.id)
+        passwordResetTokenRepo.deleteAllByUserId(user.id)
         userRepository.delete(user)
         cachedUserLookupService.evictByEmail(email)
     }

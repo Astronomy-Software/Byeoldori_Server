@@ -59,6 +59,14 @@ data class SavedSiteResponseDto(
     val isCustom: Boolean // 공식(false) / 개인(true)
 )
 
+// 관측지 목록/생성/수정 응답 DTO
+data class ObservationSiteResponseDto(
+    val id: Long,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double
+)
+
 // DTO ➔ Entity 변환
 fun ObservationSiteDto.toEntity(): ObservationSite {
     return ObservationSite(
@@ -67,3 +75,11 @@ fun ObservationSiteDto.toEntity(): ObservationSite {
         longitude = this.longitude
     )
 }
+
+// Entity ➔ 응답 DTO 변환
+fun ObservationSite.toResponseDto() = ObservationSiteResponseDto(
+    id = this.id,
+    name = this.name,
+    latitude = this.latitude,
+    longitude = this.longitude
+)

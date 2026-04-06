@@ -51,10 +51,17 @@ class AuthController(
     }
 
     @PostMapping("/password/reset-request")
-    @Operation(summary = "비밀번호 재설정 요청(메일 발송)")
+    @Operation(summary = "비밀번호 재설정 요청(메일 발송)", description = "이름/이메일/전화번호 확인 후 재설정 링크를 메일로 발송합니다.")
     fun requestPassword(@Valid @RequestBody req: PasswordResetRequestDto): ResponseEntity<ApiResponse<Unit>> {
         userService.resetPasswordByIdentity(req)
-        return ResponseEntity.ok(ApiResponse.ok("임시 비밀번호가 메일로 발송되었습니다."))
+        return ResponseEntity.ok(ApiResponse.ok("비밀번호 재설정 링크가 메일로 발송되었습니다."))
+    }
+
+    @PostMapping("/password/reset-confirm")
+    @Operation(summary = "비밀번호 재설정 확인", description = "메일로 받은 토큰과 새 비밀번호를 입력하여 비밀번호를 변경합니다.")
+    fun confirmPasswordReset(@Valid @RequestBody req: PasswordResetConfirmDto): ResponseEntity<ApiResponse<Unit>> {
+        userService.confirmPasswordReset(req)
+        return ResponseEntity.ok(ApiResponse.ok("비밀번호가 재설정되었습니다."))
     }
     @Operation(summary = "구글 ID 토큰 로그인", description = "앱에서 받은 Google ID Token을 검증하고 Access/Refresh 토큰을 발급합니다.")
     @PostMapping("/google")

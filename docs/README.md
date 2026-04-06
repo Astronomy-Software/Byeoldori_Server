@@ -197,7 +197,27 @@ POST /auth/password/reset-request
 }
 ```
 
-> 임시 비밀번호를 이메일로 발송합니다.
+> 이름/이메일/전화번호 일치 확인 후 비밀번호 재설정 링크를 이메일로 발송합니다. 링크는 **30분** 유효합니다.
+
+---
+
+### 2.7 비밀번호 재설정 확인
+
+```
+POST /auth/password/reset-confirm
+```
+
+**Request Body**
+
+```json
+{
+  "token": "메일로 받은 토큰",
+  "newPassword": "NewPass1234!",
+  "confirmNewPassword": "NewPass1234!"
+}
+```
+
+> 토큰 유효성 검증 후 비밀번호를 변경합니다.
 
 ---
 

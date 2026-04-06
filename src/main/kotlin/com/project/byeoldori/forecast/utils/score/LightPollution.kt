@@ -1,24 +1,37 @@
 package com.project.byeoldori.forecast.utils.score
 
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Component
 import kotlin.math.hypot
 import kotlin.math.ln
+import kotlin.math.roundToLong
 
 @Component
 class LightPollution {
 
     private val pollutionData: List<Triple<Double, Double, Double>> = loadCsv()
 
+    // 0.05도(약 5km) 격자 키 → O(1) 탐색
+    private val pollutionGrid: Map<String, Double> = pollutionData.associate { (lat, lon, value) ->
+        gridKey(lat, lon) to value
+    }
+
+    @Cacheable("lightPollution", key = "#lat + ',' + #lon")
     fun getLightPollutionScore(lat: Double, lon: Double): Double {
         if (lat !in 33.0..39.5 || lon !in 124.0..132.0) {
             throw IllegalArgumentException("지원되지 않는 지역입니다: ($lat, $lon)")
         }
 
-        val nearest = pollutionData.minByOrNull { (plat, plon, _) ->
-            hypot(lat - plat, lon - plon) // 가장 가까운 지점 탐색
-        } ?: throw IllegalStateException("광공해 데이터가 비어 있습니다.")
+        val value = pollutionGrid[gridKey(lat, lon)]
+            ?: pollutionData.minByOrNull { (plat, plon, _) -> hypot(lat - plat, lon - plon) }?.third
+            ?: throw IllegalStateException("광공해 데이터가 비어 있습니다.")
 
-        return convertToScore(nearest.third)
+        return convertToScore(value)
+    }
+
+    private fun gridKey(lat: Double, lon: Double): String {
+        val r = 1.0 / 0.05
+        return "${(lat * r).roundToLong()},${(lon * r).roundToLong()}"
     }
 
     private fun loadCsv(): List<Triple<Double, Double, Double>> {

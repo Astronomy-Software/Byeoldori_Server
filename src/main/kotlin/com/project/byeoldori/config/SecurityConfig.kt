@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets
 
 @Configuration
 @EnableWebSecurity
+@org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val rateLimitFilter: RateLimitFilter,

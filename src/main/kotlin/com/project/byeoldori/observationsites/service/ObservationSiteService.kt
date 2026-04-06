@@ -21,22 +21,22 @@ class ObservationSiteService(
 ) {
 
     // 관측지 등록
-    fun createObservationSite(dto: ObservationSiteDto): ObservationSite {
+    fun createObservationSite(dto: ObservationSiteDto): ObservationSiteResponseDto {
         if (observationSiteRepository.existsByName(dto.name)) {
             throw ConflictException(ErrorCode.SITE_NAME_ALREADY_EXISTS)
         }
-        return observationSiteRepository.save(dto.toEntity())
+        return observationSiteRepository.save(dto.toEntity()).toResponseDto()
     }
 
     // 모든 관측지 조회 (페이지네이션)
     @Transactional(readOnly = true)
-    fun getAllSites(pageable: Pageable): Page<ObservationSite> =
-        observationSiteRepository.findAll(pageable)
+    fun getAllSites(pageable: Pageable): Page<ObservationSiteResponseDto> =
+        observationSiteRepository.findAll(pageable).map { it.toResponseDto() }
 
     // 관측지 검색
     @Transactional(readOnly = true)
-    fun searchByName(keyword: String): List<ObservationSite> =
-        observationSiteRepository.findByNameContaining(keyword)
+    fun searchByName(keyword: String): List<ObservationSiteResponseDto> =
+        observationSiteRepository.findByNameContaining(keyword).map { it.toResponseDto() }
 
     // 상세 정보 조회 메서드
     @Transactional(readOnly = true)
@@ -60,7 +60,7 @@ class ObservationSiteService(
 
     // 관측지 업데이트
     @Transactional
-    fun updateSiteById(id: Long, dto: ObservationSiteDto): ObservationSite {
+    fun updateSiteById(id: Long, dto: ObservationSiteDto): ObservationSiteResponseDto {
         val found = observationSiteRepository.findById(id)
             .orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND) }
         val holder = observationSiteRepository.findByName(dto.name)
@@ -68,7 +68,7 @@ class ObservationSiteService(
             throw ConflictException(ErrorCode.SITE_NAME_ALREADY_EXISTS)
         }
         val updated = found.copy(name = dto.name, latitude = dto.latitude, longitude = dto.longitude)
-        return observationSiteRepository.save(updated)
+        return observationSiteRepository.save(updated).toResponseDto()
     }
 
     // 관측지 삭제

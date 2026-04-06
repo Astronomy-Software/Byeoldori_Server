@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
 import org.springframework.stereotype.Component
@@ -43,8 +44,9 @@ class JwtAuthenticationFilter(
                 if (jwtUtil.validateToken(token)) {
                     val userEmail = jwtUtil.extractEmail(token)
                     cachedUserLookupService.findByEmail(userEmail)?.let { user ->
+                        val authorities = user.roles.map { SimpleGrantedAuthority("ROLE_$it") }
                         val authentication = UsernamePasswordAuthenticationToken(
-                            user, null, emptyList()
+                            user, null, authorities
                         )
                         authentication.details = WebAuthenticationDetailsSource().buildDetails(request)
                         SecurityContextHolder.getContext().authentication = authentication

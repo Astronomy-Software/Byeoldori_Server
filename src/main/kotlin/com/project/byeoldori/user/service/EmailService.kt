@@ -30,6 +30,39 @@ class EmailService(
         sendVerificationEmail(toEmail, token)
     }
 
+    fun sendPasswordResetLink(to: String, name: String, token: String) {
+        try {
+            val resetUrl = UriComponentsBuilder
+                .fromHttpUrl(hostUrl.trimEnd('/'))
+                .path("/reset-password")
+                .queryParam("token", token)
+                .build()
+                .encode(java.nio.charset.StandardCharsets.UTF_8)
+                .toUriString()
+
+            val message = mailSender.createMimeMessage()
+            val helper = MimeMessageHelper(message, true, "UTF-8")
+
+            helper.setTo(to)
+            helper.setFrom(InternetAddress(fromAddress, MimeUtility.encodeText("별도리", "UTF-8", "B")))
+            helper.setSubject(MimeUtility.encodeText("[별도리] 비밀번호 재설정 안내", "UTF-8", "B"))
+            helper.setText(buildPasswordResetBody(name, resetUrl), true)
+
+            mailSender.send(message)
+        } catch (e: MessagingException) {
+            logger.error("비밀번호 재설정 메일 전송 실패: {}", e.message)
+            throw InternalServerException(ErrorCode.EMAIL_SEND_FAILED.message)
+        }
+    }
+
+    private fun buildPasswordResetBody(name: String, resetUrl: String): String {
+        val ctx = Context().apply {
+            setVariable("name", name)
+            setVariable("resetUrl", resetUrl)
+        }
+        return templateEngine.process("password-reset", ctx)
+    }
+
     fun sendTemporaryPassword(to: String, name: String, tempPassword: String) {
         try {
             val message = mailSender.createMimeMessage()
