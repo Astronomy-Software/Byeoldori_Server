@@ -1,5 +1,9 @@
 package com.project.byeoldori.config
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.kotlinModule
 import org.springframework.cache.annotation.EnableCaching
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -15,10 +19,21 @@ import java.time.Duration
 @EnableCaching
 class CacheConfig(private val redisConnectionFactory: RedisConnectionFactory) {
 
+    private fun redisObjectMapper(): ObjectMapper = ObjectMapper()
+        .registerModule(JavaTimeModule())
+        .registerModule(kotlinModule())
+        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+        .activateDefaultTyping(
+            com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator.builder()
+                .allowIfSubType(Any::class.java)
+                .build(),
+            ObjectMapper.DefaultTyping.NON_FINAL
+        )
+
     @Bean
     fun cacheManager(): RedisCacheManager {
         val valueSerializer = RedisSerializationContext.SerializationPair
-            .fromSerializer(GenericJackson2JsonRedisSerializer())
+            .fromSerializer(GenericJackson2JsonRedisSerializer(redisObjectMapper()))
         val keySerializer = RedisSerializationContext.SerializationPair
             .fromSerializer(StringRedisSerializer())
 
