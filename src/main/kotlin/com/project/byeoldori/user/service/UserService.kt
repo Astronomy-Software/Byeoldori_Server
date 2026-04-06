@@ -33,7 +33,8 @@ class UserService(
     private val passwordEncoder: PasswordEncoder,
     private val jwt: JwtUtil,
     private val emailService: EmailService,
-    private val googleVerifier: GoogleIdTokenVerifier
+    private val googleVerifier: GoogleIdTokenVerifier,
+    private val cachedUserLookupService: CachedUserLookupService
 ) {
 
     private val log = LoggerFactory.getLogger(UserService::class.java)
@@ -131,6 +132,7 @@ class UserService(
     fun logout() {
         val user = currentUserResolver.getUser()
         refreshTokenRepo.deleteByUserId(user.id)
+        cachedUserLookupService.evictByEmail(user.email)
     }
 
     @Transactional
@@ -172,6 +174,7 @@ class UserService(
 
         user.passwordHash = passwordEncoder.encode(req.newPassword)
         refreshTokenRepo.deleteByUserId(user.id)
+        cachedUserLookupService.evictByEmail(user.email)
     }
 
     @Transactional(readOnly = true)
@@ -191,6 +194,7 @@ class UserService(
         }
         req.birthdate?.let { user.birthdate = it }
         req.phone?.let { user.phone = it }
+        cachedUserLookupService.evictByEmail(user.email)
     }
 
     @Transactional
@@ -217,9 +221,11 @@ class UserService(
     @Transactional
     fun deleteAccount() {
         val user = currentUserResolver.getUser()
+        val email = user.email
         refreshTokenRepo.deleteByUserId(user.id)
         emailTokenRepo.deleteAllByUserId(user.id)
         userRepository.delete(user)
+        cachedUserLookupService.evictByEmail(email)
     }
 
     @Transactional

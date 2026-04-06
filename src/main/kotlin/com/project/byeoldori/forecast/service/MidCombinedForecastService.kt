@@ -10,6 +10,8 @@ import com.project.byeoldori.forecast.utils.region.RegionMapper
 import com.project.byeoldori.forecast.repository.MidCombinedForecastRepository
 import com.project.byeoldori.forecast.utils.logging.LogMessages
 import org.slf4j.LoggerFactory
+import org.springframework.cache.annotation.CacheEvict
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -24,6 +26,7 @@ class MidCombinedForecastService(
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
+    @CacheEvict(value = ["midForecast"], allEntries = true)
     @Transactional
     fun fetchAndSaveFromApi(): String {
         val landResponse = weatherData.fetchMidLandForecast().block()
@@ -106,6 +109,7 @@ class MidCombinedForecastService(
         return combinedForecastRepository.findAll().map { toDto(it) }
     }
 
+    @Cacheable("midForecast", key = "#siRegId")
     @Transactional(readOnly = true)
     fun findBySiRegId(siRegId: String): List<MidCombinedForecastDTO> {
         return combinedForecastRepository.findBySiRegId(siRegId).map { toDto(it) }

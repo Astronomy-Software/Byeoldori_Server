@@ -747,7 +747,27 @@ GET /calendar/events/count
 ### 7.1 전체 관측지 목록
 
 ```
-GET /observationsites
+GET /observationsites?page=0&size=20&sort=name,asc
+```
+
+페이지네이션을 지원합니다. 기본값: `page=0`, `size=20`, `sort=name`.
+
+| 파라미터 | 설명 | 기본값 |
+|---|---|---|
+| `page` | 페이지 번호 (0부터 시작) | `0` |
+| `size` | 페이지당 항목 수 | `20` |
+| `sort` | 정렬 기준 (`name`, `id` 등) | `name` |
+
+**Response**
+
+```json
+{
+  "content": [ { "id": 1, "name": "남산", "latitude": 37.55, "longitude": 126.98 } ],
+  "totalElements": 150,
+  "totalPages": 8,
+  "number": 0,
+  "size": 20
+}
 ```
 
 ### 7.2 관측지 검색

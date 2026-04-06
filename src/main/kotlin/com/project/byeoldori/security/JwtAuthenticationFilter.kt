@@ -2,7 +2,7 @@ package com.project.byeoldori.security
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.project.byeoldori.common.web.ApiResponse
-import com.project.byeoldori.user.repository.UserRepository
+import com.project.byeoldori.user.service.CachedUserLookupService
 import io.jsonwebtoken.ExpiredJwtException
 import io.jsonwebtoken.MalformedJwtException
 import jakarta.servlet.FilterChain
@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets
 @Component
 class JwtAuthenticationFilter(
     private val jwtUtil: JwtUtil,  // JWT 생성/검증 유틸리티 주입
-    private val userRepo: UserRepository,
+    private val cachedUserLookupService: CachedUserLookupService,
     private val objectMapper: ObjectMapper
 ) : OncePerRequestFilter() {
 
@@ -42,7 +42,7 @@ class JwtAuthenticationFilter(
                 // 1. 유효성 검증을 시도하고, 만료 등 예외 발생 시 catch
                 if (jwtUtil.validateToken(token)) {
                     val userEmail = jwtUtil.extractEmail(token)
-                    userRepo.findByEmail(userEmail).orElse(null)?.let { user ->
+                    cachedUserLookupService.findByEmail(userEmail)?.let { user ->
                         val authentication = UsernamePasswordAuthenticationToken(
                             user, null, emptyList()
                         )

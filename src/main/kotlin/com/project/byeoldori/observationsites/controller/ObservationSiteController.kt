@@ -8,6 +8,9 @@ import com.project.byeoldori.observationsites.service.ObservationSiteService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
+import org.springframework.data.web.PageableDefault
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -24,10 +27,10 @@ class ObservationSiteController(
         return ResponseEntity.status(HttpStatus.CREATED).body(siteService.createObservationSite(dto))
     }
 
-    @Operation(summary = "모든 관측지 조회", description = "등록된 모든 관측지 정보를 반환합니다.")
+    @Operation(summary = "모든 관측지 조회", description = "등록된 관측지를 페이지 단위로 반환합니다. (기본 20개, name 정렬)")
     @GetMapping
-    fun getAll(): ResponseEntity<List<ObservationSite>> =
-        ResponseEntity.ok(siteService.getAllSites())
+    fun getAll(@PageableDefault(size = 20, sort = ["name"]) pageable: Pageable): ResponseEntity<Page<ObservationSite>> =
+        ResponseEntity.ok(siteService.getAllSites(pageable))
 
     @Operation(summary = "관측지 단건 조회(ID)", description = "하나의 관측지를 조회합니다.")
     @GetMapping("/{id}")

@@ -7,6 +7,8 @@ import com.project.byeoldori.observationsites.dto.*
 import com.project.byeoldori.observationsites.entity.ObservationSite
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import com.project.byeoldori.observationsites.repository.UserSavedSiteRepository
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.stereotype.Service
 
@@ -26,10 +28,10 @@ class ObservationSiteService(
         return observationSiteRepository.save(dto.toEntity())
     }
 
-    // 모든 관측지 조회
+    // 모든 관측지 조회 (페이지네이션)
     @Transactional(readOnly = true)
-    fun getAllSites(): List<ObservationSite> =
-        observationSiteRepository.findAll()
+    fun getAllSites(pageable: Pageable): Page<ObservationSite> =
+        observationSiteRepository.findAll(pageable)
 
     // 관측지 검색
     @Transactional(readOnly = true)
