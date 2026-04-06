@@ -3,6 +3,7 @@ package com.project.byeoldori.config
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.security.JwtAuthenticationFilter
+import com.project.byeoldori.security.RateLimitFilter
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -21,6 +22,7 @@ import java.nio.charset.StandardCharsets
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val rateLimitFilter: RateLimitFilter,
     private val objectMapper: ObjectMapper,
     @org.springframework.beans.factory.annotation.Value("\${cors.allowed-origins}") private val allowedOrigins: List<String>
 ){
@@ -32,6 +34,7 @@ class SecurityConfig(
             "/v3/api-docs/**",
             "/auth/**",
             "/reset-password",
+            "/actuator/health",
         )
     }
 
@@ -70,6 +73,7 @@ class SecurityConfig(
                     // 그 외의 모든 요청은 반드시 인증(로그인)을 요구
                     .anyRequest().authenticated()
             }
+            .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()

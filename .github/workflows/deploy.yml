@@ -71,7 +71,7 @@ jobs:
             --add-cloudsql-instances=${{ env.CLOUD_SQL_INSTANCE }}
           env_vars: |
             SERVER_PORT=8080
-            JPA_DDL_AUTO=update
+            SPRING_PROFILES_ACTIVE=prod
             SPRING_REDIS_HOST=${{ secrets.REDIS_HOST }}
             SPRING_REDIS_PORT=6379
           secrets: |
