@@ -25,13 +25,13 @@ class NotificationController(
     ): ResponseEntity<ApiResponse<List<NotificationResponse>>> {
         val pageable = PageRequest.of(maxOf(page - 1, 0), size, Sort.by(Sort.Direction.DESC, "createdAt"))
         val result = notificationRepository.findByUserIdOrderByCreatedAtDesc(user.id, pageable)
-        return ResponseEntity.ok(ApiResponse.success(result.content.map { it.toResponse() }))
+        return ResponseEntity.ok(ApiResponse.ok(result.content.map { it.toResponse() }))
     }
 
     @GetMapping("/unread-count")
     fun unreadCount(@RequestAttribute("currentUser") user: User): ResponseEntity<ApiResponse<Long>> {
         val count = notificationRepository.countByUserIdAndIsReadFalse(user.id)
-        return ResponseEntity.ok(ApiResponse.success(count))
+        return ResponseEntity.ok(ApiResponse.ok(count))
     }
 
     @Transactional
@@ -41,13 +41,13 @@ class NotificationController(
         @PathVariable id: Long
     ): ResponseEntity<ApiResponse<Unit>> {
         notificationRepository.markAsRead(id, user.id)
-        return ResponseEntity.ok(ApiResponse.success(Unit))
+        return ResponseEntity.ok(ApiResponse.ok(Unit))
     }
 
     @Transactional
     @PatchMapping("/read-all")
     fun markAllAsRead(@RequestAttribute("currentUser") user: User): ResponseEntity<ApiResponse<Unit>> {
         notificationRepository.markAllAsRead(user.id)
-        return ResponseEntity.ok(ApiResponse.success(Unit))
+        return ResponseEntity.ok(ApiResponse.ok(Unit))
     }
 }
