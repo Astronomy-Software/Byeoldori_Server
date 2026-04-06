@@ -74,7 +74,7 @@ jobs:
             SPRING_PROFILES_ACTIVE=prod
             SPRING_REDIS_HOST=${{ secrets.REDIS_HOST }}
             SPRING_REDIS_PORT=6379
-            FCM_ENABLED=true
+            FCM_ENABLED=false
           secrets: |
             SPRING_DATASOURCE_URL=SPRING_DATASOURCE_URL:latest
             SPRING_DATASOURCE_USERNAME=SPRING_DATASOURCE_USERNAME:latest
@@ -89,4 +89,4 @@ jobs:
             PUBLIC_BASE_URL=PUBLIC_BASE_URL:latest
             STORAGE_TYPE=STORAGE_TYPE:latest
             GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest
-            FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest
+            # FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest  ← Firebase 설정 후 활성화
