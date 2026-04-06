@@ -69,12 +69,12 @@ jobs:
             --vpc-egress=private-ranges-only
             --service-account=byeoldori-cloudrun@byeoldori-server.iam.gserviceaccount.com
             --add-cloudsql-instances=${{ env.CLOUD_SQL_INSTANCE }}
+            --remove-secrets=FIREBASE_CREDENTIALS_JSON
           env_vars: |
             SERVER_PORT=8080
             SPRING_PROFILES_ACTIVE=prod
             SPRING_REDIS_HOST=${{ secrets.REDIS_HOST }}
             SPRING_REDIS_PORT=6379
-            FCM_ENABLED=false
           secrets: |
             SPRING_DATASOURCE_URL=SPRING_DATASOURCE_URL:latest
             SPRING_DATASOURCE_USERNAME=SPRING_DATASOURCE_USERNAME:latest

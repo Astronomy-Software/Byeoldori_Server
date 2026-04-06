@@ -83,9 +83,6 @@ dependencies {
 
     testImplementation("com.h2database:h2:2.3.232")
 
-    // FCM 푸시 알림
-    implementation("com.google.firebase:firebase-admin:9.2.0")
-
     // 이미지 썸네일 생성 (EXIF 스트리핑 포함)
     implementation("net.coobird:thumbnailator:0.4.20")
 
