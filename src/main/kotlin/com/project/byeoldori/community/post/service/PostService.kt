@@ -139,8 +139,9 @@ class PostService(
             postRepo.findAllByType(type, pageable)
         } else {
             when (searchBy) {
-                PostSearchBy.TITLE    -> postRepo.searchByTitle(type.name, "$keyword*", pageable)
-                PostSearchBy.CONTENT  -> postRepo.searchByContent(type.name, "$keyword*", pageable)
+                // native query는 ORDER BY를 직접 명시 → Sort 없는 Pageable 전달
+                PostSearchBy.TITLE    -> postRepo.searchByTitle(type.name, "$keyword*", PageRequest.of(pageable.pageNumber, pageable.pageSize))
+                PostSearchBy.CONTENT  -> postRepo.searchByContent(type.name, "$keyword*", PageRequest.of(pageable.pageNumber, pageable.pageSize))
                 PostSearchBy.NICKNAME -> postRepo.findByTypeAndAuthorNicknameContaining(type, keyword, pageable)
             }
         }

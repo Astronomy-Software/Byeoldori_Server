@@ -12,16 +12,16 @@ import org.springframework.data.repository.query.Param
 interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     fun findAllByType(type: PostType, pageable: Pageable): Page<CommunityPost>
 
-    // FULLTEXT 검색 (MATCH-AGAINST, Boolean Mode)
+    // FULLTEXT 검색 (MATCH-AGAINST, Boolean Mode) — native query는 Sort 미지원, ORDER BY 직접 명시
     @Query(
-        value = "SELECT * FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE)",
+        value = "SELECT * FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE) ORDER BY created_at DESC",
         countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE)",
         nativeQuery = true
     )
     fun searchByTitle(@Param("type") type: String, @Param("keyword") keyword: String, pageable: Pageable): Page<CommunityPost>
 
     @Query(
-        value = "SELECT * FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE)",
+        value = "SELECT * FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE) ORDER BY created_at DESC",
         countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE)",
         nativeQuery = true
     )
