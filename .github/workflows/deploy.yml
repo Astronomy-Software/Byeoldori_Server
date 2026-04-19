@@ -30,6 +30,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Notify Discord - Deploy Start
+        run: |
+          curl -s -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "🚀 별도리 서버 배포 시작",
+                "description": "새로운 버전 배포를 시작합니다.",
+                "color": 3447003,
+                "fields": [
+                  {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "커밋", "value": "[`'"$(echo '${{ github.sha }}' | cut -c1-7)"'`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
+                  {"name": "작업자", "value": "${{ github.actor }}", "inline": true}
+                ]
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -89,3 +106,38 @@ jobs:
             PUBLIC_BASE_URL=PUBLIC_BASE_URL:latest
             STORAGE_TYPE=STORAGE_TYPE:latest
             GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest
+
+      - name: Notify Discord - Deploy Success
+        if: success()
+        run: |
+          curl -s -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "✅ 별도리 서버 배포 완료",
+                "description": "새로운 버전이 성공적으로 배포되었습니다.",
+                "color": 3066993,
+                "fields": [
+                  {"name": "커밋", "value": "[`'"$(echo '${{ github.sha }}' | cut -c1-7)"'`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
+                  {"name": "작업자", "value": "${{ github.actor }}", "inline": true}
+                ]
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+
+      - name: Notify Discord - Deploy Failure
+        if: failure()
+        run: |
+          curl -s -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "❌ 별도리 서버 배포 실패",
+                "description": "배포 중 오류가 발생했습니다. 확인이 필요합니다.",
+                "color": 15158332,
+                "fields": [
+                  {"name": "커밋", "value": "[`'"$(echo '${{ github.sha }}' | cut -c1-7)"'`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
+                  {"name": "작업자", "value": "${{ github.actor }}", "inline": true},
+                  {"name": "워크플로우", "value": "[${{ github.workflow }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": false}
+                ]
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
