@@ -2,19 +2,110 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <title>별도리 API 문서</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>별도리 API Docs</title>
   <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
   <style>
-    html, body { height: 100%; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #0b0f1e 0%, #111827 100%);
+      border-bottom: 1px solid #1e2d4a;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+
+    .header-logo { font-size: 20px; }
+
+    .header-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #e2e8f0;
+      letter-spacing: -0.2px;
+    }
+
+    .header-badge {
+      background: #1e3a5f;
+      color: #60a5fa;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+
+    .header-sep {
+      width: 1px;
+      height: 18px;
+      background: #1e2d4a;
+      margin: 0 4px;
+    }
+
+    .header-env {
+      font-size: 11px;
+      color: #34d399;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .header-env::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #34d399;
+      display: inline-block;
+      box-shadow: 0 0 6px #34d399;
+    }
+
+    .header-right {
+      margin-left: auto;
+      font-size: 11px;
+      color: #475569;
+    }
+
+    .docs-wrap {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+    }
+
+    elements-api {
+      flex: 1;
+    }
   </style>
 </head>
 <body>
-  <elements-api
-    apiDescriptionUrl="./openapi.json"
-    router="hash"
-    layout="sidebar"
-  />
+  <header class="header">
+    <span class="header-logo">⭐</span>
+    <span class="header-title">별도리 API</span>
+    <span class="header-badge">v1.0</span>
+    <div class="header-sep"></div>
+    <span class="header-env">Production</span>
+    <span class="header-right">Byeoldori Backend · Internal Docs</span>
+  </header>
+  <div class="docs-wrap">
+    <elements-api
+      apiDescriptionUrl="./openapi.json"
+      router="hash"
+      layout="sidebar"
+    />
+  </div>
 </body>
 </html>

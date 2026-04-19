@@ -172,26 +172,86 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
+          DOCS_URL="https://byeoldori-docs.pages.dev"
+          SHORT="${SHA:0:7}"
+
+          # 1. 이전 spec 저장 (diff 비교용)
+          curl -sf "${DOCS_URL}/openapi.json" -o openapi.old.json || echo '{"paths":{}}' > openapi.old.json
+
+          # 2. 새 spec 추출
           SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
             --region=${{ env.REGION }} --format='value(status.url)')
-
           curl -s "${SERVICE_URL}/v3/api-docs" -o docs/openapi.json
           echo "OpenAPI spec 추출 완료"
 
+          # 3. oasdiff 설치 및 changelog 생성
+          curl -fsSL https://github.com/oasdiff/oasdiff/releases/latest/download/oasdiff_Linux_amd64.tar.gz \
+            | tar xz oasdiff
+          chmod +x oasdiff
+
+          DIFF_SUMMARY=$(python3 << 'PYEOF'
+          import subprocess, json, sys
+
+          result = subprocess.run(
+            ['./oasdiff', 'changelog', 'openapi.old.json', 'docs/openapi.json', '-f', 'json'],
+            capture_output=True, text=True
+          )
+
+          try:
+            changes = json.loads(result.stdout) if result.stdout.strip() else []
+          except:
+            changes = []
+
+          added   = [c for c in changes if 'endpoint-added' in c.get('id','')]
+          removed = [c for c in changes if 'endpoint-removed' in c.get('id','')]
+          breaking = [c for c in changes if c.get('level', 0) >= 2]
+          modified = [c for c in changes if c not in added and c not in removed and c not in breaking]
+
+          lines = []
+          if added:
+            lines.append(f"🟢 추가된 엔드포인트 ({len(added)})")
+            for c in added[:5]:
+              lines.append(f"  {c.get('text','').strip()}")
+          if removed:
+            lines.append(f"🔴 삭제된 엔드포인트 ({len(removed)})")
+            for c in removed[:5]:
+              lines.append(f"  {c.get('text','').strip()}")
+          if breaking:
+            lines.append(f"⚠️ Breaking Changes ({len(breaking)})")
+            for c in breaking[:3]:
+              lines.append(f"  {c.get('text','').strip()}")
+          if modified and not added and not removed and not breaking:
+            lines.append(f"🔵 변경된 항목 ({len(modified)})")
+            for c in modified[:5]:
+              lines.append(f"  {c.get('text','').strip()}")
+          if not lines:
+            lines.append("변경된 API 없음 (내부 로직/스키마만 업데이트)")
+
+          print('\n'.join(lines))
+          PYEOF
+          )
+
+          # 4. Cloudflare Pages 배포
           npm install -g wrangler --silent
           wrangler pages deploy docs/ \
             --project-name=byeoldori-docs \
             --commit-dirty=true
 
-          DOCS_URL="https://byeoldori-docs.pages.dev"
+          # 5. Discord 알림 (diff 포함)
+          DIFF_JSON=$(echo "$DIFF_SUMMARY" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
           curl -s -H "Content-Type: application/json" \
             -d "{
               \"embeds\": [{
                 \"title\": \"📄 API 문서 업데이트\",
-                \"description\": \"새로운 버전의 API 문서가 배포되었습니다.\",
                 \"color\": 5793266,
                 \"fields\": [
+                  {\"name\": \"변경사항\", \"value\": \"\`\`\`${DIFF_SUMMARY}\`\`\`\", \"inline\": false},
+                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
+                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true},
                   {\"name\": \"문서\", \"value\": \"[열기](${DOCS_URL})\", \"inline\": true}
                 ]
               }]
