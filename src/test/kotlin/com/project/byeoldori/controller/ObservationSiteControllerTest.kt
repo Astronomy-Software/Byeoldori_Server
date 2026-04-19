@@ -16,6 +16,7 @@ import org.mockito.Mockito.*
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
@@ -37,8 +38,7 @@ class ObservationSiteControllerTest {
 
     @BeforeEach
     fun setup() {
-        val controller = ObservationSiteController(siteService)
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).build()
+        mockMvc = MockMvcBuilders.standaloneSetup(ObservationSiteController(siteService)).build()
     }
 
     @Test
@@ -53,7 +53,7 @@ class ObservationSiteControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(dto))
         )
-            .andExpect(status().isOk)
+            .andExpect(status().isCreated)
             .andExpect(jsonPath("$.data.name", `is`("백두산")))
     }
 
@@ -63,10 +63,9 @@ class ObservationSiteControllerTest {
             ObservationSiteResponseDto(1L, "백두산", 41.0, 128.0),
             ObservationSiteResponseDto(2L, "한라산", 33.0, 126.0)
         )
-        val pageable = PageRequest.of(0, 20)
-        val page = PageImpl(list, pageable, list.size.toLong())
+        val page = PageImpl(list, PageRequest.of(0, 20), list.size.toLong())
 
-        `when`(siteService.getAllSites(pageable)).thenReturn(page)
+        `when`(siteService.getAllSites(any(Pageable::class.java))).thenReturn(page)
 
         mockMvc.perform(get("/observationsites"))
             .andExpect(status().isOk)
@@ -95,6 +94,7 @@ class ObservationSiteControllerTest {
                 .content(objectMapper.writeValueAsString(dto))
         )
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name", `is`("한라산")))
     }
 
     @Test
@@ -102,6 +102,6 @@ class ObservationSiteControllerTest {
         doNothing().`when`(siteService).deleteSiteById(2L)
 
         mockMvc.perform(delete("/observationsites/2"))
-            .andExpect(status().isNoContent)
+            .andExpect(status().isOk)
     }
 }

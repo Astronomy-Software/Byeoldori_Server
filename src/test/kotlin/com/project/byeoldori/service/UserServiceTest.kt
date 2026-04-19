@@ -82,6 +82,7 @@ class UserServiceTest {
         )
         given(userRepository.existsByEmail(req.email)).willReturn(false)
         given(userRepository.existsByNickname("tester")).willReturn(false)
+        given(passwordEncoder.encode(anyString())).willReturn("hashed")
         val savedUser = User(email = req.email, passwordHash = "hashed", name = req.name, phone = req.phone, nickname = req.nickname)
         given(userRepository.save(any(User::class.java))).willReturn(savedUser)
         given(emailTokenRepo.save(any(EmailVerificationToken::class.java))).willReturn(EmailVerificationToken(user = savedUser))
@@ -128,7 +129,7 @@ class UserServiceTest {
         given(passwordEncoder.matches(req.password, "hashed")).willReturn(true)
         given(jwt.generateAccessToken(req.email)).willReturn("access-token")
         given(jwt.generateRefreshToken(req.email)).willReturn("refresh-token")
-        given(jwt.extractExpiration(any())).willReturn(java.time.LocalDateTime.now().plusHours(1))
+        given(jwt.extractExpiration(anyString())).willReturn(java.time.LocalDateTime.now().plusHours(1))
         given(refreshTokenRepo.findByUserIdForUpdate(user.id)).willReturn(Optional.empty())
 
         val result = userService.login(req)
