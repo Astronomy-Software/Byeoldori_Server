@@ -188,51 +188,8 @@ jobs:
           curl -s "${SERVICE_URL}/v3/api-docs" -o docs/openapi.json
           echo "OpenAPI spec 추출 완료"
 
-          # 3. Python으로 OpenAPI diff 분석
-          python3 -c "
-import json
-
-def load(path):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except:
-        return {'paths': {}}
-
-old = load('openapi.old.json')
-new = load('docs/openapi.json')
-
-old_endpoints = set()
-new_endpoints = set()
-
-for path, methods in old.get('paths', {}).items():
-    for method in methods:
-        if method in ('get','post','put','patch','delete'):
-            old_endpoints.add(f'{method.upper()} {path}')
-
-for path, methods in new.get('paths', {}).items():
-    for method in methods:
-        if method in ('get','post','put','patch','delete'):
-            new_endpoints.add(f'{method.upper()} {path}')
-
-added   = sorted(new_endpoints - old_endpoints)
-removed = sorted(old_endpoints - new_endpoints)
-
-lines = []
-if added:
-    lines.append(f'🟢 추가된 엔드포인트 ({len(added)})')
-    for e in added[:5]:
-        lines.append(f'  {e}')
-if removed:
-    lines.append(f'🔴 삭제된 엔드포인트 ({len(removed)})')
-    for e in removed[:5]:
-        lines.append(f'  {e}')
-if not lines:
-    lines.append('변경된 API 없음 (내부 로직/스키마만 업데이트)')
-
-print('\n'.join(lines))
-" > /tmp/diff_output.txt
-          DIFF_SUMMARY=$(cat /tmp/diff_output.txt)
+          # 3. OpenAPI diff 분석
+          DIFF_SUMMARY=$(python3 scripts/diff_openapi.py openapi.old.json docs/openapi.json)
 
           # 4. Cloudflare Pages 배포
           npm install -g wrangler --silent
