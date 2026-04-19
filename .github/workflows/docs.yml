@@ -1,0 +1,103 @@
+name: Deploy docs
+
+on:
+  workflow_run:
+    workflows: ["Deploy backend"]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "docs-site/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: true
+
+env:
+  SERVICE_NAME: byeoldori-server
+  REGION: asia-northeast3
+  API_URL: https://byeoldori-server-hbxnfn4woa-du.a.run.app
+
+jobs:
+  deploy-docs:
+    if: >
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Fetch openapi.json from server
+        run: |
+          curl -sf "${API_URL}/v3/api-docs" -o docs-site/openapi.json
+          echo "OpenAPI spec 추출 완료"
+
+      - name: Compute API diff
+        env:
+          DOCS_URL: https://byeoldori-docs.pages.dev
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+        run: |
+          curl -sf "${DOCS_URL}/openapi.json" -o openapi.old.json || echo '{"paths":{}}' > openapi.old.json
+          DIFF=$(python3 scripts/diff_openapi.py openapi.old.json docs-site/openapi.json)
+          echo "DIFF_SUMMARY=${DIFF}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm ci --prefix docs-site
+
+      - name: Generate API docs from openapi.json
+        run: npm run generate --prefix docs-site
+
+      - name: Build Fumadocs
+        run: npm run build --prefix docs-site
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ env.API_URL }}
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: byeoldori-docs
+          directory: docs-site/out
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Discord
+        if: success()
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          SHORT="${SHA:0:7}"
+          curl -s -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"📄 API 문서 업데이트\",
+                \"color\": 5793266,
+                \"fields\": [
+                  {\"name\": \"변경사항\", \"value\": \"\`\`\`${DIFF_SUMMARY}\`\`\`\", \"inline\": false},
+                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
+                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true},
+                  {\"name\": \"문서\", \"value\": \"[열기](https://byeoldori-docs.pages.dev)\", \"inline\": true}
+                ]
+              }]
+            }" \
+            "$DISCORD_URL"
