@@ -26,6 +26,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      deployments: write
 
     steps:
       - uses: actions/checkout@v4
@@ -199,13 +200,7 @@ jobs:
           npm run build
           cd ..
 
-          # 5. Cloudflare Pages 배포
-          npm install -g wrangler --silent
-          wrangler pages deploy docs-site/out \
-            --project-name=byeoldori-docs \
-            --commit-dirty=true
-
-          # 6. Discord 알림
+          # 5. Discord 알림 (Cloudflare 배포 전)
           curl -s -H "Content-Type: application/json" \
             -d "{
               \"embeds\": [{
@@ -220,6 +215,16 @@ jobs:
               }]
             }" \
             "$DISCORD_URL"
+
+      - name: Deploy docs to Cloudflare Pages
+        if: success()
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: byeoldori-docs
+          directory: docs-site/out
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify Discord - Deploy Success
         if: success()
