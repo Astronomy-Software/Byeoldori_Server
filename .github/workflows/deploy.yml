@@ -31,21 +31,28 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Notify Discord - Deploy Start
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
+          SHORT="${SHA:0:7}"
           curl -s -H "Content-Type: application/json" \
-            -d '{
-              "embeds": [{
-                "title": "🚀 별도리 서버 배포 시작",
-                "description": "새로운 버전 배포를 시작합니다.",
-                "color": 3447003,
-                "fields": [
-                  {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
-                  {"name": "커밋", "value": "[`'"$(echo '${{ github.sha }}' | cut -c1-7)"'`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
-                  {"name": "작업자", "value": "${{ github.actor }}", "inline": true}
+            -d "{
+              \"embeds\": [{
+                \"title\": \"🚀 별도리 서버 배포 시작\",
+                \"description\": \"새로운 버전 배포를 시작합니다.\",
+                \"color\": 3447003,
+                \"fields\": [
+                  {\"name\": \"브랜치\", \"value\": \"${REF}\", \"inline\": true},
+                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
+                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true}
                 ]
               }]
-            }' \
-            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+            }" \
+            "$DISCORD_URL"
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -107,37 +114,103 @@ jobs:
             STORAGE_TYPE=STORAGE_TYPE:latest
             GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest
 
-      - name: Notify Discord - Deploy Success
-        if: success()
+      - name: Health check & auto rollback
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          SHORT="${SHA:0:7}"
+
+          echo "헬스체크 시작: ${SERVICE_URL}/actuator/health"
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${SERVICE_URL}/actuator/health")
+            echo "시도 ${i}/12 - 응답: ${STATUS}"
+            if [ "$STATUS" = "200" ]; then
+              echo "헬스체크 통과"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "헬스체크 실패 - 이전 버전으로 롤백"
+          PREV_REVISION=$(gcloud run revisions list \
+            --service=${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --format='value(name)' \
+            --sort-by='~creationTimestamp' \
+            --limit=2 | tail -1)
+          gcloud run services update-traffic ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --to-revisions=${PREV_REVISION}=100
+
           curl -s -H "Content-Type: application/json" \
-            -d '{
-              "embeds": [{
-                "title": "✅ 별도리 서버 배포 완료",
-                "description": "새로운 버전이 성공적으로 배포되었습니다.",
-                "color": 3066993,
-                "fields": [
-                  {"name": "커밋", "value": "[`'"$(echo '${{ github.sha }}' | cut -c1-7)"'`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
-                  {"name": "작업자", "value": "${{ github.actor }}", "inline": true}
+            -d "{
+              \"embeds\": [{
+                \"title\": \"🔄 별도리 서버 자동 롤백 완료\",
+                \"description\": \"헬스체크 실패로 이전 버전으로 자동 복구했습니다.\",
+                \"color\": 16776960,
+                \"fields\": [
+                  {\"name\": \"실패 커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
+                  {\"name\": \"롤백 대상\", \"value\": \"${PREV_REVISION}\", \"inline\": true},
+                  {\"name\": \"워크플로우\", \"value\": \"[로그 확인](${RUN_URL})\", \"inline\": false}
                 ]
               }]
-            }' \
-            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+            }" \
+            "$DISCORD_URL"
+          exit 1
+
+      - name: Notify Discord - Deploy Success
+        if: success()
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          SHORT="${SHA:0:7}"
+          curl -s -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"✅ 별도리 서버 배포 완료\",
+                \"description\": \"새로운 버전이 성공적으로 배포되었습니다.\",
+                \"color\": 3066993,
+                \"fields\": [
+                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
+                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true}
+                ]
+              }]
+            }" \
+            "$DISCORD_URL"
 
       - name: Notify Discord - Deploy Failure
         if: failure()
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKFLOW: ${{ github.workflow }}
         run: |
+          SHORT="${SHA:0:7}"
           curl -s -H "Content-Type: application/json" \
-            -d '{
-              "embeds": [{
-                "title": "❌ 별도리 서버 배포 실패",
-                "description": "배포 중 오류가 발생했습니다. 확인이 필요합니다.",
-                "color": 15158332,
-                "fields": [
-                  {"name": "커밋", "value": "[`'"$(echo '${{ github.sha }}' | cut -c1-7)"'`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
-                  {"name": "작업자", "value": "${{ github.actor }}", "inline": true},
-                  {"name": "워크플로우", "value": "[${{ github.workflow }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": false}
+            -d "{
+              \"embeds\": [{
+                \"title\": \"❌ 별도리 서버 배포 실패\",
+                \"description\": \"배포 중 오류가 발생했습니다. 확인이 필요합니다.\",
+                \"color\": 15158332,
+                \"fields\": [
+                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
+                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true},
+                  {\"name\": \"워크플로우\", \"value\": \"[${WORKFLOW}](${RUN_URL})\", \"inline\": false}
                 ]
               }]
-            }' \
-            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+            }" \
+            "$DISCORD_URL"
