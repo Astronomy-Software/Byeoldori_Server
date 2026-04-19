@@ -1,0 +1,95 @@
+---
+title: 인증 플로우
+description: 회원가입부터 토큰 관리까지 전체 인증 흐름
+---
+
+## 엔드포인트 요약
+
+| 메서드 | 경로 | 설명 | 인증 필요 |
+|--------|------|------|----------|
+| POST | `/auth/signup` | 회원가입 | ❌ |
+| GET | `/auth/verify-email?token=` | 이메일 인증 | ❌ |
+| POST | `/auth/login` | 로그인 | ❌ |
+| POST | `/auth/token` | 액세스 토큰 재발급 | ❌ |
+| POST | `/users/logout` | 로그아웃 (서버 리프레시 삭제) | ✅ |
+| GET | `/users/me` | 내 정보 조회 | ✅ |
+| POST | `/auth/google` | Google ID Token 로그인 | ❌ |
+
+---
+
+## 회원가입 → 로그인 플로우
+
+```
+1. POST /auth/signup
+2. 이메일 수신 → GET /auth/verify-email?token=...
+3. POST /auth/login → accessToken, refreshToken 저장
+4. GET /users/me → 내 정보 확인
+```
+
+### 회원가입 요청
+
+```json
+POST /auth/signup
+{
+  "email": "user@example.com",
+  "password": "Abcd1234!",
+  "passwordConfirm": "Abcd1234!",
+  "name": "홍길동",
+  "phone": "01012345678"
+}
+```
+
+### 로그인 응답
+
+```json
+{
+  "data": {
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ...",
+    "accessTokenExpiresAt": "2024-01-01T01:00:00Z",
+    "refreshTokenExpiresAt": "2024-01-15T00:00:00Z"
+  }
+}
+```
+
+> ⚠️ `/auth/verify-email` 응답은 JSON이 아닌 HTML 문자열 `"verification-success"` 반환합니다.
+
+---
+
+## 토큰 재발급
+
+액세스 토큰 만료(401) 시 리프레시 토큰으로 재발급합니다.
+
+```json
+POST /auth/token
+{
+  "refreshToken": "eyJ..."
+}
+```
+
+재발급도 실패하면(401) → 로그아웃 처리 후 `/login` 이동.
+
+---
+
+## Google OAuth
+
+현재 서버는 앱에서 받은 Google ID Token 검증 방식으로 구현되어 있습니다.
+
+```json
+POST /auth/google
+{
+  "idToken": "구글에서 받은 ID Token"
+}
+```
+
+> ⚠️ 웹용 Google OAuth는 **웹용 Client ID 별도 발급** 및 **콜백 URL 등록**이 필요합니다.
+> 현재 미구현 상태입니다.
+
+---
+
+## 릴리스 전 복구 항목
+
+| 항목 | 현재 상태 | 복구 내용 |
+|------|----------|----------|
+| AuthGuard 리다이렉트 | 제거됨 | 미로그인 시 `/login`으로 이동 복구 |
+| 세션 만료 UX | 하드 네비게이션 | `router.push('/login')`으로 교체 |

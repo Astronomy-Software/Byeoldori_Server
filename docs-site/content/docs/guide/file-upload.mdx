@@ -1,0 +1,44 @@
+---
+title: 파일 업로드
+description: 이미지 및 JSON 파일 업로드 제한사항
+---
+
+## 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| POST | `/files/image` | 이미지 업로드 |
+| POST | `/files/json` | 교육 콘텐츠 JSON 업로드 |
+| POST | `/users/me/profile-image` | 프로필 이미지 업로드 |
+
+모두 `multipart/form-data` 형식입니다.
+
+```
+/files/image         → form-data key: "file"
+/files/json          → form-data key: "file"
+/users/me/profile-image → form-data key: "image"
+```
+
+## 응답
+
+```json
+{
+  "data": {
+    "url": "https://...",
+    "filename": "image.jpg",
+    "size": 204800,
+    "contentType": "image/jpeg"
+  }
+}
+```
+
+## ⚠️ Vercel 프록시 제한
+
+Vercel Route Handler 프록시를 통해 업로드하면 **4.5MB** 제한이 있습니다.
+
+| 파일 크기 | 방법 |
+|----------|------|
+| 4.5MB 이하 | Vercel 프록시 통해 정상 업로드 |
+| 4.5MB 초과 | 백엔드 직접 호출 필요 |
+
+큰 파일이 필요하면 향후 **S3 presigned URL 전략** 도입을 검토해야 합니다.

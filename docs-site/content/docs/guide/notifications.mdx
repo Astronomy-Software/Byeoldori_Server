@@ -1,0 +1,31 @@
+---
+title: 알림
+description: 알림 조회 및 읽음 처리
+---
+
+## 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/notifications` | 알림 목록 |
+| GET | `/notifications/unread-count` | 읽지 않은 알림 수 |
+| PATCH | `/notifications/{id}/read` | 단건 읽음 처리 |
+| PATCH | `/notifications/read-all` | 전체 읽음 처리 |
+
+### 목록 파라미터
+
+```
+GET /notifications?page=1&size=20
+```
+
+## 실시간 알림 전략
+
+> ⚠️ 서버에 SSE/WebSocket이 없습니다. **폴링 방식**으로 구현해야 합니다.
+
+```ts
+// 예시: 30초마다 미확인 알림 수 체크
+setInterval(async () => {
+  const count = await api.notifications.unreadCount()
+  setUnreadCount(count)
+}, 30_000)
+```

@@ -1,0 +1,95 @@
+---
+title: 커뮤니티 API
+description: 게시글, 댓글, 좋아요 CRUD
+---
+
+## 게시글 타입
+
+`type` 파라미터는 `FREE` / `REVIEW` / `EDUCATION` 중 하나입니다.
+
+## 게시글
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| POST | `/community/{type}/posts` | 작성 |
+| GET | `/community/{type}/posts` | 목록 조회 |
+| GET | `/community/posts/{id}` | 상세 조회 |
+| PATCH | `/community/posts/{id}` | 수정 |
+| DELETE | `/community/posts/{id}` | 삭제 |
+
+### 목록 조회 파라미터
+
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| `page` | `0` | 페이지 번호 |
+| `size` | `20` | 페이지 크기 |
+| `sortBy` | `LATEST` | `LATEST` / `VIEWS` / `LIKES` |
+| `keyword` | - | 검색어 |
+| `searchBy` | `TITLE` | `TITLE` / `CONTENT` / `NICKNAME` |
+
+### 홈 화면 API
+
+```
+GET /community/home/reviews       — 최신 관측 후기
+GET /community/home/educations    — 신규 교육 콘텐츠
+GET /community/home/free-posts    — 인기 자유게시글
+```
+
+---
+
+## 댓글
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| POST | `/community/posts/{id}/comments` | 작성 |
+| GET | `/community/posts/{id}/comments` | 목록 (`?page=1&size=15`) |
+| PATCH | `/community/posts/{id}/comments/{cid}` | 수정 |
+| DELETE | `/community/posts/{id}/comments/{cid}` | 삭제 |
+
+대댓글은 `parentId` 필드를 포함합니다.
+
+```json
+POST /community/posts/{id}/comments
+{
+  "content": "댓글 내용",
+  "parentId": 123  // 대댓글인 경우만
+}
+```
+
+---
+
+## 좋아요 토글
+
+```
+POST /community/posts/{id}/likes/toggle          — 게시글 좋아요
+POST /community/posts/{id}/comments/{cid}/likes-toggle  — 댓글 좋아요
+```
+
+응답:
+```json
+{
+  "data": {
+    "liked": true,
+    "likeCount": 5
+  }
+}
+```
+
+---
+
+## 교육 콘텐츠 평가
+
+```json
+POST /community/posts/{id}/evaluations
+{
+  "score": 5,          // 1~5
+  "pros": "좋았던 점",
+  "cons": "개선할 점"
+}
+```
+
+---
+
+## 미구현 항목
+
+> ❌ **내가 쓴 글/댓글/좋아요 목록** — 서버에 해당 엔드포인트 없음. 구현 전 서버 작업 필요.

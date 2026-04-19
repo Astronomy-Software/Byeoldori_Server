@@ -1,0 +1,25 @@
+---
+title: 관측 일정
+description: 캘린더 이벤트 CRUD
+---
+
+## 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| POST | `/calendar/events` | 일정 생성 |
+| GET | `/calendar/events/date?date=YYYY-MM-DD` | 날짜별 조회 |
+| GET | `/calendar/events/month?year=YYYY&month=M` | 월별 요약 |
+| GET | `/calendar/events/{id}` | 단건 조회 |
+| PATCH | `/calendar/events/{id}` | 수정 |
+| DELETE | `/calendar/events/{id}` | 삭제 |
+| POST | `/calendar/events/{id}/complete` | 완료 처리 |
+| GET | `/calendar/events/count` | 총 관측 횟수 |
+
+## 일정 상태
+
+| 상태 | 설명 |
+|------|------|
+| `PLANNED` | 예정 |
+| `COMPLETED` | 완료 |
+| `CANCELED` | 취소 |

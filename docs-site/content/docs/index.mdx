@@ -1,8 +1,44 @@
 ---
 title: 별도리 API 문서
-description: 별도리 백엔드 서버 API 레퍼런스
+description: 별도리 백엔드 서버 API 레퍼런스 및 연동 가이드
 ---
 
 별도리 백엔드 API 문서에 오신 것을 환영합니다.
 
-API 레퍼런스는 사이드바의 **API Reference** 섹션에서 확인할 수 있습니다.
+## Base URL
+
+```
+https://byeoldori-server-hbxnfn4woa-du.a.run.app
+```
+
+> **웹에서는** Vercel 프록시 `/api/[...path]`를 통해 호출합니다. CORS 우회 및 백엔드 URL 차폐 목적입니다.
+
+## 공통 응답 구조
+
+모든 API는 아래 형식으로 응답합니다.
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": { ... }
+}
+```
+
+## 인증
+
+보호된 API는 모두 `Authorization` 헤더가 필요합니다.
+
+```
+Authorization: Bearer {accessToken}
+```
+
+| 응답 코드 | 의미 |
+|----------|------|
+| `401` | 미인증 — 토큰 없거나 만료 |
+| `403` | 권한 없음 |
+
+## 문서 구성
+
+- **[연동 가이드](/docs/guide/authentication)** — 인증 플로우, 파일 업로드 제한, 알림 폴링 등 실전 가이드
+- **[API Reference](/docs/api)** — OpenAPI 자동 생성 전체 엔드포인트 목록
