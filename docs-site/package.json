@@ -10,6 +10,7 @@
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
+    "@scalar/api-client-react": "^2.0.0",
     "fumadocs-core": "^16.7.15",
     "fumadocs-mdx": "^14.1.1",
     "fumadocs-openapi": "^10.1.4",
