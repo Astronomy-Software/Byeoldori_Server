@@ -166,7 +166,7 @@ jobs:
             "$DISCORD_URL"
           exit 1
 
-      - name: Export OpenAPI spec & deploy docs
+      - name: Build & deploy docs (Docusaurus)
         if: success()
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -179,26 +179,61 @@ jobs:
           DOCS_URL="https://byeoldori-docs.pages.dev"
           SHORT="${SHA:0:7}"
 
-          # 1. 이전 spec 저장 (diff 비교용)
+          # 1. 이전 openapi.json으로 diff 비교
           curl -sf "${DOCS_URL}/openapi.json" -o openapi.old.json || echo '{"paths":{}}' > openapi.old.json
 
-          # 2. 새 spec 추출
+          # 2. Cloud Run에서 최신 openapi.json 추출
           SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
             --region=${{ env.REGION }} --format='value(status.url)')
-          curl -s "${SERVICE_URL}/v3/api-docs" -o docs/openapi.json
+          curl -s "${SERVICE_URL}/v3/api-docs" -o docs-site/openapi.json
           echo "OpenAPI spec 추출 완료"
 
-          # 3. OpenAPI diff 분석
-          DIFF_SUMMARY=$(python3 scripts/diff_openapi.py openapi.old.json docs/openapi.json)
+          # 3. diff 분석 (Python)
+          DIFF_SUMMARY=$(python3 -c "
+import json
 
-          # 4. Cloudflare Pages 배포
+def load(p):
+    try:
+        return json.load(open(p))
+    except:
+        return {'paths': {}}
+
+def eps(s):
+    r = set()
+    for path, ms in s.get('paths', {}).items():
+        for m in ms:
+            if m in ('get','post','put','patch','delete'):
+                r.add(f'{m.upper()} {path}')
+    return r
+
+added   = sorted(eps(load('docs-site/openapi.json')) - eps(load('openapi.old.json')))
+removed = sorted(eps(load('openapi.old.json')) - eps(load('docs-site/openapi.json')))
+lines = []
+if added:
+    lines.append(f'🟢 추가된 엔드포인트 ({len(added)})')
+    lines += [f'  {e}' for e in added[:5]]
+if removed:
+    lines.append(f'🔴 삭제된 엔드포인트 ({len(removed)})')
+    lines += [f'  {e}' for e in removed[:5]]
+if not lines:
+    lines.append('변경된 API 없음 (내부 로직/스키마만 업데이트)')
+print('\n'.join(lines))
+")
+
+          # 4. Docusaurus 빌드
+          cd docs-site
+          npm ci --silent
+          npm run gen-api-docs
+          npm run build
+          cd ..
+
+          # 5. Cloudflare Pages 배포
           npm install -g wrangler --silent
-          wrangler pages deploy docs/ \
+          wrangler pages deploy docs-site/build/ \
             --project-name=byeoldori-docs \
             --commit-dirty=true
 
-          # 5. Discord 알림 (diff 포함)
-          DIFF_JSON=$(echo "$DIFF_SUMMARY" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+          # 6. Discord 알림
           curl -s -H "Content-Type: application/json" \
             -d "{
               \"embeds\": [{
