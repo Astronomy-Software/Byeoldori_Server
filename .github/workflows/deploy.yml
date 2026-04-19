@@ -45,7 +45,7 @@ jobs:
                 ]
               }]
             }' \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
+            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -122,7 +122,7 @@ jobs:
                 ]
               }]
             }' \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
+            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
 
       - name: Notify Discord - Deploy Failure
         if: failure()
@@ -140,4 +140,4 @@ jobs:
                 ]
               }]
             }' \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
+            ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
