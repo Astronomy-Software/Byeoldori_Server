@@ -1,4 +1,7 @@
 node_modules/
 .next/
 out/
+.source/
+openapi.json
+next-env.d.ts
 content/docs/api/
