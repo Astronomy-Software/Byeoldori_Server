@@ -166,7 +166,7 @@ jobs:
             "$DISCORD_URL"
           exit 1
 
-      - name: Build & deploy docs (Docusaurus)
+      - name: Build & deploy docs (Fumadocs)
         if: success()
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -175,11 +175,12 @@ jobs:
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          NEXT_PUBLIC_API_BASE_URL: https://byeoldori-server-hbxnfn4woa-du.a.run.app
         run: |
           DOCS_URL="https://byeoldori-docs.pages.dev"
           SHORT="${SHA:0:7}"
 
-          # 1. 이전 openapi.json으로 diff 비교
+          # 1. 이전 openapi.json diff 비교용
           curl -sf "${DOCS_URL}/openapi.json" -o openapi.old.json || echo '{"paths":{}}' > openapi.old.json
 
           # 2. Cloud Run에서 최신 openapi.json 추출
@@ -188,48 +189,19 @@ jobs:
           curl -s "${SERVICE_URL}/v3/api-docs" -o docs-site/openapi.json
           echo "OpenAPI spec 추출 완료"
 
-          # 3. diff 분석 (Python)
-          DIFF_SUMMARY=$(python3 -c "
-import json
+          # 3. diff 분석
+          DIFF_SUMMARY=$(python3 scripts/diff_openapi.py openapi.old.json docs-site/openapi.json)
 
-def load(p):
-    try:
-        return json.load(open(p))
-    except:
-        return {'paths': {}}
-
-def eps(s):
-    r = set()
-    for path, ms in s.get('paths', {}).items():
-        for m in ms:
-            if m in ('get','post','put','patch','delete'):
-                r.add(f'{m.upper()} {path}')
-    return r
-
-added   = sorted(eps(load('docs-site/openapi.json')) - eps(load('openapi.old.json')))
-removed = sorted(eps(load('openapi.old.json')) - eps(load('docs-site/openapi.json')))
-lines = []
-if added:
-    lines.append(f'🟢 추가된 엔드포인트 ({len(added)})')
-    lines += [f'  {e}' for e in added[:5]]
-if removed:
-    lines.append(f'🔴 삭제된 엔드포인트 ({len(removed)})')
-    lines += [f'  {e}' for e in removed[:5]]
-if not lines:
-    lines.append('변경된 API 없음 (내부 로직/스키마만 업데이트)')
-print('\n'.join(lines))
-")
-
-          # 4. Docusaurus 빌드
+          # 4. Fumadocs 빌드
           cd docs-site
           npm ci --silent
-          npm run gen-api-docs
+          npm run generate
           npm run build
           cd ..
 
           # 5. Cloudflare Pages 배포
           npm install -g wrangler --silent
-          wrangler pages deploy docs-site/build/ \
+          wrangler pages deploy docs-site/out \
             --project-name=byeoldori-docs \
             --commit-dirty=true
 
