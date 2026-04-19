@@ -1,90 +1,20 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <title>별도리 API 문서</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="별도리 Unity 클라이언트 개발자를 위한 API 온보딩 가이드">
-  <link rel="icon" href="https://cdn.jsdelivr.net/npm/twemoji@14/2/72x72/2728.png">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
+  <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
   <style>
-    :root {
-      --theme-color: #7c3aed;
-      --base-font-size: 15px;
-      --sidebar-width: 260px;
-      --cover-background-color: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-      --cover-heading-color: #fff;
-      --cover-blockquote-color: rgba(255,255,255,0.7);
-    }
-
-    .cover-main h1 {
-      font-size: 3rem;
-      letter-spacing: 3px;
-    }
-
-    .cover-main > p:last-child a {
-      background-color: #7c3aed;
-      border-color: #7c3aed;
-      border-radius: 10px;
-    }
-
-    .sidebar {
-      border-right: 1px solid #eee;
-    }
-
-    .app-nav a {
-      color: #7c3aed;
-    }
-
-    /* 코드 블록 스타일 */
-    .markdown-section pre {
-      border-radius: 8px;
-    }
+    html, body { height: 100%; margin: 0; }
   </style>
 </head>
 <body>
-  <div id="app"></div>
-  <script>
-    window.$docsify = {
-      name: '✦ 별도리 API',
-      repo: 'https://github.com/Astronomy-Software/Byeoldori_Server',
-      loadSidebar: true,
-      coverpage: true,
-      onlyCover: false,
-      autoHeader: true,
-      subMaxLevel: 3,
-      search: {
-        placeholder: '검색...',
-        noData: '검색 결과 없음',
-        depth: 3
-      },
-      copyCode: {
-        buttonText: '복사',
-        errorText: '오류',
-        successText: '복사됨'
-      },
-      pagination: {
-        previousText: '이전',
-        nextText: '다음',
-        crossChapter: true,
-      },
-      alias: {
-        '/.*/_sidebar.md': '/_sidebar.md'
-      }
-    }
-  </script>
-
-  <!-- Docsify core -->
-  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
-
-  <!-- Plugins -->
-  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@2/dist/docsify-copy-code.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docsify-pagination/dist/docsify-pagination.min.js"></script>
-
-  <!-- 코드 하이라이팅 -->
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-kotlin.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
+  <elements-api
+    apiDescriptionUrl="./openapi.json"
+    router="hash"
+    layout="sidebar"
+  />
 </body>
 </html>
