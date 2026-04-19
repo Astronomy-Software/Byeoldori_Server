@@ -1,13 +1,3 @@
-import { generateFiles } from 'fumadocs-openapi';
-import { createOpenAPI } from 'fumadocs-openapi/server';
-
-const openapi = createOpenAPI({
-  input: ['./openapi.json'],
-});
-
-await generateFiles({
-  input: openapi,
-  output: './content/docs/api',
-});
-
-console.log('API docs generated from openapi.json');
+// API Reference는 Swagger UI로 제공됩니다.
+// https://byeoldori-server-hbxnfn4woa-du.a.run.app/swagger-ui.html
+console.log('API docs: using Swagger UI at server endpoint');
