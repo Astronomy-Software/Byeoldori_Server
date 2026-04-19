@@ -188,52 +188,51 @@ jobs:
           curl -s "${SERVICE_URL}/v3/api-docs" -o docs/openapi.json
           echo "OpenAPI spec 추출 완료"
 
-          # 3. oasdiff 설치 및 changelog 생성
-          curl -fsSL https://github.com/oasdiff/oasdiff/releases/latest/download/oasdiff_Linux_amd64.tar.gz \
-            | tar xz oasdiff
-          chmod +x oasdiff
+          # 3. Python으로 OpenAPI diff 분석
+          python3 -c "
+import json
 
-          DIFF_SUMMARY=$(python3 << 'PYEOF'
-          import subprocess, json, sys
+def load(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except:
+        return {'paths': {}}
 
-          result = subprocess.run(
-            ['./oasdiff', 'changelog', 'openapi.old.json', 'docs/openapi.json', '-f', 'json'],
-            capture_output=True, text=True
-          )
+old = load('openapi.old.json')
+new = load('docs/openapi.json')
 
-          try:
-            changes = json.loads(result.stdout) if result.stdout.strip() else []
-          except:
-            changes = []
+old_endpoints = set()
+new_endpoints = set()
 
-          added   = [c for c in changes if 'endpoint-added' in c.get('id','')]
-          removed = [c for c in changes if 'endpoint-removed' in c.get('id','')]
-          breaking = [c for c in changes if c.get('level', 0) >= 2]
-          modified = [c for c in changes if c not in added and c not in removed and c not in breaking]
+for path, methods in old.get('paths', {}).items():
+    for method in methods:
+        if method in ('get','post','put','patch','delete'):
+            old_endpoints.add(f'{method.upper()} {path}')
 
-          lines = []
-          if added:
-            lines.append(f"🟢 추가된 엔드포인트 ({len(added)})")
-            for c in added[:5]:
-              lines.append(f"  {c.get('text','').strip()}")
-          if removed:
-            lines.append(f"🔴 삭제된 엔드포인트 ({len(removed)})")
-            for c in removed[:5]:
-              lines.append(f"  {c.get('text','').strip()}")
-          if breaking:
-            lines.append(f"⚠️ Breaking Changes ({len(breaking)})")
-            for c in breaking[:3]:
-              lines.append(f"  {c.get('text','').strip()}")
-          if modified and not added and not removed and not breaking:
-            lines.append(f"🔵 변경된 항목 ({len(modified)})")
-            for c in modified[:5]:
-              lines.append(f"  {c.get('text','').strip()}")
-          if not lines:
-            lines.append("변경된 API 없음 (내부 로직/스키마만 업데이트)")
+for path, methods in new.get('paths', {}).items():
+    for method in methods:
+        if method in ('get','post','put','patch','delete'):
+            new_endpoints.add(f'{method.upper()} {path}')
 
-          print('\n'.join(lines))
-          PYEOF
-          )
+added   = sorted(new_endpoints - old_endpoints)
+removed = sorted(old_endpoints - new_endpoints)
+
+lines = []
+if added:
+    lines.append(f'🟢 추가된 엔드포인트 ({len(added)})')
+    for e in added[:5]:
+        lines.append(f'  {e}')
+if removed:
+    lines.append(f'🔴 삭제된 엔드포인트 ({len(removed)})')
+    for e in removed[:5]:
+        lines.append(f'  {e}')
+if not lines:
+    lines.append('변경된 API 없음 (내부 로직/스키마만 업데이트)')
+
+print('\n'.join(lines))
+" > /tmp/diff_output.txt
+          DIFF_SUMMARY=$(cat /tmp/diff_output.txt)
 
           # 4. Cloudflare Pages 배포
           npm install -g wrangler --silent
