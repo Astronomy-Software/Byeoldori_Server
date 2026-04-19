@@ -41,25 +41,6 @@ services:
         aliases:
           - app
 
-  # ─── Stellarium 별지도 렌더링 서버 ───────────────────────────────
-  stellarium:
-    build:
-      context: ./ops/stellarium
-      dockerfile: Dockerfile
-    container_name: stellarium
-    restart: always
-    volumes:
-      - skybox_data:/skybox          # nginx와 PNG 공유
-    networks: [backend]
-    expose:
-      - "8090"                       # 내부 네트워크 전용 (외부 직접 노출 안 함)
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8090/api/main/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
   mysql:
     image: mysql:8.0
     container_name: mysql
@@ -101,8 +82,6 @@ services:
     depends_on:
       app:
         condition: service_started
-      stellarium:
-        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -110,7 +89,6 @@ services:
       - ./ops/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
-      - skybox_data:/skybox:ro       # stellarium이 생성한 PNG 서빙
     networks: [backend]
 
 networks:
@@ -120,4 +98,3 @@ volumes:
   mysql_data: {}
   mongo_data: {}
   uploads: {}
-  skybox_data: {}                    # stellarium ↔ nginx 공유 볼륨
