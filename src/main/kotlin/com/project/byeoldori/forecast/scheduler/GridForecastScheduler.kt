@@ -6,6 +6,8 @@ import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil
 import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil.getTMEFTimesForShortForecast
 import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil.getTMFCTimeForShort
 import org.slf4j.LoggerFactory
+import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Mono
@@ -27,6 +29,14 @@ class GridForecastScheduler(
 
     private val maxRetryAttempts = retryProperties.attempts
     private val retryDelayMillis = retryProperties.delay * 1000L
+
+    // 서버 시작 시 초단기/단기 데이터 즉시 로드 (메모리 초기화)
+    @EventListener(ApplicationReadyEvent::class)
+    fun initOnStartup() {
+        logger.info("[시작] 서버 기동 후 초단기/단기 예보 즉시 로드 시작")
+        clockForUltraForecast()
+        clockForShortForecast()
+    }
 
     // 특정시각마다 업데이트가 많이 느릴때가있음. 시간을 잘 조정해봐야할것으로 보임.
     // 매 10분 + 3분 간격으로 실행

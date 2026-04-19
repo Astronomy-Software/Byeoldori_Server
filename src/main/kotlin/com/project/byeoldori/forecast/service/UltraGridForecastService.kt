@@ -113,6 +113,8 @@ class UltraGridForecastService(
     /**
      * 상위 레벨에서 모든 데이터를 수집한 후, 일괄 업데이트하는 메서드
      */
+    fun getDataCount(): Int = ultraReadWriteLock.read { ultraTMEFGridMap.size }
+
     fun updateAllUltraTMEFData(tmfc: String, tmefList: List<String>) {
         fetchUltraShortGrids(tmfc, tmefList)
             .subscribe { listOfGrids ->

@@ -105,6 +105,9 @@ class MidCombinedForecastService(
     }
 
     @Transactional(readOnly = true)
+    fun count(): Long = combinedForecastRepository.count()
+
+    @Transactional(readOnly = true)
     fun findAll(): List<MidCombinedForecastDTO> {
         return combinedForecastRepository.findAll().map { toDto(it) }
     }
