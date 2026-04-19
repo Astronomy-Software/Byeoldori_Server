@@ -38,8 +38,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: docs-site/package-lock.json
 
       - name: Fetch openapi.json from server
         run: |
@@ -59,7 +57,7 @@ jobs:
           echo "DIFF_SUMMARY=${DIFF}" >> $GITHUB_ENV
 
       - name: Install dependencies
-        run: npm ci --prefix docs-site
+        run: npm install --prefix docs-site
 
       - name: Generate API docs from openapi.json
         run: npm run generate --prefix docs-site
