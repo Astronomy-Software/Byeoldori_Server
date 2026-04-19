@@ -1,0 +1,155 @@
+---
+title: 인증 플로우
+description: 회원가입부터 토큰 관리까지 전체 인증 흐름
+---
+
+## 엔드포인트 요약
+
+| 메서드 | 경로 | 설명 | 인증 필요 |
+|--------|------|------|----------|
+| POST | `/auth/signup` | 회원가입 | ❌ |
+| GET | `/auth/verify-email?token=` | 이메일 인증 | ❌ |
+| POST | `/auth/login` | 로그인 | ❌ |
+| POST | `/auth/token` | 액세스 토큰 재발급 | ❌ |
+| POST | `/users/logout` | 로그아웃 | ✅ |
+| GET | `/users/me` | 내 정보 조회 | ✅ |
+| POST | `/auth/google` | Google ID Token 로그인 | ❌ |
+
+---
+
+## 회원가입 → 로그인 플로우
+
+```
+1. POST /auth/signup
+2. 이메일 수신 → GET /auth/verify-email?token=...
+3. POST /auth/login → accessToken, refreshToken 저장
+4. GET /users/me → 내 정보 확인
+```
+
+### 회원가입 요청
+
+```json
+POST /auth/signup
+{
+  "email": "user@example.com",
+  "password": "Abcd1234!",
+  "passwordConfirm": "Abcd1234!",
+  "name": "홍길동",
+  "phone": "01012345678"
+}
+```
+
+> ⚠️ **이메일 인증 필수** — 인증 전 로그인 시도하면 `403 Forbidden` 반환합니다.
+> `/auth/verify-email` 응답은 JSON이 아닌 HTML 문자열 `"verification-success"`를 반환합니다.
+
+### 로그인 응답
+
+```json
+{
+  "data": {
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ...",
+    "accessTokenExpiresAt": "2024-01-01T01:00:00",
+    "refreshTokenExpiresAt": "2024-01-15T00:00:00"
+  }
+}
+```
+
+---
+
+## JWT 구현 상세
+
+서버는 **HMAC-SHA256** 서명 방식으로 JWT를 발급합니다.
+
+```
+accessToken  만료: 1시간 (3,600,000ms)
+refreshToken 만료: 14일 (1,209,600,000ms)
+```
+
+토큰 페이로드:
+- `sub` — 사용자 이메일
+- `typ` — `"access"` 또는 `"refresh"` (타입 구분용 커스텀 클레임)
+- `iat` / `exp` — 발급/만료 시각
+
+> **클라이언트 구현 포인트:** `typ` 클레임으로 액세스/리프레시 구분이 가능하지만, 일반적으로 localStorage 키로 구분하면 충분합니다.
+
+---
+
+## 리프레시 토큰 보안
+
+서버는 리프레시 토큰 자체를 DB에 저장하지 않고 **SHA-256 해시만 저장**합니다.
+
+```
+DB: refresh_tokens 테이블
+- user_id (unique) — 사용자당 토큰 1개만 유지
+- token_hash — SHA-256(refreshToken) 저장
+- expires_at
+- revoked_at / rotated_at
+```
+
+재발급 시 동작:
+1. 클라이언트가 보낸 `refreshToken`을 SHA-256 해싱
+2. DB의 `tokenHash`와 비교 — 불일치 시 `401`
+3. 만료/폐기 여부 확인
+4. 새 accessToken + refreshToken 발급, DB 해시 업데이트 (토큰 로테이션)
+
+```json
+POST /auth/token
+{ "refreshToken": "eyJ..." }
+```
+
+재발급 실패(401) 시 → 로그아웃 처리 후 `/login` 이동.
+
+---
+
+## Rate Limiting
+
+Redis 기반 IP별 요청 제한이 적용되어 있습니다.
+
+| 경로 | 제한 | 시간 |
+|------|------|------|
+| `/auth/login` | 10회 | 1분 |
+| `/auth/signup` | 5회 | 1분 |
+| `/auth/password/reset-request` | 3회 | 1시간 |
+| `/auth/google` | 10회 | 1분 |
+
+초과 시 `429 Too Many Requests` 반환.
+
+---
+
+## Google OAuth 구현 상세
+
+서버는 **Google ID Token 검증 방식**으로 구현되어 있습니다. (앱 → 구글 → ID Token → 서버 검증)
+
+```json
+POST /auth/google
+{ "idToken": "구글에서 발급받은 ID Token" }
+```
+
+서버 동작:
+1. Google API로 ID Token 검증
+2. 기존 계정 있으면 로그인, 없으면 자동 회원가입
+3. Google 계정은 `provider: "google"`, `providerId: sub` 저장
+4. 일반 계정으로 로그인 시도하면 → `"google 계정입니다. google으로 로그인해주세요."` 에러
+
+> ⚠️ 웹용 Google OAuth는 **웹용 Client ID 별도 발급** 및 **콜백 URL 등록**이 필요합니다.
+
+---
+
+## 로그아웃
+
+```
+POST /users/logout   (Authorization 헤더 필요)
+```
+
+서버에서 DB의 `refresh_tokens` 레코드를 삭제합니다.
+클라이언트에서는 `localStorage`의 토큰도 함께 제거해야 합니다.
+
+---
+
+## 릴리스 전 복구 항목
+
+| 항목 | 현재 상태 | 복구 내용 |
+|------|----------|----------|
+| AuthGuard 리다이렉트 | 제거됨 | 미로그인 시 `/login`으로 이동 복구 |
+| 세션 만료 UX | `window.location.href='/login'` | `router.push('/login')`으로 교체 |

@@ -1,0 +1,80 @@
+---
+title: 파일 업로드
+description: 이미지 및 JSON 파일 업로드 — 구현 상세와 제한사항
+---
+
+## 엔드포인트
+
+| 메서드 | 경로 | key 이름 | 설명 |
+|--------|------|---------|------|
+| POST | `/files/image` | `file` | 게시글/캘린더 이미지 |
+| POST | `/files/json` | `file` | 교육 콘텐츠 JSON |
+| POST | `/users/me/profile-image` | `image` | 프로필 이미지 |
+
+모두 `Content-Type: multipart/form-data`
+
+## 응답
+
+```json
+{
+  "data": {
+    "url": "https://storage.googleapis.com/...",
+    "filename": "image.jpg",
+    "size": 204800,
+    "contentType": "image/jpeg"
+  }
+}
+```
+
+반환된 `url`을 게시글 생성 요청의 `imageUrls` 필드에 담아 사용합니다.
+
+---
+
+## 스토리지 구현 상세
+
+서버는 `STORAGE_TYPE` 환경변수로 스토리지 구현체를 전환합니다.
+
+| 환경 | `STORAGE_TYPE` | 저장 위치 |
+|------|--------------|---------|
+| 로컬 개발 | `local` | 서버 로컬 파일시스템 (`/uploads`) |
+| 프로덕션 | `gcs` | Google Cloud Storage 버킷 |
+
+> 프로덕션에서는 GCS 버킷(`GCS_BUCKET_NAME`)에 저장되고, `PUBLIC_BASE_URL` 환경변수로 설정된 public URL이 반환됩니다.
+
+### 이미지 검증 (서버)
+
+- **허용 Content-Type**: `image/jpeg`, `image/png`, `image/webp`, `image/gif`, `application/json`
+- **최대 픽셀 수**: 50 megapixels (초과 시 거부)
+- **Magic Bytes 검증**: Content-Type 위조 방지 — 파일 헤더로 실제 형식 확인
+
+### 캘린더 이미지 제한
+
+- 이벤트당 최대 **10장**
+- 초과 시 `imageUrls`에 담아도 무시됨
+
+---
+
+## ⚠️ Vercel 프록시 4.5MB 제한
+
+웹 클라이언트가 `/api/[...path]` 프록시를 통해 업로드하면 **Vercel Route Handler의 4.5MB body 제한**에 걸립니다.
+
+```
+클라이언트 → Vercel Route Handler → 백엔드
+                 ↑ 4.5MB 제한
+```
+
+| 파일 크기 | 해결 방법 |
+|----------|---------|
+| 4.5MB 이하 | 프록시 통해 정상 동작 |
+| 4.5MB 초과 | 백엔드 직접 호출 또는 S3 Presigned URL 전략 필요 |
+
+### 향후 개선: Presigned URL 방식
+
+```
+1. 클라이언트 → 서버: 업로드 URL 요청
+2. 서버 → 클라이언트: GCS Presigned URL 반환
+3. 클라이언트 → GCS: 직접 업로드 (Vercel 거치지 않음)
+4. 클라이언트 → 서버: 업로드된 URL로 게시글 작성
+```
+
+현재 미구현 — 대용량 파일 지원 시 도입 검토 필요.

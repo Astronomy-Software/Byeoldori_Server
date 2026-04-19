@@ -1,0 +1,68 @@
+---
+title: 알림
+description: 알림 구현 방식 및 폴링 전략
+---
+
+## 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/notifications?page=1&size=20` | 알림 목록 |
+| GET | `/notifications/unread-count` | 읽지 않은 알림 수 |
+| PATCH | `/notifications/{id}/read` | 단건 읽음 처리 |
+| PATCH | `/notifications/read-all` | 전체 읽음 처리 |
+
+## 알림 타입
+
+서버에 정의된 `NotificationType`:
+
+| 타입 | 발생 조건 |
+|------|---------|
+| `NEW_COMMENT` | 내 게시글에 댓글 달림 |
+| `COMMENT_LIKED` | 내 댓글에 좋아요 |
+| `SYSTEM` | 시스템 공지 |
+
+응답 예시:
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "type": "NEW_COMMENT",
+      "title": "새 댓글",
+      "body": "홍길동님이 댓글을 남겼습니다.",
+      "isRead": false,
+      "createdAt": "2024-01-01T12:00:00"
+    }
+  ]
+}
+```
+
+---
+
+## ⚠️ 실시간 알림 없음 — 폴링 방식
+
+서버에 **SSE(Server-Sent Events)나 WebSocket이 없습니다.**
+알림 뱃지는 `/notifications/unread-count`를 주기적으로 폴링해서 구현해야 합니다.
+
+```ts
+// 권장: 30초 간격 폴링
+useEffect(() => {
+  const fetch = async () => {
+    const count = await api.notifications.unreadCount()
+    setUnreadCount(count.data)
+  }
+  fetch()
+  const id = setInterval(fetch, 30_000)
+  return () => clearInterval(id)
+}, [])
+```
+
+> 향후 사용자가 많아지면 SSE 또는 WebSocket으로 전환하는 것을 검토해야 합니다.
+
+---
+
+## 알림 생성 시점
+
+현재 알림은 서버 내부에서 직접 `NotificationRepository.save()`로 생성합니다.
+별도의 이벤트 시스템 없이 서비스 레이어에서 직접 저장하는 방식입니다.
