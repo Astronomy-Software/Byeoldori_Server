@@ -1,6 +1,6 @@
 ---
-title: 관측 일정
-description: 캘린더 이벤트 CRUD
+title: 관측 일정 (캘린더)
+description: 관측 이벤트 CRUD 및 구현 상세
 ---
 
 ## 엔드포인트
@@ -14,12 +14,81 @@ description: 캘린더 이벤트 CRUD
 | PATCH | `/calendar/events/{id}` | 수정 |
 | DELETE | `/calendar/events/{id}` | 삭제 |
 | POST | `/calendar/events/{id}/complete` | 완료 처리 |
-| GET | `/calendar/events/count` | 총 관측 횟수 |
+| GET | `/calendar/events/count` | 총 완료 관측 횟수 |
 
-## 일정 상태
+---
 
-| 상태 | 설명 |
-|------|------|
+## 일정 상태 (status)
+
+| 값 | 설명 |
+|----|------|
 | `PLANNED` | 예정 |
-| `COMPLETED` | 완료 |
+| `COMPLETED` | 완료 (관측 기록) |
 | `CANCELED` | 취소 |
+
+> `COMPLETED` 상태로 직접 생성하면 `endAt`이 자동으로 `startAt`으로 설정됩니다.
+
+---
+
+## 이벤트 생성
+
+```json
+POST /calendar/events
+{
+  "title": "M42 오리온 성운 관측",
+  "startAt": "2024-01-15T20:00",
+  "endAt": "2024-01-15T23:00",
+  "status": "PLANNED",
+  "observationSiteId": 1,
+  "lat": 37.5,
+  "lon": 127.0,
+  "placeName": "자택 옥상",
+  "memo": "망원경 80mm 사용 예정",
+  "targets": ["M42", "M45"],
+  "imageUrls": ["https://..."]
+}
+```
+
+- `observationSiteId`가 있으면 해당 관측지의 위경도/이름으로 자동 채움
+- `targets` — 관측 대상 천체 목록 (star 모듈과 연동)
+- 이미지는 이벤트당 최대 **10장**
+
+---
+
+## 완료 처리
+
+```json
+POST /calendar/events/{id}/complete
+{
+  "observedAt": "2024-01-15T23:30"  // 생략 시 endAt 또는 startAt 사용
+}
+```
+
+---
+
+## 월별 요약
+
+```
+GET /calendar/events/month?year=2024&month=1
+```
+
+응답: 날짜별 `planned` / `completed` / `canceled` 건수
+
+```json
+{
+  "data": [
+    { "date": "2024-01-15", "planned": 1, "completed": 0, "canceled": 0 },
+    { "date": "2024-01-20", "planned": 0, "completed": 1, "canceled": 0 }
+  ]
+}
+```
+
+> 캘린더 UI에서 날짜 뱃지를 표시할 때 이 API를 사용합니다.
+
+---
+
+## 구현 상세
+
+- 날짜/시간은 **초/나노초를 0으로 정규화**해서 저장합니다. (`2024-01-15T20:00:00`)
+- `startAt`이 `endAt`보다 늦으면 `400 Bad Request`
+- 이벤트 삭제 시 첨부 이미지도 스토리지에서 삭제됩니다 (트랜잭션 커밋 후)
