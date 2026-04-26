@@ -6,6 +6,7 @@ import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -102,12 +103,14 @@ class UltraGridForecastService(
         tmefList: List<String>
     ): Mono<List<Pair<String, MutableList<MutableList<UltraGridCell>>>>> {
         val monoList = tmefList.map { tmef ->
-            fetchUltraShortGrid(tmfc, tmef).map { grid -> Pair(tmef, grid) }
+            fetchUltraShortGrid(tmfc, tmef)
+                .map { grid -> Pair(tmef, grid) }
+                .onErrorResume { e ->
+                    logger.error("초단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
+                    Mono.empty()
+                }
         }
-
-        return Mono.zip(monoList) { arrayOfResults ->
-            arrayOfResults.map { it as Pair<String, MutableList<MutableList<UltraGridCell>>> }
-        }
+        return Flux.merge(monoList).collectList()
     }
 
     /**
@@ -117,15 +120,18 @@ class UltraGridForecastService(
 
     fun updateAllUltraTMEFData(tmfc: String, tmefList: List<String>) {
         fetchUltraShortGrids(tmfc, tmefList)
-            .subscribe { listOfGrids ->
-                ultraReadWriteLock.write {
-                    ultraTMEFGridMap.clear()
-                    listOfGrids.forEach { (tmef, grid) ->
-                        ultraTMEFGridMap[tmef] = grid
+            .subscribe(
+                { listOfGrids ->
+                    ultraReadWriteLock.write {
+                        ultraTMEFGridMap.clear()
+                        listOfGrids.forEach { (tmef, grid) ->
+                            ultraTMEFGridMap[tmef] = grid
+                        }
                     }
-                }
-                logger.info("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
-            }
+                    logger.info("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
+                },
+                { e -> logger.error("초단기 전체 데이터 업데이트 실패", e) }
+            )
     }
 
 
