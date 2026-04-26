@@ -54,7 +54,9 @@ jobs:
         run: |
           curl -sf "${DOCS_URL}/openapi.json" -o openapi.old.json || echo '{"paths":{}}' > openapi.old.json
           DIFF=$(python3 scripts/diff_openapi.py openapi.old.json docs-site/openapi.json)
-          echo "DIFF_SUMMARY=${DIFF}" >> $GITHUB_ENV
+          echo "DIFF_SUMMARY<<EOF" >> $GITHUB_ENV
+          echo "${DIFF}" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: npm install --prefix docs-site
