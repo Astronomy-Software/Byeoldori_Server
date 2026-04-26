@@ -89,13 +89,7 @@ jobs:
           SHORT="${SHA:0:7}"
           SUMMARY=$(echo "${DIFF_SUMMARY}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['summary'])")
           HAS_CHANGES=$(echo "${DIFF_SUMMARY}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d['has_changes'] else 'false')")
-          LINKS=$(echo "${DIFF_SUMMARY}" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-links = d.get('links', {})
-if links:
-    print(' '.join(f'[{name}]({url})' for name, url in links.items()))
-")
+          LINKS=$(echo "${DIFF_SUMMARY}" | python3 -c "import json,sys; d=json.load(sys.stdin); links=d.get('links',{}); print(' '.join('['+n+']('+u+')' for n,u in links.items())) if links else None")
 
           BASE_FIELDS=$(jq -n \
             --arg diff "$(printf '```\n%s\n```' "${SUMMARY}")" \
