@@ -87,17 +87,20 @@ jobs:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           SHORT="${SHA:0:7}"
-          curl -s -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"📄 API 문서 업데이트\",
-                \"color\": 5793266,
-                \"fields\": [
-                  {\"name\": \"변경사항\", \"value\": \"\`\`\`${DIFF_SUMMARY}\`\`\`\", \"inline\": false},
-                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
-                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true},
-                  {\"name\": \"문서\", \"value\": \"[열기](https://byeoldori-docs.pages.dev)\", \"inline\": true}
+          PAYLOAD=$(jq -n \
+            --arg diff "$(printf '```\n%s\n```' "${DIFF_SUMMARY}")" \
+            --arg commit "[\`${SHORT}\`](${REPO_URL}/commit/${SHA})" \
+            --arg actor "${ACTOR}" \
+            '{
+              embeds: [{
+                title: "📄 API 문서 업데이트",
+                color: 5793266,
+                fields: [
+                  {name: "변경사항", value: $diff, inline: false},
+                  {name: "커밋", value: $commit, inline: true},
+                  {name: "작업자", value: $actor, inline: true},
+                  {name: "문서", value: "[열기](https://byeoldori-docs.pages.dev)", inline: true}
                 ]
               }]
-            }" \
-            "$DISCORD_URL"
+            }')
+          curl -sf -H "Content-Type: application/json" -d "${PAYLOAD}" "$DISCORD_URL"
