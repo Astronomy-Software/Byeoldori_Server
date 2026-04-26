@@ -131,7 +131,11 @@ class ShortGridForecastService(
             .concatMap { tmef ->
                 fetchShortGrid(tmfc, tmef)
                     .map { grid -> Pair(tmef, grid) }
-                    .delayElement(Duration.ofMillis(100)) // 각 요청 사이에 100ms 딜레이를 줍니다.
+                    .onErrorResume { e ->
+                        logger.error("단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
+                        Mono.empty()
+                    }
+                    .delayElement(Duration.ofMillis(100))
             }
             .collectList()
     }
@@ -143,15 +147,18 @@ class ShortGridForecastService(
 
     fun updateAllShortTMEFData(tmfc: String, tmefList: List<String>) {
         fetchShortGrids(tmfc, tmefList)
-            .subscribe { listOfGrids ->
-                shortReadWriteLock.write {
-                    shortTMEFGridMap.clear()
-                    listOfGrids.forEach { (tmef, grid) ->
-                        shortTMEFGridMap[tmef] = grid
+            .subscribe(
+                { listOfGrids ->
+                    shortReadWriteLock.write {
+                        shortTMEFGridMap.clear()
+                        listOfGrids.forEach { (tmef, grid) ->
+                            shortTMEFGridMap[tmef] = grid
+                        }
                     }
-                }
-                logger.info("모든 short tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
-            }
+                    logger.info("모든 short tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
+                },
+                { e -> logger.error("단기 전체 데이터 업데이트 실패", e) }
+            )
     }
 
     /**
