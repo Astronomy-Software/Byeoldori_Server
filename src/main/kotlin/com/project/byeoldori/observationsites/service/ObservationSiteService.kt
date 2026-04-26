@@ -30,8 +30,22 @@ class ObservationSiteService(
 
     // 모든 관측지 조회 (페이지네이션)
     @Transactional(readOnly = true)
-    fun getAllSites(pageable: Pageable): Page<ObservationSiteResponseDto> =
-        observationSiteRepository.findAll(pageable).map { it.toResponseDto() }
+    fun getAllSites(pageable: Pageable): Page<ObservationSiteResponseDto> {
+        val sitePage = observationSiteRepository.findAll(pageable)
+        val siteIds = sitePage.content.map { it.id }
+        val scoreMap: Map<Long, Double> = if (siteIds.isEmpty()) emptyMap()
+        else reviewPostRepository.findAverageScoresBySiteIds(siteIds)
+            .associate { row -> (row[0] as Long) to (row[1] as Double) }
+        return sitePage.map { site ->
+            ObservationSiteResponseDto(
+                id = site.id,
+                name = site.name,
+                latitude = site.latitude,
+                longitude = site.longitude,
+                averageScore = scoreMap[site.id]
+            )
+        }
+    }
 
     // 관측지 검색 (FULLTEXT, 2자 미만 키워드는 LIKE fallback)
     @Transactional(readOnly = true)

@@ -64,7 +64,8 @@ data class ObservationSiteResponseDto(
     val id: Long,
     val name: String,
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
+    val averageScore: Double? = null
 )
 
 // DTO ➔ Entity 변환
@@ -76,7 +77,7 @@ fun ObservationSiteDto.toEntity(): ObservationSite {
     )
 }
 
-// Entity ➔ 응답 DTO 변환
+// Entity ➔ 응답 DTO 변환 (생성/수정용 - averageScore 불필요)
 fun ObservationSite.toResponseDto() = ObservationSiteResponseDto(
     id = this.id,
     name = this.name,

@@ -1,4 +1,4 @@
 {
   "title": "연동 가이드",
-  "pages": ["authentication", "community", "calendar", "file-upload", "forecast"]
+  "pages": ["authentication", "community", "calendar", "file-upload", "forecast", "observation-sites"]
 }
