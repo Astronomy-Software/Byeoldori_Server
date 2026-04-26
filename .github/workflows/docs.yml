@@ -53,9 +53,9 @@ jobs:
           DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
         run: |
           curl -sf "${DOCS_URL}/openapi.json" -o openapi.old.json || echo '{"paths":{}}' > openapi.old.json
-          DIFF=$(python3 scripts/diff_openapi.py openapi.old.json docs-site/openapi.json)
+          DIFF_JSON=$(python3 scripts/diff_openapi.py openapi.old.json docs-site/openapi.json)
           echo "DIFF_SUMMARY<<EOF" >> $GITHUB_ENV
-          echo "${DIFF}" >> $GITHUB_ENV
+          echo "${DIFF_JSON}" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Install dependencies
@@ -87,20 +87,39 @@ jobs:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           SHORT="${SHA:0:7}"
-          PAYLOAD=$(jq -n \
-            --arg diff "$(printf '```\n%s\n```' "${DIFF_SUMMARY}")" \
+          SUMMARY=$(echo "${DIFF_SUMMARY}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['summary'])")
+          HAS_CHANGES=$(echo "${DIFF_SUMMARY}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d['has_changes'] else 'false')")
+          LINKS=$(echo "${DIFF_SUMMARY}" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+links = d.get('links', {})
+if links:
+    print(' '.join(f'[{name}]({url})' for name, url in links.items()))
+")
+
+          BASE_FIELDS=$(jq -n \
+            --arg diff "$(printf '```\n%s\n```' "${SUMMARY}")" \
             --arg commit "[\`${SHORT}\`](${REPO_URL}/commit/${SHA})" \
             --arg actor "${ACTOR}" \
-            '{
-              embeds: [{
-                title: "📄 API 문서 업데이트",
-                color: 5793266,
-                fields: [
-                  {name: "변경사항", value: $diff, inline: false},
-                  {name: "커밋", value: $commit, inline: true},
-                  {name: "작업자", value: $actor, inline: true},
-                  {name: "문서", value: "[열기](https://byeoldori-docs.pages.dev)", inline: true}
-                ]
-              }]
-            }')
+            '[
+              {name: "변경사항", value: $diff, inline: false},
+              {name: "커밋", value: $commit, inline: true},
+              {name: "작업자", value: $actor, inline: true}
+            ]')
+
+          if [ "${HAS_CHANGES}" = "true" ] && [ -n "${LINKS}" ]; then
+            FIELDS=$(echo "${BASE_FIELDS}" | jq \
+              --arg links "${LINKS}" \
+              '. + [{name: "관련 문서", value: $links, inline: false}]')
+          else
+            FIELDS="${BASE_FIELDS}"
+          fi
+
+          PAYLOAD=$(jq -n --argjson fields "${FIELDS}" '{
+            embeds: [{
+              title: "📄 API 문서 업데이트",
+              color: 5793266,
+              fields: $fields
+            }]
+          }')
           curl -sf -H "Content-Type: application/json" -d "${PAYLOAD}" "$DISCORD_URL"
