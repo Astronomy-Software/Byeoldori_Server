@@ -5,7 +5,8 @@ import java.time.format.DateTimeFormatter
 
 object ForecastTimeUtil {
 
-    private val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
+    private val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")      // 초단기 tmfc용 (분 포함)
+    private val shortFormatter = DateTimeFormatter.ofPattern("yyyyMMddHH")   // 단기 tmfc/tmef용 (분 없음)
 
     /**
      * 초단기예보에서 유효한 발표시각(tmfc)을 계산
@@ -49,7 +50,7 @@ object ForecastTimeUtil {
         }
 
         // 3) 포맷팅하여 반환
-        return dateTime.format(formatter)
+        return dateTime.format(shortFormatter)
     }
 
     fun getTMEFTimesForShortForecast(): List<String> {
@@ -95,6 +96,6 @@ object ForecastTimeUtil {
             temp = temp.plusHours(1)
         }
 
-        return result.map { it.format(formatter) }
+        return result.map { it.format(shortFormatter) }
     }
 }
