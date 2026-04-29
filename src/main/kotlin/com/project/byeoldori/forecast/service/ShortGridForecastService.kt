@@ -11,7 +11,6 @@ import reactor.core.publisher.Mono
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
-import java.time.Duration
 import kotlin.math.max
 
 // 단일 격자 셀 구조 (ShortGridCell)
@@ -128,15 +127,14 @@ class ShortGridForecastService(
         tmefList: List<String>
     ): Mono<List<Pair<String, MutableList<MutableList<ShortGridCell>>>>> {
         return Flux.fromIterable(tmefList)
-            .concatMap { tmef ->
+            .flatMap({ tmef ->
                 fetchShortGrid(tmfc, tmef)
                     .map { grid -> Pair(tmef, grid) }
                     .onErrorResume { e ->
                         logger.error("단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
                         Mono.empty()
                     }
-                    .delayElement(Duration.ofMillis(100))
-            }
+            }, 5)
             .collectList()
     }
 
