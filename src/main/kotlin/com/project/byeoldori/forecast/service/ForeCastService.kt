@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service
 class ForeCastService(
     private val ultraGridForecastService: UltraGridForecastService,
     private val shortGridForecastService: ShortGridForecastService,
+    private val liveGridForecastService: LiveGridForecastService,
     private val midCombinedForecastService: MidCombinedForecastService,
     private val weatherScoreCalculator: WeatherScoreCalculator,
     private val lightPollution: LightPollution
@@ -52,6 +53,20 @@ class ForeCastService(
             m.copy(suitability = s.total) }
 
         return ForecastResponseDTO(ultraScored, shortScored, midScored)
+    }
+
+    fun getLiveWeather(latitude: Double, longitude: Double): LiveForecastResponseDTO {
+        if (!GeoBounds.isInKorea(latitude, longitude)) throw OutOfServiceAreaException()
+        val (x, y) = latLonToGrid(latitude, longitude)
+        val lightScore = lightPollution.getLightPollutionScore(latitude, longitude)
+        val live = liveGridForecastService.getLiveDataForCell(x, y)
+            ?: LiveForecastResponseDTO(null, null, null, null, null, null, null)
+        val ultraDto = UltraForecastResponseDTO(
+            tmef = "", t1h = live.t1h, vec = live.vec, wsd = live.wsd,
+            pty = live.pty, rn1 = live.rn1, reh = live.reh, sky = live.sky
+        )
+        val score = weatherScoreCalculator.suitabilityForUltra(ultraDto, lightScore)
+        return live.copy(suitability = score.total)
     }
 
     fun getWeatherSummary(latitude: Double, longitude: Double): WeatherSummaryDto {
