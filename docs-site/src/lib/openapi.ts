@@ -1,2 +1,9 @@
-// API Reference는 Swagger UI로 제공됩니다.
-// https://byeoldori-server-hbxnfn4woa-du.a.run.app/swagger-ui.html
+import { createOpenAPI } from 'fumadocs-openapi/server';
+import { createAPIPage } from 'fumadocs-openapi/ui';
+import path from 'path';
+
+export const openapi = createOpenAPI({
+  input: [path.resolve(process.cwd(), 'openapi.json')],
+});
+
+export const APIPage = createAPIPage(openapi);
