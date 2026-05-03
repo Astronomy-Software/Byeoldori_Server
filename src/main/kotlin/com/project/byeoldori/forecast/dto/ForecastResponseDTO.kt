@@ -64,6 +64,17 @@ data class MidCombinedForecastDTO(
     val suitability: Int = 0
 )
 
+data class LiveForecastResponseDTO(
+    val t1h: Int?,
+    val vec: Int?,
+    val wsd: Float?,
+    val pty: Int?,
+    val rn1: Float?,
+    val reh: Int?,
+    val sky: Int?,
+    val suitability: Int = 0
+)
+
 data class SuitabilityScoreDTO(
     val total: Int, // 0~100
     val components: Components, // 원점수

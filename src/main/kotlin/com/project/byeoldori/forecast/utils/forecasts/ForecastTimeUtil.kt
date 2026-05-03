@@ -9,6 +9,14 @@ object ForecastTimeUtil {
     private val shortFormatter = DateTimeFormatter.ofPattern("yyyyMMddHH")   // 단기 tmfc/tmef용 (분 없음)
 
     /**
+     * 실황 데이터의 발표시각(tmfc) — 현재 시각 기준 1시간 전 정각
+     */
+    fun getStableLiveTmfc(now: LocalDateTime = LocalDateTime.now()): String {
+        val stable = now.minusHours(1).withMinute(0).withSecond(0).withNano(0)
+        return stable.format(formatter)
+    }
+
+    /**
      * 초단기예보에서 유효한 발표시각(tmfc)을 계산
      * 현재 시각 기준 60분 전의 가장 가까운 30분 단위 시각을 반환
      */

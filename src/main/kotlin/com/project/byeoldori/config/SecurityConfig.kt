@@ -31,8 +31,6 @@ class SecurityConfig(
     // 로그인 없이 접근해야만 하는 최소한의 경로
     companion object {
         private val PUBLIC_URLS = arrayOf(
-            "/swagger-ui/**",
-            "/swagger-ui.html",
             "/v3/api-docs/**",
             "/auth/**",
             "/reset-password",

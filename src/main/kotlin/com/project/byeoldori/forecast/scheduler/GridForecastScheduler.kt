@@ -18,6 +18,7 @@ import kotlin.concurrent.schedule
 class GridForecastScheduler(
     private val ultraGridForecastService: UltraGridForecastService,
     private val shortGridForecastService: ShortGridForecastService,
+    private val liveGridForecastService: LiveGridForecastService,
     private val retryProperties: RetryProperties,
     private val midForecastService: MidForecastService,
     private val midTempForecastService: MidTempForecastService,
@@ -33,9 +34,24 @@ class GridForecastScheduler(
     // 서버 시작 시 초단기/단기 데이터 즉시 로드 (메모리 초기화)
     @EventListener(ApplicationReadyEvent::class)
     fun initOnStartup() {
-        logger.info("[시작] 서버 기동 후 초단기/단기 예보 즉시 로드 시작")
+        logger.info("[시작] 서버 기동 후 실황/초단기/단기 예보 즉시 로드 시작")
+        clockForLiveForecast()
         clockForUltraForecast()
         clockForShortForecast()
+    }
+
+    // 매 10분 + 1분 간격으로 실황 데이터 갱신
+    @Scheduled(cron = "0 1/10 * * * *", zone = "Asia/Seoul")
+    fun clockForLiveForecast() {
+        logger.info("실황 데이터 받아오는중...")
+        fetchWithRetry(
+            tag = "실황",
+            fetchFunction = {
+                val tmfc = ForecastTimeUtil.getStableLiveTmfc()
+                liveGridForecastService.updateLiveData(tmfc)
+                Mono.empty()
+            }
+        )
     }
 
     // 특정시각마다 업데이트가 많이 느릴때가있음. 시간을 잘 조정해봐야할것으로 보임.

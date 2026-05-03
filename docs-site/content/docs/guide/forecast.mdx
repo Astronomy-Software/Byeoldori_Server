@@ -7,8 +7,49 @@ description: 위치 기반 날씨 예보 및 관측 적합도 조회
 
 | 메서드 | 경로 | 설명 | 인증 필요 |
 |--------|------|------|----------|
+| GET | `/weather/live` | 실황(현재 시각) 기상 데이터 | ❌ |
 | GET | `/weather/ForecastData` | 초단기·단기·중기 전체 예보 | ❌ |
 | GET | `/weather/summary` | 현재 관측 적합도 요약 | ❌ |
+
+---
+
+## 실황 날씨 조회
+
+```
+GET /weather/live?lat={위도}&lon={경도}
+```
+
+현재 시각의 실황 기상 데이터를 반환합니다. 매 10분마다 갱신되며 서버 기동 시 즉시 로드됩니다.
+
+### 응답
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "t1h": 18,
+    "vec": 225,
+    "wsd": 2.5,
+    "pty": 0,
+    "rn1": 0.0,
+    "reh": 60,
+    "sky": 1,
+    "suitability": 85
+  }
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `t1h` | Int? | 기온 (°C) |
+| `vec` | Int? | 풍향 (degree) |
+| `wsd` | Float? | 풍속 (m/s) |
+| `pty` | Int? | 강수형태 (0: 없음, 1: 비, 2: 비/눈, 3: 눈) |
+| `rn1` | Float? | 1시간 강수량 (mm) |
+| `reh` | Int? | 습도 (%) |
+| `sky` | Int? | 하늘상태 (1: 맑음, 2: 구름조금, 3: 구름많음, 4: 흐림) |
+| `suitability` | Int | 관측 적합도 (0~100) |
 
 ---
 
@@ -193,6 +234,7 @@ GET /weather/summary?lat={위도}&lon={경도}
 
 | 예보 종류 | 갱신 주기 | 비고 |
 |----------|----------|------|
+| 실황 | 매 10분 | 서버 시작 시 즉시 로드 |
 | 초단기 | 매 10분 | 서버 시작 시 즉시 로드 |
 | 단기 | 3시간 (02:15 기준) | 서버 시작 시 즉시 로드 |
 | 중기 | 06:10 / 18:10 | 기상청 중기 예보 발표 주기 |
@@ -203,4 +245,4 @@ API 호출 실패 시 설정된 횟수만큼 자동 재시도합니다.
 
 ## API 직접 테스트
 
-<APIPage document="openapi" operations={[{"path":"/weather/ForecastData","method":"get"},{"path":"/weather/summary","method":"get"}]} showTitle />
+<APIPage document="openapi" operations={[{"path":"/weather/live","method":"get"},{"path":"/weather/ForecastData","method":"get"},{"path":"/weather/summary","method":"get"}]} showTitle />

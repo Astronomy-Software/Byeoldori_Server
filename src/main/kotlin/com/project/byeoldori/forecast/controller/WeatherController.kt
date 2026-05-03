@@ -16,6 +16,19 @@ class WeatherController(
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
+    @Operation(
+        summary = "실황 날씨 조회",
+        description = "현재 시각의 실황 기상 데이터(기온, 풍향, 풍속, 강수형태, 강수량, 습도, 하늘상태)와 관측 적합도를 반환합니다."
+    )
+    @GetMapping("/live")
+    fun getLiveWeather(
+        @RequestParam lat: Double,
+        @RequestParam lon: Double,
+    ): ResponseEntity<ApiResponse<LiveForecastResponseDTO>> {
+        logger.info("LiveWeather 호출 lat={}, lon={}", lat, lon)
+        return ResponseEntity.ok(ApiResponse.ok(foreCastService.getLiveWeather(lat, lon)))
+    }
+
     @GetMapping("/ForecastData")
     fun getForecastData(
         @RequestParam lat: Double,
