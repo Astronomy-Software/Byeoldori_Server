@@ -153,3 +153,10 @@ POST /users/logout   (Authorization 헤더 필요)
 |------|----------|----------|
 | AuthGuard 리다이렉트 | 제거됨 | 미로그인 시 `/login`으로 이동 복구 |
 | 세션 만료 UX | `window.location.href='/login'` | `router.push('/login')`으로 교체 |
+
+---
+
+## API 직접 테스트
+
+<APIPage document="openapi" operations={[{"path":"/auth/signup","method":"post"},{"path":"/auth/login","method":"post"},{"path":"/auth/token","method":"post"},{"path":"/auth/find-email","method":"post"},{"path":"/auth/password/reset-request","method":"post"},{"path":"/auth/password/reset-confirm","method":"post"},{"path":"/auth/google","method":"post"},{"path":"/auth/verify-email","method":"get"},{"path":"/users/logout","method":"post"}]} showTitle />
+

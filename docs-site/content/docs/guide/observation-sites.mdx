@@ -199,3 +199,9 @@ Authorization: Bearer {accessToken}
 | `savedSiteId` | Long | 즐겨찾기 항목 ID |
 | `siteId` | Long? | 공식 관측지 ID (`isCustom=true`이면 `null`) |
 | `isCustom` | Boolean | 임의 저장 여부 |
+
+---
+
+## API 직접 테스트
+
+<APIPage document="openapi" operations={[{"path":"/observationsites","method":"get"},{"path":"/observationsites/name","method":"get"},{"path":"/observationsites/{id}","method":"get"},{"path":"/observationsites","method":"post"},{"path":"/observationsites/{id}","method":"put"},{"path":"/observationsites/{id}","method":"delete"},{"path":"/me/saved-sites","method":"get"},{"path":"/me/saved-sites/toggle","method":"post"},{"path":"/me/saved-sites/{savedSiteId}","method":"get"},{"path":"/me/saved-sites/{savedSiteId}","method":"delete"}]} showTitle />

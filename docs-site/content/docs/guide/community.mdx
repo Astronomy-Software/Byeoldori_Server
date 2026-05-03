@@ -143,3 +143,9 @@ POST /community/posts/{id}/comments/{cid}/likes-toggle  — 댓글 좋아요
 - **내가 쓴 글 목록** — 서버 엔드포인트 없음, 구현 전 서버 작업 필요
 - **내가 좋아요한 글 목록** — 서버 엔드포인트 없음
 - **교육 콘텐츠 평가 조회** — 작성은 가능하나 내 평가 조회 API 없음
+
+---
+
+## API 직접 테스트
+
+<APIPage document="openapi" operations={[{"path":"/community/{type}/posts","method":"get"},{"path":"/community/{type}/posts","method":"post"},{"path":"/community/posts/{postId}","method":"get"},{"path":"/community/posts/{postId}","method":"patch"},{"path":"/community/posts/{postId}","method":"delete"},{"path":"/community/posts/{postId}/likes/toggle","method":"post"},{"path":"/community/posts/{postId}/evaluations","method":"post"},{"path":"/community/posts/{postId}/comments","method":"get"},{"path":"/community/posts/{postId}/comments","method":"post"},{"path":"/community/posts/{postId}/comments/{commentId}","method":"patch"},{"path":"/community/posts/{postId}/comments/{commentId}","method":"delete"},{"path":"/community/posts/{postId}/comments/{commentId}/likes-toggle","method":"post"},{"path":"/community/home/free-posts","method":"get"},{"path":"/community/home/reviews","method":"get"},{"path":"/community/home/educations","method":"get"}]} showTitle />

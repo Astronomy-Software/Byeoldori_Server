@@ -92,3 +92,9 @@ GET /calendar/events/month?year=2024&month=1
 - 날짜/시간은 **초/나노초를 0으로 정규화**해서 저장합니다. (`2024-01-15T20:00:00`)
 - `startAt`이 `endAt`보다 늦으면 `400 Bad Request`
 - 이벤트 삭제 시 첨부 이미지도 스토리지에서 삭제됩니다 (트랜잭션 커밋 후)
+
+---
+
+## API 직접 테스트
+
+<APIPage document="openapi" operations={[{"path":"/calendar/events","method":"post"},{"path":"/calendar/events/month","method":"get"},{"path":"/calendar/events/date","method":"get"},{"path":"/calendar/events/count","method":"get"},{"path":"/calendar/events/{id}","method":"get"},{"path":"/calendar/events/{id}","method":"patch"},{"path":"/calendar/events/{id}","method":"delete"},{"path":"/calendar/events/{id}/complete","method":"post"}]} showTitle />
