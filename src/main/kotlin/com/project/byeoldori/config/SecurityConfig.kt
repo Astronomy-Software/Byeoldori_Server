@@ -83,8 +83,9 @@ class SecurityConfig(
     //프론트엔드가 분리되어 있을 경우 사용
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
+        val origins = allowedOrigins
         val configuration = CorsConfiguration().apply {
-            allowedOrigins = allowedOrigins
+            allowedOrigins = origins
             allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true
