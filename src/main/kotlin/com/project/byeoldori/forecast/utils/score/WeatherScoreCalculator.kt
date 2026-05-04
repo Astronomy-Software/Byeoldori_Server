@@ -184,7 +184,8 @@ class WeatherScoreCalculator (
     // ─────────────────────────────
 
     private fun parseTime(tmef: String): LocalDateTime =
-        LocalDateTime.parse(tmef, tmefFmt)
+        if (tmef.length == 10) LocalDateTime.parse("${tmef}00", tmefFmt)
+        else LocalDateTime.parse(tmef, tmefFmt)
 
     private fun parseMidTime(tmEf: String): LocalDateTime =
         if (tmEf.length == 12) LocalDateTime.parse(tmEf, tmefFmt)
