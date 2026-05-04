@@ -127,14 +127,14 @@ class ShortGridForecastService(
         tmefList: List<String>
     ): Mono<List<Pair<String, MutableList<MutableList<ShortGridCell>>>>> {
         return Flux.fromIterable(tmefList)
-            .flatMap { tmef ->
+            .flatMap({ tmef ->
                 fetchShortGrid(tmfc, tmef)
                     .map { grid -> Pair(tmef, grid) }
                     .onErrorResume { e ->
                         logger.error("단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
                         Mono.empty()
                     }
-            }
+            }, 5)  // KMA API 과부하 방지: 최대 5개 tmef 동시 처리
             .collectList()
     }
 
