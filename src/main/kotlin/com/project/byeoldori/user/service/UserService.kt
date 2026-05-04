@@ -416,12 +416,13 @@ class UserService(
         }
 
         if (user == null) {
+            val effectiveEmail = if (email.isBlank()) "$provider.$providerId@noemail.byeoldori" else email
             user = User(
-                email = email,
+                email = effectiveEmail,
                 passwordHash = "OAUTH2:$provider:$providerId",
                 name = name ?: "User",
                 phone = "",
-                nickname = name
+                nickname = null
             )
         }
 
