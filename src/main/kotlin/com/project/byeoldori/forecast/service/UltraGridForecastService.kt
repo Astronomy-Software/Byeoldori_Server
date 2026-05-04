@@ -102,15 +102,16 @@ class UltraGridForecastService(
         tmfc: String,
         tmefList: List<String>
     ): Mono<List<Pair<String, MutableList<MutableList<UltraGridCell>>>>> {
-        val monoList = tmefList.map { tmef ->
-            fetchUltraShortGrid(tmfc, tmef)
-                .map { grid -> Pair(tmef, grid) }
-                .onErrorResume { e ->
-                    logger.error("초단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
-                    Mono.empty()
-                }
-        }
-        return Flux.merge(monoList).collectList()
+        return Flux.fromIterable(tmefList)
+            .flatMap({ tmef ->
+                fetchUltraShortGrid(tmfc, tmef)
+                    .map { grid -> Pair(tmef, grid) }
+                    .onErrorResume { e ->
+                        logger.error("초단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
+                        Mono.empty()
+                    }
+            }, 3)  // KMA API 과부하 방지: 최대 3개 tmef 동시 처리
+            .collectList()
     }
 
     /**
