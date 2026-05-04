@@ -45,6 +45,7 @@ class JwtUtil(
 
     fun extractEmail(token: String): String =
         parser().parseClaimsJws(token).body.subject
+            ?: throw io.jsonwebtoken.JwtException("JWT subject is missing")
 
     fun extractExpiration(token: String): LocalDateTime {
         val exp = Jwts.parserBuilder().setSigningKey(key).build()
