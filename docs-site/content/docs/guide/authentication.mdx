@@ -1,6 +1,6 @@
 ---
 title: 인증 플로우
-description: 회원가입부터 토큰 관리까지 전체 인증 흐름
+description: 회원가입부터 토큰 관리, 소셜 로그인까지 전체 인증 흐름
 ---
 
 ## 엔드포인트 요약
@@ -11,9 +11,11 @@ description: 회원가입부터 토큰 관리까지 전체 인증 흐름
 | GET | `/auth/verify-email?token=` | 이메일 인증 | ❌ |
 | POST | `/auth/login` | 로그인 | ❌ |
 | POST | `/auth/token` | 액세스 토큰 재발급 | ❌ |
+| POST | `/auth/google` | Google 소셜 로그인 | ❌ |
+| POST | `/auth/kakao` | Kakao 소셜 로그인 | ❌ |
+| POST | `/auth/naver` | Naver 소셜 로그인 | ❌ |
 | POST | `/users/logout` | 로그아웃 | ✅ |
 | GET | `/users/me` | 내 정보 조회 | ✅ |
-| POST | `/auth/google` | Google ID Token 로그인 | ❌ |
 
 ---
 
@@ -71,8 +73,6 @@ refreshToken 만료: 14일 (1,209,600,000ms)
 - `typ` — `"access"` 또는 `"refresh"` (타입 구분용 커스텀 클레임)
 - `iat` / `exp` — 발급/만료 시각
 
-> **클라이언트 구현 포인트:** `typ` 클레임으로 액세스/리프레시 구분이 가능하지만, 일반적으로 localStorage 키로 구분하면 충분합니다.
-
 ---
 
 ## 리프레시 토큰 보안
@@ -102,6 +102,70 @@ POST /auth/token
 
 ---
 
+## 소셜 로그인 (Authorization Code Flow)
+
+Google·Kakao·Naver 모두 동일한 방식으로 구현되어 있습니다.
+
+### 전체 플로우
+
+```
+1. 프론트: Provider 인증 페이지로 리다이렉트
+   - Google:  https://accounts.google.com/o/oauth2/v2/auth
+   - Kakao:   https://kauth.kakao.com/oauth/authorize
+   - Naver:   https://nid.naver.com/oauth2.0/authorize
+
+2. Provider: /auth/{provider}/callback?code=xxx 로 리다이렉트
+
+3. 프론트: 받은 code를 백엔드로 전송
+   POST /auth/google  (또는 /kakao, /naver)
+   { "code": "인가코드", "redirectUri": "사용한 콜백 URI" }
+
+4. 백엔드: JWT 발급 후 응답
+```
+
+### 요청 형식
+
+```json
+POST /auth/google
+{
+  "code": "4/0AfJohXk...",
+  "redirectUri": "https://byeoldori-web.vercel.app/auth/google/callback"
+}
+```
+
+> `redirectUri`는 Provider에 등록된 값과 정확히 일치해야 합니다.
+> 로컬 개발 시 `http://localhost:3000/auth/google/callback` 사용.
+
+### 응답 형식 (성공)
+
+```json
+{
+  "data": {
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ...",
+    "accessTokenExpiresAt": "2024-01-01T01:00:00Z",
+    "refreshTokenExpiresAt": "2024-01-15T00:00:00Z"
+  }
+}
+```
+
+### 계정 처리 정책
+
+| 상황 | 처리 |
+|------|------|
+| 최초 소셜 로그인 | 자동 회원가입 후 JWT 발급 |
+| 동일 Provider로 재로그인 | 기존 계정으로 JWT 발급 |
+| 같은 이메일로 다른 Provider 로그인 | `409 Conflict` 에러 반환 |
+
+```json
+// 다른 Provider 충돌 시
+{
+  "message": "이미 google 계정으로 가입된 이메일입니다."
+}
+```
+
+---
+
 ## Rate Limiting
 
 Redis 기반 IP별 요청 제한이 적용되어 있습니다.
@@ -112,27 +176,10 @@ Redis 기반 IP별 요청 제한이 적용되어 있습니다.
 | `/auth/signup` | 5회 | 1분 |
 | `/auth/password/reset-request` | 3회 | 1시간 |
 | `/auth/google` | 10회 | 1분 |
+| `/auth/kakao` | 10회 | 1분 |
+| `/auth/naver` | 10회 | 1분 |
 
 초과 시 `429 Too Many Requests` 반환.
-
----
-
-## Google OAuth 구현 상세
-
-서버는 **Google ID Token 검증 방식**으로 구현되어 있습니다. (앱 → 구글 → ID Token → 서버 검증)
-
-```json
-POST /auth/google
-{ "idToken": "구글에서 발급받은 ID Token" }
-```
-
-서버 동작:
-1. Google API로 ID Token 검증
-2. 기존 계정 있으면 로그인, 없으면 자동 회원가입
-3. Google 계정은 `provider: "google"`, `providerId: sub` 저장
-4. 일반 계정으로 로그인 시도하면 → `"google 계정입니다. google으로 로그인해주세요."` 에러
-
-> ⚠️ 웹용 Google OAuth는 **웹용 Client ID 별도 발급** 및 **콜백 URL 등록**이 필요합니다.
 
 ---
 
@@ -147,16 +194,6 @@ POST /users/logout   (Authorization 헤더 필요)
 
 ---
 
-## 릴리스 전 복구 항목
-
-| 항목 | 현재 상태 | 복구 내용 |
-|------|----------|----------|
-| AuthGuard 리다이렉트 | 제거됨 | 미로그인 시 `/login`으로 이동 복구 |
-| 세션 만료 UX | `window.location.href='/login'` | `router.push('/login')`으로 교체 |
-
----
-
 ## API 직접 테스트
 
-<APIPage document="openapi" operations={[{"path":"/auth/signup","method":"post"},{"path":"/auth/login","method":"post"},{"path":"/auth/token","method":"post"},{"path":"/auth/find-email","method":"post"},{"path":"/auth/password/reset-request","method":"post"},{"path":"/auth/password/reset-confirm","method":"post"},{"path":"/auth/google","method":"post"},{"path":"/auth/verify-email","method":"get"},{"path":"/users/logout","method":"post"}]} showTitle />
-
+<APIPage document="openapi" operations={[{"path":"/auth/signup","method":"post"},{"path":"/auth/login","method":"post"},{"path":"/auth/token","method":"post"},{"path":"/auth/find-email","method":"post"},{"path":"/auth/password/reset-request","method":"post"},{"path":"/auth/password/reset-confirm","method":"post"},{"path":"/auth/google","method":"post"},{"path":"/auth/kakao","method":"post"},{"path":"/auth/naver","method":"post"},{"path":"/auth/verify-email","method":"get"},{"path":"/users/logout","method":"post"}]} showTitle />

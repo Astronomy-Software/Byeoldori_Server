@@ -1,6 +1,6 @@
 package com.project.byeoldori.user.dto
 
-data class GoogleLoginRequest(
+data class NaverLoginRequest(
     val code: String,
     val redirectUri: String
 )

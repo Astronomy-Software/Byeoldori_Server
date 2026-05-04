@@ -63,10 +63,25 @@ class AuthController(
         userService.confirmPasswordReset(req)
         return ResponseEntity.ok(ApiResponse.ok("비밀번호가 재설정되었습니다."))
     }
-    @Operation(summary = "구글 ID 토큰 로그인", description = "앱에서 받은 Google ID Token을 검증하고 Access/Refresh 토큰을 발급합니다.")
+
     @PostMapping("/google")
+    @Operation(summary = "Google 소셜 로그인", description = "프론트에서 받은 Authorization Code로 Google 로그인 처리 후 JWT를 발급합니다.")
     fun loginWithGoogle(@RequestBody req: GoogleLoginRequest): ResponseEntity<ApiResponse<AuthResponseDto>> {
-        val tokens = userService.loginWithGoogleIdToken(req.idToken)
+        val tokens = userService.loginWithGoogle(req.code, req.redirectUri)
+        return ResponseEntity.ok(ApiResponse.ok(tokens))
+    }
+
+    @PostMapping("/kakao")
+    @Operation(summary = "Kakao 소셜 로그인", description = "프론트에서 받은 Authorization Code로 Kakao 로그인 처리 후 JWT를 발급합니다.")
+    fun loginWithKakao(@RequestBody req: KakaoLoginRequest): ResponseEntity<ApiResponse<AuthResponseDto>> {
+        val tokens = userService.loginWithKakao(req.code, req.redirectUri)
+        return ResponseEntity.ok(ApiResponse.ok(tokens))
+    }
+
+    @PostMapping("/naver")
+    @Operation(summary = "Naver 소셜 로그인", description = "프론트에서 받은 Authorization Code로 Naver 로그인 처리 후 JWT를 발급합니다.")
+    fun loginWithNaver(@RequestBody req: NaverLoginRequest): ResponseEntity<ApiResponse<AuthResponseDto>> {
+        val tokens = userService.loginWithNaver(req.code, req.redirectUri)
         return ResponseEntity.ok(ApiResponse.ok(tokens))
     }
 }
