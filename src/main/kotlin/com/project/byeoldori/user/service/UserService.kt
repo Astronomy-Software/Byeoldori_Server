@@ -1,6 +1,5 @@
 package com.project.byeoldori.user.service
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier
 import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.community.common.service.StorageService
 import com.project.byeoldori.security.CurrentUserResolver
@@ -16,15 +15,25 @@ import com.project.byeoldori.user.utils.PhoneNormalizer
 import com.project.byeoldori.user.utils.TokenHasher
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.multipart.MultipartFile
+import org.springframework.web.reactive.function.BodyInserters
+import org.springframework.web.reactive.function.client.WebClient
 import java.time.LocalDateTime
 
 @Service
 class UserService(
     @Value("\${storage.public-base-url}") private val publicBaseUrl: String,
+    @Value("\${google.client-id}") private val googleClientId: String,
+    @Value("\${google.client-secret}") private val googleClientSecret: String,
+    @Value("\${kakao.client-id}") private val kakaoClientId: String,
+    @Value("\${kakao.client-secret}") private val kakaoClientSecret: String,
+    @Value("\${naver.client-id}") private val naverClientId: String,
+    @Value("\${naver.client-secret}") private val naverClientSecret: String,
     private val currentUserResolver: CurrentUserResolver,
     private val storage: StorageService,
     private val userRepository: UserRepository,
@@ -33,7 +42,6 @@ class UserService(
     private val passwordEncoder: PasswordEncoder,
     private val jwt: JwtUtil,
     private val emailService: EmailService,
-    private val googleVerifier: GoogleIdTokenVerifier,
     private val cachedUserLookupService: CachedUserLookupService,
     private val passwordResetTokenRepo: PasswordResetTokenRepository
 ) {
@@ -147,7 +155,6 @@ class UserService(
             throw NotFoundException(ErrorCode.ACCOUNT_INFO_MISMATCH)
         }
 
-        // 기존 미사용 토큰 정리 후 새 토큰 발급
         passwordResetTokenRepo.deleteAllByUserId(user.id)
         val resetToken = passwordResetTokenRepo.save(PasswordResetToken(user = user))
 
@@ -224,7 +231,6 @@ class UserService(
         val user = currentUserResolver.getUser()
         val oldUrl = user.profileImageUrl
 
-        // 저장 (형식/용량/픽셀 검증은 StorageService 구현이 처리)
         val newUrl = storage.storeImage(image)
         user.profileImageUrl = newUrl
 
@@ -249,36 +255,160 @@ class UserService(
         cachedUserLookupService.evictByEmail(email)
     }
 
+    // ─────────────────────────────────────────────────────
+    // 소셜 로그인 (Authorization Code Flow)
+    // ─────────────────────────────────────────────────────
+
     @Transactional
-    fun loginWithGoogleIdToken(idToken: String): AuthResponseDto {
-        if (idToken.isBlank()) {
-            throw InvalidInputException("idToken이 필요합니다.")
-        }
-        val verified = googleVerifier.verify(idToken)
-            ?: throw UnauthorizedException(ErrorCode.GOOGLE_ID_TOKEN_INVALID.message)
-        val payload = verified.payload
+    fun loginWithGoogle(code: String, redirectUri: String): AuthResponseDto {
+        val tokenResponse = exchangeCodeForToken(
+            tokenUrl = "https://oauth2.googleapis.com/token",
+            clientId = googleClientId,
+            clientSecret = googleClientSecret,
+            redirectUri = redirectUri,
+            code = code
+        )
+        val accessToken = tokenResponse["access_token"] as? String
+            ?: throw UnauthorizedException("Google 토큰 교환 실패")
 
-        val sub = payload.subject // Google 고유 사용자 ID
-        val email = (payload.email ?: "").lowercase()
-        val emailVerifiedByGoogle: Boolean = when (val v = payload["email_verified"]) {
-            is Boolean -> v
-            is String -> v.equals("true", ignoreCase = true)
-            else -> payload.emailVerified == true
-        }
-        val nameFromGoogle = payload["name"]?.toString()
-        val pictureFromGoogle = payload["picture"]?.toString()
+        val userInfo = fetchUserInfo(
+            userInfoUrl = "https://www.googleapis.com/oauth2/v2/userinfo",
+            accessToken = accessToken
+        )
+        val providerId = userInfo["id"]?.toString() ?: throw UnauthorizedException("Google 사용자 정보 조회 실패")
+        val email = userInfo["email"]?.toString()?.lowercase() ?: ""
+        val name = userInfo["name"]?.toString()
+        val picture = userInfo["picture"]?.toString()
 
-        var user = userRepository.findByProviderAndProviderId("google", sub)
+        val user = findOrCreateOAuthUser("google", providerId, email, name, picture)
+        return issueTokensAndGetResponse(user)
+    }
+
+    @Transactional
+    fun loginWithKakao(code: String, redirectUri: String): AuthResponseDto {
+        val tokenResponse = exchangeCodeForToken(
+            tokenUrl = "https://kauth.kakao.com/oauth/token",
+            clientId = kakaoClientId,
+            clientSecret = kakaoClientSecret,
+            redirectUri = redirectUri,
+            code = code
+        )
+        val accessToken = tokenResponse["access_token"] as? String
+            ?: throw UnauthorizedException("Kakao 토큰 교환 실패")
+
+        val userInfo = fetchUserInfo(
+            userInfoUrl = "https://kapi.kakao.com/v2/user/me",
+            accessToken = accessToken
+        )
+        val providerId = userInfo["id"]?.toString() ?: throw UnauthorizedException("Kakao 사용자 정보 조회 실패")
+
+        @Suppress("UNCHECKED_CAST")
+        val kakaoAccount = userInfo["kakao_account"] as? Map<String, Any> ?: emptyMap()
+        @Suppress("UNCHECKED_CAST")
+        val properties = userInfo["properties"] as? Map<String, Any> ?: emptyMap()
+
+        val email = kakaoAccount["email"]?.toString()?.lowercase() ?: ""
+        val nickname = properties["nickname"]?.toString()
+
+        val user = findOrCreateOAuthUser("kakao", providerId, email, nickname, null)
+        return issueTokensAndGetResponse(user)
+    }
+
+    @Transactional
+    fun loginWithNaver(code: String, redirectUri: String): AuthResponseDto {
+        val tokenResponse = exchangeCodeForToken(
+            tokenUrl = "https://nid.naver.com/oauth2.0/token",
+            clientId = naverClientId,
+            clientSecret = naverClientSecret,
+            redirectUri = redirectUri,
+            code = code
+        )
+        val accessToken = tokenResponse["access_token"] as? String
+            ?: throw UnauthorizedException("Naver 토큰 교환 실패")
+
+        val userInfoResponse = fetchUserInfo(
+            userInfoUrl = "https://openapi.naver.com/v1/nid/me",
+            accessToken = accessToken
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val naverUser = userInfoResponse["response"] as? Map<String, Any>
+            ?: throw UnauthorizedException("Naver 사용자 정보 조회 실패")
+
+        val providerId = naverUser["id"]?.toString() ?: throw UnauthorizedException("Naver ID 없음")
+        val email = naverUser["email"]?.toString()?.lowercase() ?: ""
+        val nickname = naverUser["nickname"]?.toString()
+        val picture = naverUser["profile_image"]?.toString()
+
+        val user = findOrCreateOAuthUser("naver", providerId, email, nickname, picture)
+        return issueTokensAndGetResponse(user)
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Private helpers
+    // ─────────────────────────────────────────────────────
+
+    private fun exchangeCodeForToken(
+        tokenUrl: String,
+        clientId: String,
+        clientSecret: String,
+        redirectUri: String,
+        code: String
+    ): Map<*, *> {
+        val formData = LinkedMultiValueMap<String, String>().apply {
+            add("grant_type", "authorization_code")
+            add("client_id", clientId)
+            add("client_secret", clientSecret)
+            add("redirect_uri", redirectUri)
+            add("code", code)
+        }
+
+        return WebClient.create()
+            .post()
+            .uri(tokenUrl)
+            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            .body(BodyInserters.fromFormData(formData))
+            .retrieve()
+            .onStatus({ it.isError }) { res ->
+                res.bodyToMono(String::class.java).map {
+                    UnauthorizedException("OAuth 토큰 교환 실패: $it")
+                }
+            }
+            .bodyToMono(Map::class.java)
+            .block() ?: throw UnauthorizedException("OAuth 토큰 교환 응답 없음")
+    }
+
+    private fun fetchUserInfo(userInfoUrl: String, accessToken: String): Map<*, *> {
+        return WebClient.create()
+            .get()
+            .uri(userInfoUrl)
+            .header("Authorization", "Bearer $accessToken")
+            .retrieve()
+            .onStatus({ it.isError }) { res ->
+                res.bodyToMono(String::class.java).map {
+                    UnauthorizedException("OAuth 사용자 정보 조회 실패: $it")
+                }
+            }
+            .bodyToMono(Map::class.java)
+            .block() ?: throw UnauthorizedException("OAuth 사용자 정보 응답 없음")
+    }
+
+    private fun findOrCreateOAuthUser(
+        provider: String,
+        providerId: String,
+        email: String,
+        name: String?,
+        picture: String?
+    ): User {
+        var user = userRepository.findByProviderAndProviderId(provider, providerId)
 
         if (user == null && email.isNotBlank()) {
             val byEmail = userRepository.findByEmail(email).orElse(null)
             if (byEmail != null) {
-                // 구글 이메일이 검증된 경우에만 자동 병합
-                if (!emailVerifiedByGoogle) {
-                    // 추가 인증 필요: 자동 병합 금지
+                if (byEmail.provider != null && byEmail.provider != provider) {
                     throw ConflictException(
                         ErrorCode.ACCOUNT_ALREADY_EXISTS_WITH_DIFFERENT_PROVIDER,
-                        "이미 가입된 이메일입니다. 이메일 인증을 완료하거나, 계정 설정에서 구글 계정을 연동해주세요."
+                        "이미 ${byEmail.provider} 계정으로 가입된 이메일입니다."
                     )
                 }
                 user = byEmail
@@ -288,25 +418,21 @@ class UserService(
         if (user == null) {
             user = User(
                 email = email,
-                passwordHash = "OAUTH2:google:$sub",
-                name = nameFromGoogle ?: "User",
+                passwordHash = "OAUTH2:$provider:$providerId",
+                name = name ?: "User",
                 phone = "",
-                nickname = nameFromGoogle ?: "User"
+                nickname = name
             )
         }
 
-        user.provider = "google"
-        user.providerId = sub
-        if (!pictureFromGoogle.isNullOrBlank() && user.profileImageUrl.isNullOrBlank()) {
-            user.profileImageUrl = pictureFromGoogle
-        }
-        if (emailVerifiedByGoogle && email.isNotBlank()) {
-            user.emailVerified = true      // 비어있을 때만 채움
+        user.provider = provider
+        user.providerId = providerId
+        user.emailVerified = email.isNotBlank()
+        if (!picture.isNullOrBlank() && user.profileImageUrl.isNullOrBlank()) {
+            user.profileImageUrl = picture
         }
 
-        userRepository.save(user)
-
-        return issueTokensAndGetResponse(user)
+        return userRepository.save(user)
     }
 
     private fun issueTokensAndGetResponse(user: User): AuthResponseDto {
