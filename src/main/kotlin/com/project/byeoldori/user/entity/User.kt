@@ -53,5 +53,8 @@ class User(
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_roles", joinColumns = [JoinColumn(name = "user_id")])
     @Column(name = "role")
-    var roles: MutableSet<String> = mutableSetOf("USER")
+    var roles: MutableSet<String> = mutableSetOf("USER"),
+
+    @Column(nullable = true)
+    var deletedAt: LocalDateTime? = null
 ) : BaseTimeEntity()

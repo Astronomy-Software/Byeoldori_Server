@@ -1,6 +1,6 @@
 ---
 title: 인증 플로우
-description: 회원가입부터 토큰 관리, 소셜 로그인까지 전체 인증 흐름
+description: 회원가입부터 토큰 관리, 소셜 로그인, 회원탈퇴까지 전체 인증 흐름
 ---
 
 ## 엔드포인트 요약
@@ -11,11 +11,15 @@ description: 회원가입부터 토큰 관리, 소셜 로그인까지 전체 인
 | GET | `/auth/verify-email?token=` | 이메일 인증 | ❌ |
 | POST | `/auth/login` | 로그인 | ❌ |
 | POST | `/auth/token` | 액세스 토큰 재발급 | ❌ |
+| POST | `/auth/find-email` | 이메일 찾기 | ❌ |
+| POST | `/auth/password/reset-request` | 비밀번호 재설정 요청 | ❌ |
+| POST | `/auth/password/reset-confirm` | 비밀번호 재설정 확인 | ❌ |
 | POST | `/auth/google` | Google 소셜 로그인 | ❌ |
 | POST | `/auth/kakao` | Kakao 소셜 로그인 | ❌ |
 | POST | `/auth/naver` | Naver 소셜 로그인 | ❌ |
 | POST | `/users/logout` | 로그아웃 | ✅ |
 | GET | `/users/me` | 내 정보 조회 | ✅ |
+| DELETE | `/users/me` | 회원탈퇴 | ✅ |
 
 ---
 
@@ -52,10 +56,13 @@ POST /auth/signup
     "accessToken": "eyJ...",
     "refreshToken": "eyJ...",
     "accessTokenExpiresAt": "2024-01-01T01:00:00",
-    "refreshTokenExpiresAt": "2024-01-15T00:00:00"
+    "refreshTokenExpiresAt": "2024-01-15T00:00:00",
+    "onboardingRequired": false
   }
 }
 ```
+
+> `onboardingRequired: true`이면 닉네임 미설정 신규 사용자입니다. 소셜 로그인 최초 가입 시 닉네임이 없으므로 프로필 설정 화면으로 유도해야 합니다.
 
 ---
 
@@ -144,18 +151,22 @@ POST /auth/google
     "accessToken": "eyJ...",
     "refreshToken": "eyJ...",
     "accessTokenExpiresAt": "2024-01-01T01:00:00Z",
-    "refreshTokenExpiresAt": "2024-01-15T00:00:00Z"
+    "refreshTokenExpiresAt": "2024-01-15T00:00:00Z",
+    "onboardingRequired": true
   }
 }
 ```
+
+> 소셜 최초 가입 시 `onboardingRequired: true` — 닉네임 설정 페이지로 이동해야 합니다.
 
 ### 계정 처리 정책
 
 | 상황 | 처리 |
 |------|------|
-| 최초 소셜 로그인 | 자동 회원가입 후 JWT 발급 |
+| 최초 소셜 로그인 | 자동 회원가입 후 JWT 발급, `onboardingRequired: true` |
 | 동일 Provider로 재로그인 | 기존 계정으로 JWT 발급 |
 | 같은 이메일로 다른 Provider 로그인 | `409 Conflict` 에러 반환 |
+| 이메일 미제공 소셜 계정 (Kakao 선택동의 거부 등) | 합성 이메일(`kakao.{id}@noemail.byeoldori`) 사용, 자동 가입 |
 
 ```json
 // 다른 Provider 충돌 시
@@ -163,6 +174,79 @@ POST /auth/google
   "message": "이미 google 계정으로 가입된 이메일입니다."
 }
 ```
+
+---
+
+## 비밀번호 재설정
+
+일반 계정(이메일+비밀번호로 가입) 전용입니다. 소셜 로그인 계정은 Provider에서 비밀번호를 관리합니다.
+
+```
+1. POST /auth/password/reset-request  { "email": "..." }
+   → 이메일로 재설정 링크 발송
+2. POST /auth/password/reset-confirm  { "token": "...", "newPassword": "..." }
+   → 비밀번호 변경 완료
+```
+
+---
+
+## 이메일 찾기
+
+```json
+POST /auth/find-email
+{
+  "name": "홍길동",
+  "phone": "01012345678"
+}
+```
+
+응답:
+```json
+{ "data": { "email": "u***@example.com" } }
+```
+
+이름과 전화번호가 일치하는 계정의 이메일을 마스킹하여 반환합니다.
+
+---
+
+## 로그아웃
+
+```
+POST /users/logout   (Authorization 헤더 필요)
+```
+
+서버에서 DB의 `refresh_tokens` 레코드를 삭제합니다.
+클라이언트에서는 `localStorage`의 토큰도 함께 제거해야 합니다.
+
+---
+
+## 회원탈퇴
+
+```
+DELETE /users/me   (Authorization 헤더 필요)
+```
+
+### 처리 방식 (소프트 딜리트)
+
+탈퇴 계정은 즉시 삭제되지 않고 **익명화**됩니다. 커뮤니티 게시글·댓글은 "탈퇴한 사용자" 이름으로 유지됩니다.
+
+| 항목 | 처리 |
+|------|------|
+| 이메일 | `deleted_{id}@byeoldori.deleted` 형태로 익명화 |
+| 비밀번호 해시 | `DELETED` 로 덮어쓰기 |
+| 전화번호 / 닉네임 / 생년월일 | 삭제 (null 처리) |
+| 프로필 이미지 | 삭제 (null 처리) |
+| 소셜 연동 정보 | 삭제 (null 처리) |
+| 리프레시 토큰 | 즉시 폐기 |
+| 게시글 / 댓글 | 유지 (작성자명 "탈퇴한 사용자"로 표시) |
+| `deleted_at` | 탈퇴 시각 기록 |
+
+### 탈퇴 후 동작
+
+- 기존 액세스 토큰으로 API 호출 시 `401 Unauthorized` 반환
+- 탈퇴한 이메일로 재가입 불가 (이메일이 익명화되므로 동일 이메일로 재가입 가능)
+
+> **소셜 로그인 계정도 동일하게 탈퇴 가능**합니다. `DELETE /users/me`에 액세스 토큰을 담아 호출하면 됩니다.
 
 ---
 
@@ -183,17 +267,6 @@ Redis 기반 IP별 요청 제한이 적용되어 있습니다.
 
 ---
 
-## 로그아웃
-
-```
-POST /users/logout   (Authorization 헤더 필요)
-```
-
-서버에서 DB의 `refresh_tokens` 레코드를 삭제합니다.
-클라이언트에서는 `localStorage`의 토큰도 함께 제거해야 합니다.
-
----
-
 ## API 직접 테스트
 
-<APIPage document="openapi" operations={[{"path":"/auth/signup","method":"post"},{"path":"/auth/login","method":"post"},{"path":"/auth/token","method":"post"},{"path":"/auth/find-email","method":"post"},{"path":"/auth/password/reset-request","method":"post"},{"path":"/auth/password/reset-confirm","method":"post"},{"path":"/auth/google","method":"post"},{"path":"/auth/kakao","method":"post"},{"path":"/auth/naver","method":"post"},{"path":"/auth/verify-email","method":"get"},{"path":"/users/logout","method":"post"}]} showTitle />
+<APIPage document="openapi" operations={[{"path":"/auth/signup","method":"post"},{"path":"/auth/login","method":"post"},{"path":"/auth/token","method":"post"},{"path":"/auth/find-email","method":"post"},{"path":"/auth/password/reset-request","method":"post"},{"path":"/auth/password/reset-confirm","method":"post"},{"path":"/auth/google","method":"post"},{"path":"/auth/kakao","method":"post"},{"path":"/auth/naver","method":"post"},{"path":"/auth/verify-email","method":"get"},{"path":"/users/logout","method":"post"},{"path":"/users/me","method":"delete"}]} showTitle />

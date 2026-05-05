@@ -247,12 +247,25 @@ class UserService(
     @Transactional
     fun deleteAccount() {
         val user = currentUserResolver.getUser()
-        val email = user.email
+        val originalEmail = user.email
+
         refreshTokenRepo.deleteByUserId(user.id)
         emailTokenRepo.deleteAllByUserId(user.id)
         passwordResetTokenRepo.deleteAllByUserId(user.id)
-        userRepository.delete(user)
-        cachedUserLookupService.evictByEmail(email)
+
+        // 소프트 딜리트: PII 익명화 후 삭제 시각 기록 (게시글/댓글은 "탈퇴한 사용자"로 유지)
+        user.passwordHash = "DELETED"
+        user.phone = ""
+        user.nickname = null
+        user.birthdate = null
+        user.profileImageUrl = null
+        user.provider = null
+        user.providerId = null
+        user.emailVerified = false
+        user.deletedAt = LocalDateTime.now()
+        userRepository.save(user)
+
+        cachedUserLookupService.evictByEmail(originalEmail)
     }
 
     // ─────────────────────────────────────────────────────
