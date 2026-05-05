@@ -43,15 +43,17 @@ class JwtAuthenticationFilter(
                 // 1. 유효성 검증을 시도하고, 만료 등 예외 발생 시 catch
                 if (jwtUtil.validateToken(token)) {
                     val userEmail = jwtUtil.extractEmail(token)
-                    cachedUserLookupService.findByEmail(userEmail)?.let { user ->
-                        val authorities = user.roles.map { SimpleGrantedAuthority("ROLE_$it") }
-                        val authentication = UsernamePasswordAuthenticationToken(
-                            user, null, authorities
-                        )
-                        authentication.details = WebAuthenticationDetailsSource().buildDetails(request)
-                        SecurityContextHolder.getContext().authentication = authentication
-                        request.setAttribute("currentUser", user)
-                    }
+                    cachedUserLookupService.findByEmail(userEmail)
+                        ?.takeIf { it.deletedAt == null }
+                        ?.let { user ->
+                            val authorities = user.roles.map { SimpleGrantedAuthority("ROLE_$it") }
+                            val authentication = UsernamePasswordAuthenticationToken(
+                                user, null, authorities
+                            )
+                            authentication.details = WebAuthenticationDetailsSource().buildDetails(request)
+                            SecurityContextHolder.getContext().authentication = authentication
+                            request.setAttribute("currentUser", user)
+                        }
                 }
             } catch (e: ExpiredJwtException) {
                 logger.warn("Access Token 만료 - IP: ${request.remoteAddr}")

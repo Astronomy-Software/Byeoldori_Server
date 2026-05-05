@@ -17,8 +17,9 @@ class CurrentUserResolver(
         val req = (RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes)?.request
         val attrUser = req?.getAttribute("currentUser") as? User
         if (attrUser?.id != null) {
-            userRepository.findByIdOrNull(attrUser.id!!)?.let { return it }
-            throw NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (id=${attrUser.id})")
+            val found = userRepository.findByIdOrNull(attrUser.id!!)
+                ?: throw NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (id=${attrUser.id})")
+            return found.assertNotDeleted()
         }
 
         val auth = SecurityContextHolder.getContext().authentication
@@ -27,23 +28,30 @@ class CurrentUserResolver(
         return when (val p = auth.principal) {
             is User -> {
                 val id = p.id
-                userRepository.findByIdOrNull(id)
-                    ?: throw NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (id=$id)")
+                (userRepository.findByIdOrNull(id)
+                    ?: throw NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (id=$id)"))
+                    .assertNotDeleted()
             }
             is org.springframework.security.core.userdetails.UserDetails ->
                 userRepository.findByEmail(p.username).orElseThrow {
                     NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (email=${p.username})")
-                }
+                }.assertNotDeleted()
             is String ->
                 userRepository.findByEmail(p).orElseThrow {
                     NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (email=$p)")
-                }
+                }.assertNotDeleted()
             is Number -> {
                 val id = p.toLong()
-                userRepository.findByIdOrNull(id)
-                    ?: throw NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (id=$id)")
+                (userRepository.findByIdOrNull(id)
+                    ?: throw NotFoundException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다. (id=$id)"))
+                    .assertNotDeleted()
             }
             else -> throw UnauthorizedException("잘못된 인증 컨텍스트입니다.")
         }
+    }
+
+    private fun User.assertNotDeleted(): User {
+        if (deletedAt != null) throw UnauthorizedException("탈퇴한 계정입니다.")
+        return this
     }
 }
