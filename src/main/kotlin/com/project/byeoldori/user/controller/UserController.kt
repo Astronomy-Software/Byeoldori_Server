@@ -4,8 +4,11 @@ import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.service.UserService
 import io.swagger.v3.oas.annotations.Operation
+import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseCookie
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
@@ -39,8 +42,17 @@ class UserController(
 
     @PostMapping("/logout")
     @Operation(summary = "로그아웃 (리프레시 토큰 제거)")
-    fun logout(): ResponseEntity<ApiResponse<Unit>> {
+    fun logout(response: HttpServletResponse): ResponseEntity<ApiResponse<Unit>> {
         userService.logout()
+        // 웹: httpOnly refreshToken 쿠키를 즉시 만료(Max-Age=0). Domain 미지정(host-only), 발급 시 속성과 동일하게.
+        val expired = ResponseCookie.from("refreshToken", "")
+            .httpOnly(true)
+            .secure(true)
+            .sameSite("Lax")
+            .path("/")
+            .maxAge(0)
+            .build()
+        response.addHeader(HttpHeaders.SET_COOKIE, expired.toString())
         return ResponseEntity.ok(ApiResponse.ok("로그아웃 완료"))
     }
 
