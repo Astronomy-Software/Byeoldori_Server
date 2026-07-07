@@ -25,7 +25,7 @@ class GlobalExceptionHandler {
     fun handleByeoldoriException(e: ByeoldoriException): ResponseEntity<ApiResponse<Unit>> {
         log.warn("Custom Exception: code={}, status={}, message={}", e.errorCode.name, e.errorCode.status, e.message)
         return ResponseEntity.status(e.errorCode.status)
-            .body(ApiResponse.fail(message = e.message))
+            .body(ApiResponse.fail(message = e.message, code = e.errorCode.name))
     }
 
     @ExceptionHandler(ResponseStatusException::class)
@@ -49,22 +49,22 @@ class GlobalExceptionHandler {
         HttpMessageNotReadableException::class
     )
     fun handleBadRequest(e: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
-        val msg = e.message ?: "요청 값이 올바르지 않습니다."
-        log.warn("BadRequest at {} -> {}", req.requestURI, msg)
-        return ResponseEntity.badRequest().body(ApiResponse.fail(message = msg))
+        // 예외 원본 메시지(내부 클래스명/필드 경로 등)는 로깅만 하고 클라이언트에는 고정 메시지 반환
+        log.warn("BadRequest at {} -> {}", req.requestURI, e.message)
+        return ResponseEntity.badRequest().body(ApiResponse.fail(message = "요청 값이 올바르지 않습니다."))
     }
 
     // 토큰 재발급 예외 처리
     @ExceptionHandler(io.jsonwebtoken.JwtException::class)
     fun handleJwt(e: io.jsonwebtoken.JwtException): ResponseEntity<ApiResponse<Unit>> =
         ResponseEntity.status(ErrorCode.INVALID_TOKEN.status)
-            .body(ApiResponse.fail(ErrorCode.INVALID_TOKEN.message))
+            .body(ApiResponse.fail(ErrorCode.INVALID_TOKEN.message, code = ErrorCode.INVALID_TOKEN.name))
 
     // 파일 크기 업로드 예외 처리
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException::class)
     fun handleMaxUpload(e: org.springframework.web.multipart.MaxUploadSizeExceededException)
             = ResponseEntity.status(ErrorCode.FILE_TOO_LARGE.status)
-        .body(ApiResponse.fail<Unit>(ErrorCode.FILE_TOO_LARGE.message))
+        .body(ApiResponse.fail<Unit>(ErrorCode.FILE_TOO_LARGE.message, code = ErrorCode.FILE_TOO_LARGE.name))
 
 
     // DTO의 @Valid 유효성 검증에 실패했을 때 발생하는 예외를 처리
