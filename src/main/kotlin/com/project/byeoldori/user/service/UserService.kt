@@ -106,18 +106,18 @@ class UserService(
     }
 
     @Transactional
-    fun reissue(req: TokenReissueRequestDto): AuthResponseDto {
-        if (!jwt.validateToken(req.refreshToken) || !jwt.isTokenType(req.refreshToken, "refresh")) {
+    fun reissue(refreshToken: String): AuthResponseDto {
+        if (!jwt.validateToken(refreshToken) || !jwt.isTokenType(refreshToken, "refresh")) {
             throw UnauthorizedException(ErrorCode.INVALID_TOKEN.message)
         }
-        val email = jwt.extractEmail(req.refreshToken)
+        val email = jwt.extractEmail(refreshToken)
         val user = userRepository.findByEmail(email)
             .orElseThrow { NotFoundException(ErrorCode.USER_NOT_FOUND) }
 
         val stored = refreshTokenRepo.findByUserIdForUpdate(user.id)
             .orElseThrow { NotFoundException(ErrorCode.REFRESH_TOKEN_NOT_FOUND) }
 
-        if (stored.tokenHash != TokenHasher.sha256Hex(req.refreshToken)) {
+        if (stored.tokenHash != TokenHasher.sha256Hex(refreshToken)) {
             throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
         }
 

@@ -1,18 +1,43 @@
 package com.project.byeoldori.user.controller
 
+import com.project.byeoldori.common.exception.ErrorCode
+import com.project.byeoldori.common.exception.UnauthorizedException
 import com.project.byeoldori.common.web.ApiResponse
+import com.project.byeoldori.security.JwtUtil
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.service.UserService
 import io.swagger.v3.oas.annotations.Operation
+import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
+import org.springframework.http.HttpHeaders
+import org.springframework.http.ResponseCookie
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.Duration
 
 @RestController
 @RequestMapping("/auth")
 class AuthController(
-    private val userService: UserService
+    private val userService: UserService,
+    private val jwt: JwtUtil
 ) {
+
+    private companion object {
+        const val REFRESH_COOKIE = "refreshToken"
+    }
+
+    // refresh 토큰을 httpOnly 쿠키로 내려준다(웹 XSS 완화). body 토큰은 그대로 유지(안드로이드 호환).
+    // Domain 속성은 절대 넣지 않는다(프론트가 다른 도메인 + 프록시 경유라 host-only 여야 함).
+    private fun addRefreshCookie(response: HttpServletResponse, refreshToken: String) {
+        val cookie = ResponseCookie.from(REFRESH_COOKIE, refreshToken)
+            .httpOnly(true)
+            .secure(true)
+            .sameSite("Lax")
+            .path("/")
+            .maxAge(Duration.ofSeconds(jwt.refreshTokenTtlSeconds))
+            .build()
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString())
+    }
 
     @PostMapping("/signup")
     @Operation(summary = "회원가입")
@@ -38,15 +63,29 @@ class AuthController(
 
     @PostMapping("/login")
     @Operation(summary = "로그인")
-    fun login(@Valid @RequestBody req: LoginRequestDto): ResponseEntity<ApiResponse<AuthResponseDto>> {
+    fun login(
+        @Valid @RequestBody req: LoginRequestDto,
+        response: HttpServletResponse
+    ): ResponseEntity<ApiResponse<AuthResponseDto>> {
         val auth: AuthResponseDto = userService.login(req)
+        addRefreshCookie(response, auth.refreshToken)
         return ResponseEntity.ok(ApiResponse.ok(auth))
     }
 
     @PostMapping("/token")
     @Operation(summary = "토큰 재발급")
-    fun reissue(@Valid @RequestBody req: TokenReissueRequestDto): ResponseEntity<ApiResponse<AuthResponseDto>> {
-        val auth: AuthResponseDto = userService.reissue(req)
+    fun reissue(
+        @CookieValue(name = REFRESH_COOKIE, required = false) cookieRefresh: String?,
+        @RequestBody(required = false) body: TokenReissueRequestDto?,
+        response: HttpServletResponse
+    ): ResponseEntity<ApiResponse<AuthResponseDto>> {
+        // 웹: httpOnly 쿠키 우선. 안드로이드: 쿠키가 없으면 기존 body 사용.
+        val refreshToken = cookieRefresh?.takeIf { it.isNotBlank() }
+            ?: body?.refreshToken?.takeIf { it.isNotBlank() }
+            ?: throw UnauthorizedException(ErrorCode.INVALID_TOKEN.message)
+
+        val auth: AuthResponseDto = userService.reissue(refreshToken)
+        addRefreshCookie(response, auth.refreshToken)
         return ResponseEntity.ok(ApiResponse.ok(auth))
     }
 
@@ -66,22 +105,34 @@ class AuthController(
 
     @PostMapping("/google")
     @Operation(summary = "Google 소셜 로그인", description = "프론트에서 받은 Authorization Code로 Google 로그인 처리 후 JWT를 발급합니다.")
-    fun loginWithGoogle(@RequestBody req: GoogleLoginRequest): ResponseEntity<ApiResponse<AuthResponseDto>> {
+    fun loginWithGoogle(
+        @RequestBody req: GoogleLoginRequest,
+        response: HttpServletResponse
+    ): ResponseEntity<ApiResponse<AuthResponseDto>> {
         val tokens = userService.loginWithGoogle(req.code, req.redirectUri)
+        addRefreshCookie(response, tokens.refreshToken)
         return ResponseEntity.ok(ApiResponse.ok(tokens))
     }
 
     @PostMapping("/kakao")
     @Operation(summary = "Kakao 소셜 로그인", description = "프론트에서 받은 Authorization Code로 Kakao 로그인 처리 후 JWT를 발급합니다.")
-    fun loginWithKakao(@RequestBody req: KakaoLoginRequest): ResponseEntity<ApiResponse<AuthResponseDto>> {
+    fun loginWithKakao(
+        @RequestBody req: KakaoLoginRequest,
+        response: HttpServletResponse
+    ): ResponseEntity<ApiResponse<AuthResponseDto>> {
         val tokens = userService.loginWithKakao(req.code, req.redirectUri)
+        addRefreshCookie(response, tokens.refreshToken)
         return ResponseEntity.ok(ApiResponse.ok(tokens))
     }
 
     @PostMapping("/naver")
     @Operation(summary = "Naver 소셜 로그인", description = "프론트에서 받은 Authorization Code로 Naver 로그인 처리 후 JWT를 발급합니다.")
-    fun loginWithNaver(@RequestBody req: NaverLoginRequest): ResponseEntity<ApiResponse<AuthResponseDto>> {
+    fun loginWithNaver(
+        @RequestBody req: NaverLoginRequest,
+        response: HttpServletResponse
+    ): ResponseEntity<ApiResponse<AuthResponseDto>> {
         val tokens = userService.loginWithNaver(req.code, req.redirectUri)
+        addRefreshCookie(response, tokens.refreshToken)
         return ResponseEntity.ok(ApiResponse.ok(tokens))
     }
 }

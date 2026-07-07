@@ -22,6 +22,10 @@ class JwtUtil(
 ) {
     val zoneId: ZoneId = ZoneId.of("Asia/Seoul")
 
+    // Refresh 토큰 TTL(초). httpOnly refreshToken 쿠키의 Max-Age 파생에 사용.
+    val refreshTokenTtlSeconds: Long
+        get() = refreshExpMs / 1000
+
     private val key: SecretKey = Keys.hmacShaKeyFor(
         MessageDigest.getInstance("SHA-256").digest(secret.toByteArray(StandardCharsets.UTF_8))
     )
