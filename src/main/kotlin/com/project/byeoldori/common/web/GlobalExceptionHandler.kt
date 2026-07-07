@@ -25,7 +25,7 @@ class GlobalExceptionHandler {
     fun handleByeoldoriException(e: ByeoldoriException): ResponseEntity<ApiResponse<Unit>> {
         log.warn("Custom Exception: code={}, status={}, message={}", e.errorCode.name, e.errorCode.status, e.message)
         return ResponseEntity.status(e.errorCode.status)
-            .body(ApiResponse.fail(message = e.message))
+            .body(ApiResponse.fail(message = e.message, code = e.errorCode.name))
     }
 
     @ExceptionHandler(ResponseStatusException::class)
@@ -58,13 +58,13 @@ class GlobalExceptionHandler {
     @ExceptionHandler(io.jsonwebtoken.JwtException::class)
     fun handleJwt(e: io.jsonwebtoken.JwtException): ResponseEntity<ApiResponse<Unit>> =
         ResponseEntity.status(ErrorCode.INVALID_TOKEN.status)
-            .body(ApiResponse.fail(ErrorCode.INVALID_TOKEN.message))
+            .body(ApiResponse.fail(ErrorCode.INVALID_TOKEN.message, code = ErrorCode.INVALID_TOKEN.name))
 
     // 파일 크기 업로드 예외 처리
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException::class)
     fun handleMaxUpload(e: org.springframework.web.multipart.MaxUploadSizeExceededException)
             = ResponseEntity.status(ErrorCode.FILE_TOO_LARGE.status)
-        .body(ApiResponse.fail<Unit>(ErrorCode.FILE_TOO_LARGE.message))
+        .body(ApiResponse.fail<Unit>(ErrorCode.FILE_TOO_LARGE.message, code = ErrorCode.FILE_TOO_LARGE.name))
 
 
     // DTO의 @Valid 유효성 검증에 실패했을 때 발생하는 예외를 처리
