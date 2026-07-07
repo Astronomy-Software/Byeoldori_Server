@@ -38,7 +38,7 @@ class CommentController(
     @Operation(summary = "댓글 목록", description = "작성 시각 오름차순으로 페이징 조회합니다.")
     fun list(
         @PathVariable postId: Long,
-        @RequestParam(defaultValue = "1") page: Int,
+        @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "15") size: Int,
         @RequestAttribute("currentUser") user: User
     ): PageResponse<CommentResponse> = service.list(postId, page, size, user)
