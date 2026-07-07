@@ -292,8 +292,10 @@ class UserService(
         val email = userInfo["email"]?.toString()?.lowercase() ?: ""
         val name = userInfo["name"]?.toString()
         val picture = userInfo["picture"]?.toString()
+        // Google userinfo v2 는 이메일 소유 검증 여부를 verified_email 로 제공
+        val emailVerified = toBoolOrNull(userInfo["verified_email"] ?: userInfo["email_verified"])
 
-        val user = findOrCreateOAuthUser("google", providerId, email, name, picture)
+        val user = findOrCreateOAuthUser("google", providerId, email, name, picture, emailVerified)
         return issueTokensAndGetResponse(user)
     }
 
@@ -322,8 +324,10 @@ class UserService(
 
         val email = kakaoAccount["email"]?.toString()?.lowercase() ?: ""
         val nickname = properties["nickname"]?.toString()
+        // Kakao 는 kakao_account.is_email_verified 로 이메일 소유 검증 여부 제공
+        val emailVerified = toBoolOrNull(kakaoAccount["is_email_verified"])
 
-        val user = findOrCreateOAuthUser("kakao", providerId, email, nickname, null)
+        val user = findOrCreateOAuthUser("kakao", providerId, email, nickname, null, emailVerified)
         return issueTokensAndGetResponse(user)
     }
 
@@ -352,8 +356,8 @@ class UserService(
         val email = naverUser["email"]?.toString()?.lowercase() ?: ""
         val nickname = naverUser["nickname"]?.toString()
         val picture = naverUser["profile_image"]?.toString()
-
-        val user = findOrCreateOAuthUser("naver", providerId, email, nickname, picture)
+        // Naver 는 이메일 소유 검증 플래그를 제공하지 않음 → null (로컬 계정 자동 연동 불가)
+        val user = findOrCreateOAuthUser("naver", providerId, email, nickname, picture, null)
         return issueTokensAndGetResponse(user)
     }
 
@@ -411,20 +415,34 @@ class UserService(
         providerId: String,
         email: String,
         name: String?,
-        picture: String?
+        picture: String?,
+        providerEmailVerified: Boolean?
     ): User {
         var user = userRepository.findByProviderAndProviderId(provider, providerId)
 
         if (user == null && email.isNotBlank()) {
             val byEmail = userRepository.findByEmail(email).orElse(null)
             if (byEmail != null) {
-                if (byEmail.provider != null && byEmail.provider != provider) {
-                    throw ConflictException(
-                        ErrorCode.ACCOUNT_ALREADY_EXISTS_WITH_DIFFERENT_PROVIDER,
-                        "이미 ${byEmail.provider} 계정으로 가입된 이메일입니다."
-                    )
+                when {
+                    // 다른 소셜 provider 로 이미 가입된 이메일 → 연동 불가 (기존 동작 유지)
+                    byEmail.provider != null && byEmail.provider != provider -> {
+                        throw ConflictException(
+                            ErrorCode.ACCOUNT_ALREADY_EXISTS_WITH_DIFFERENT_PROVIDER,
+                            "이미 ${byEmail.provider} 계정으로 가입된 이메일입니다."
+                        )
+                    }
+                    // 로컬(비밀번호) 계정에 소셜을 email 만으로 자동 연동하는 경로는 계정 탈취 벡터.
+                    // provider 가 email_verified=true 로 이메일 소유를 확인해줄 때만 연동 허용.
+                    // (플래그 미제공(null)/false 면 자동 연동 금지 → 명확한 예외)
+                    byEmail.provider == null && providerEmailVerified != true -> {
+                        throw ConflictException(
+                            ErrorCode.ACCOUNT_ALREADY_EXISTS_WITH_DIFFERENT_PROVIDER,
+                            "이미 해당 이메일로 가입된 계정이 있습니다. 기존 계정으로 로그인해주세요."
+                        )
+                    }
+                    // 로컬 계정(검증됨) 또는 동일 provider 계정 → 연동
+                    else -> user = byEmail
                 }
-                user = byEmail
             }
         }
 
@@ -447,6 +465,13 @@ class UserService(
         }
 
         return userRepository.save(user)
+    }
+
+    // OAuth 응답의 email_verified 류 값을 안전하게 Boolean? 으로 해석 (Boolean / "true"/"false" 문자열 모두 대응)
+    private fun toBoolOrNull(value: Any?): Boolean? = when (value) {
+        is Boolean -> value
+        is String -> value.toBooleanStrictOrNull()
+        else -> null
     }
 
     private fun issueTokensAndGetResponse(user: User): AuthResponseDto {

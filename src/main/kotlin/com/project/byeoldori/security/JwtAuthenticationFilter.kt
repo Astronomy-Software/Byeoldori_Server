@@ -42,6 +42,12 @@ class JwtAuthenticationFilter(
             try {
                 // 1. 유효성 검증을 시도하고, 만료 등 예외 발생 시 catch
                 if (jwtUtil.validateToken(token)) {
+                    // 2. typ 클레임이 access인지 검증. refresh 토큰으로는 인증 거부.
+                    if (!jwtUtil.isTokenType(token, "access")) {
+                        logger.warn("access 토큰이 아닌 토큰으로 인증 시도 - IP: ${request.remoteAddr}")
+                        sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "유효하지 않은 토큰입니다.")
+                        return
+                    }
                     val userEmail = jwtUtil.extractEmail(token)
                     cachedUserLookupService.findByEmail(userEmail)
                         ?.takeIf { it.deletedAt == null }

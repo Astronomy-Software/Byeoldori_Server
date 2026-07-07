@@ -8,6 +8,8 @@ services:
     environment:
       TZ: Asia/Seoul
 
+      SPRING_PROFILES_ACTIVE: prod
+
       STORAGE_TYPE: local
       STORAGE_LOCAL_BASE_DIR: /data/uploads
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
@@ -17,12 +19,8 @@ services:
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
-      SPRING_DATA_MONGODB_HOST: mongo
-      SPRING_DATA_MONGODB_PORT: "27017"
-      SPRING_DATA_MONGODB_DATABASE: byeoldori
-      SPRING_DATA_MONGODB_USERNAME: root
-      SPRING_DATA_MONGODB_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-      SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE: admin
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
 
       SERVER_PORT: "8080"
       SERVER_ADDRESS: "0.0.0.0"
@@ -30,8 +28,16 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      mongo:
+      redis:
         condition: service_healthy
+
+    healthcheck:
+      # temurin:21-jre-jammy 이미지에는 curl/wget 이 없어 bash /dev/tcp 로 actuator health 확인
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /actuator/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3; grep -q 'UP' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
     volumes:
       - uploads:/data/uploads
@@ -58,18 +64,15 @@ services:
       retries: 20
     networks: [backend]
 
-  mongo:
-    image: mongo:6.0
-    container_name: mongo
+  redis:
+    image: redis:7-alpine
+    container_name: redis
     restart: always
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-      MONGO_INITDB_DATABASE: admin
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - mongo_data:/data/db
+      - redis_data:/data
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand({ ping: 1 })"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -81,7 +84,7 @@ services:
     restart: always
     depends_on:
       app:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -96,5 +99,5 @@ networks:
 
 volumes:
   mysql_data: {}
-  mongo_data: {}
+  redis_data: {}
   uploads: {}

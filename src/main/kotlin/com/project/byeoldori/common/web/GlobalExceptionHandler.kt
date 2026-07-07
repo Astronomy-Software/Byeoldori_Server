@@ -49,9 +49,9 @@ class GlobalExceptionHandler {
         HttpMessageNotReadableException::class
     )
     fun handleBadRequest(e: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
-        val msg = e.message ?: "요청 값이 올바르지 않습니다."
-        log.warn("BadRequest at {} -> {}", req.requestURI, msg)
-        return ResponseEntity.badRequest().body(ApiResponse.fail(message = msg))
+        // 예외 원본 메시지(내부 클래스명/필드 경로 등)는 로깅만 하고 클라이언트에는 고정 메시지 반환
+        log.warn("BadRequest at {} -> {}", req.requestURI, e.message)
+        return ResponseEntity.badRequest().body(ApiResponse.fail(message = "요청 값이 올바르지 않습니다."))
     }
 
     // 토큰 재발급 예외 처리

@@ -1,0 +1,36 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Secrets / env
+.env
+*.env
+
+# Build outputs
+build/
+.gradle/
+bin/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Docs & markdown
+*.md
+docs/
+docs-site/
+
+# Node (docs-site)
+node_modules/
+**/node_modules/
+
+# Large data files
+*.csv
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
