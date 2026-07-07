@@ -1,6 +1,8 @@
 package com.project.byeoldori.notification.controller
 
 import com.project.byeoldori.common.web.ApiResponse
+import com.project.byeoldori.community.common.dto.PageResponse
+import com.project.byeoldori.community.common.dto.toPageResponse
 import com.project.byeoldori.notification.dto.NotificationResponse
 import com.project.byeoldori.notification.dto.toResponse
 import com.project.byeoldori.notification.repository.NotificationRepository
@@ -20,12 +22,13 @@ class NotificationController(
     @GetMapping
     fun list(
         @RequestAttribute("currentUser") user: User,
-        @RequestParam(defaultValue = "1") page: Int,
+        @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
-    ): ResponseEntity<ApiResponse<List<NotificationResponse>>> {
-        val pageable = PageRequest.of(maxOf(page - 1, 0), size, Sort.by(Sort.Direction.DESC, "createdAt"))
+    ): PageResponse<NotificationResponse> {
+        require(page >= 0) { "페이지 번호는 0 이상이어야 합니다." }
+        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
         val result = notificationRepository.findByUserIdOrderByCreatedAtDesc(user.id, pageable)
-        return ResponseEntity.ok(ApiResponse.ok(result.content.map { it.toResponse() }))
+        return result.map { it.toResponse() }.toPageResponse()
     }
 
     @GetMapping("/unread-count")

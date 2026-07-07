@@ -55,10 +55,10 @@ class CommentService(
 
     @Transactional(readOnly = true)
     fun list(postId: Long, page: Int, size: Int, user: User?): PageResponse<CommentResponse> {
-        require(page > 0) { "페이지 번호는 1 이상이어야 합니다." }
+        require(page >= 0) { "페이지 번호는 0 이상이어야 합니다." }
 
         val sort = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"))
-        val pageable = PageRequest.of(page - 1, size, sort)
+        val pageable = PageRequest.of(page, size, sort)
         val result = commentRepo.findByPostId(postId, pageable)
 
         val commentIds = result.content.mapNotNull { it.id }
