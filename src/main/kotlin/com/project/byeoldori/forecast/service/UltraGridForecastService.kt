@@ -8,9 +8,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
-import kotlin.concurrent.write
 import kotlin.math.max
 
 // 단일 격자 셀 구조
@@ -40,9 +37,9 @@ class UltraGridForecastService(
      * 여러 tmef에 대한 격자를 저장해둠
      */
     private val logger = LoggerFactory.getLogger(this::class.java)
-    private val ultraTMEFGridMap = mutableMapOf<String, MutableList<MutableList<UltraGridCell>>>()
-    // 전역에 락 객체 정의 (업데이트 시에만 사용)
-    private val ultraReadWriteLock = ReentrantReadWriteLock()
+    // 불변 스냅샷을 @Volatile 참조로 보관 → 갱신 시 새 Map을 만들어 참조만 한 번에 교체(원자적 swap)
+    @Volatile
+    private var ultraTMEFGridMap: Map<String, MutableList<MutableList<UltraGridCell>>> = emptyMap()
 
     /**
      * (1) 단일 tmef에 대한 초단기예보 격자 데이터 가져오기
@@ -117,22 +114,26 @@ class UltraGridForecastService(
     /**
      * 상위 레벨에서 모든 데이터를 수집한 후, 일괄 업데이트하는 메서드
      */
-    fun getDataCount(): Int = ultraReadWriteLock.read { ultraTMEFGridMap.size }
+    fun getDataCount(): Int = ultraTMEFGridMap.size
 
-    fun updateAllUltraTMEFData(tmfc: String, tmefList: List<String>) {
-        fetchUltraShortGrids(tmfc, tmefList)
-            .subscribe(
-                { listOfGrids ->
-                    ultraReadWriteLock.write {
-                        ultraTMEFGridMap.clear()
-                        listOfGrids.forEach { (tmef, grid) ->
-                            ultraTMEFGridMap[tmef] = grid
-                        }
-                    }
-                    logger.info("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
-                },
-                { e -> logger.error("초단기 전체 데이터 업데이트 실패", e) }
-            )
+    /**
+     * 완료를 기다릴 수 있도록 Mono<Void>를 반환한다(호출자가 성공/실패를 관찰·재시도 가능).
+     * 갱신은 새 Map을 완성한 뒤 참조를 원자적으로 교체하며, 결과가 비면 기존 캐시를 보존한다.
+     */
+    fun updateAllUltraTMEFData(tmfc: String, tmefList: List<String>): Mono<Void> {
+        return fetchUltraShortGrids(tmfc, tmefList)
+            .doOnNext { listOfGrids ->
+                if (listOfGrids.isEmpty()) {
+                    logger.warn("초단기 전체 데이터가 비어 있어 기존 캐시를 유지합니다.")
+                    return@doOnNext
+                }
+                val newMap = LinkedHashMap<String, MutableList<MutableList<UltraGridCell>>>(listOfGrids.size)
+                listOfGrids.forEach { (tmef, grid) -> newMap[tmef] = grid }
+                ultraTMEFGridMap = newMap  // 원자적 참조 교체
+                logger.info("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
+            }
+            .doOnError { e -> logger.error("초단기 전체 데이터 업데이트 실패", e) }
+            .then()
     }
 
 
@@ -143,31 +144,30 @@ class UltraGridForecastService(
      * 조회 작업은 readLock을 사용하여 여러 스레드가 동시에 접근 가능하도록 함
      */
     fun getAllUltraTMEFDataForCell(x: Int, y: Int): List<UltraForecastResponseDTO> {
-        return ultraReadWriteLock.read {
-            // 가장 가까운 유효 데이터를 찾는 로직 호출
-            val nearestCellData = findNearestDataForEachTmef(x, y)
+        // 가장 가까운 유효 데이터를 찾는 로직 호출
+        val nearestCellData = findNearestDataForEachTmef(x, y)
 
-            nearestCellData.map { (tmef, cell) ->
-                UltraForecastResponseDTO(
-                    tmef = tmef,
-                    t1h = cell.t1h,
-                    vec = cell.vec,
-                    wsd = cell.wsd,
-                    pty = cell.pty,
-                    rn1 = cell.rn1,
-                    reh = cell.reh,
-                    sky = cell.sky
-                )
-            }.sortedBy { it.tmef }
-        }
+        return nearestCellData.map { (tmef, cell) ->
+            UltraForecastResponseDTO(
+                tmef = tmef,
+                t1h = cell.t1h,
+                vec = cell.vec,
+                wsd = cell.wsd,
+                pty = cell.pty,
+                rn1 = cell.rn1,
+                reh = cell.reh,
+                sky = cell.sky
+            )
+        }.sortedBy { it.tmef }
     }
 
     // 주변 탐색 로직 추가 -> 탐색 반경은 5칸(25km)
     private fun findNearestDataForEachTmef(x: Int, y: Int, maxRadius: Int = 5): List<Pair<String, UltraGridCell>> {
+        val snapshot = ultraTMEFGridMap  // 현재 스냅샷을 한 번만 읽어 일관성 보장
         val results = mutableListOf<Pair<String, UltraGridCell>>()
 
         // 모든 예보 시간(tmef)에 대해 각각 가장 가까운 데이터를 탐색
-        for ((tmef, grid) in ultraTMEFGridMap) {
+        for ((tmef, grid) in snapshot) {
             if (grid.isEmpty() || grid[0].isEmpty()) continue
 
             var foundCell: UltraGridCell? = null
