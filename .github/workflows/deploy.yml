@@ -1,25 +1,23 @@
 name: Deploy backend
 
 on:
-  # main push 자동배포는 비활성(SSH 시크릿 미설정 + VM은 arm64 소스빌드라 GHCR pull 불일치).
-  # 자동배포 필요 시: SSH_HOST/USER/KEY/DEPLOY_DIR 시크릿 설정 + arm64 빌드/소스전송 방식으로 전환 후 push 트리거 복구.
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   workflow_dispatch: {}
 
 concurrency:
   group: deploy-backend-main
   cancel-in-progress: true
 
-env:
-  # GHCR 이미지 (docker-compose.prod.yml 의 app.image 와 동일해야 함)
-  IMAGE: ghcr.io/astronomy-software/byeoldori-server
-
+# VM(byeoldori.duckdns.org, arm64)은 docker-compose.oci.yml로 소스에서 직접 빌드한다.
+# 소스 tarball을 scp로 전송 후 VM에서 build+up. GHCR pull(amd64) 방식 아님.
+# 필요한 secrets: SSH_HOST, SSH_USER, SSH_KEY(전용 배포키), DEPLOY_DIR(예 /home/ubuntu/byeoldori-server)
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write   # GHCR push 권한
-
     steps:
       - uses: actions/checkout@v4
 
@@ -28,87 +26,46 @@ jobs:
           DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
-          REF: ${{ github.ref_name }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
+          [ -z "$DISCORD_URL" ] && exit 0
           SHORT="${SHA:0:7}"
           curl -s -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"🚀 별도리 서버 배포 시작\",
-                \"description\": \"새로운 버전 배포를 시작합니다.\",
-                \"color\": 3447003,
-                \"fields\": [
-                  {\"name\": \"브랜치\", \"value\": \"${REF}\", \"inline\": true},
-                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
-                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true}
-                ]
-              }]
-            }" \
-            "$DISCORD_URL"
+            -d "{\"embeds\":[{\"title\":\"🚀 별도리 서버 배포 시작\",\"color\":3447003,\"fields\":[{\"name\":\"커밋\",\"value\":\"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\",\"inline\":true},{\"name\":\"작업자\",\"value\":\"${ACTOR}\",\"inline\":true}]}]}" \
+            "$DISCORD_URL" || true
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - name: Package source
+        run: git archive --format=tar.gz -o /tmp/byeoldori-src.tar.gz HEAD
+
+      - name: Copy source to VM
+        uses: appleboy/scp-action@v0.1.7
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "/tmp/byeoldori-src.tar.gz"
+          target: "/tmp"
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # OCI VM(byeoldori.duckdns.org)으로 SSH 접속하여 최신 이미지 pull & 재기동.
-      # 필요한 GitHub Actions secrets:
-      #   SSH_HOST  : 배포 대상 호스트 (예: byeoldori.duckdns.org)
-      #   SSH_USER  : SSH 사용자 (예: ubuntu)
-      #   SSH_KEY   : SSH private key (PEM)
-      #   SSH_PORT  : (선택) SSH 포트, 미설정 시 22
-      #   DEPLOY_DIR: docker-compose.prod.yml 이 위치한 서버 경로 (예: /home/ubuntu/byeoldori)
-      - name: Deploy to OCI VM over SSH
+      - name: Build & restart on VM (arm64 native)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          envs: IMAGE
+          command_timeout: 20m
           script: |
             set -e
             cd "${{ secrets.DEPLOY_DIR }}"
-            # GHCR 는 public 패키지면 로그인 불필요. private 이면 아래 로그인 필요.
-            # echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker compose -f docker-compose.prod.yml pull app
-            docker compose -f docker-compose.prod.yml up -d
-            docker image prune -f
-
-      - name: Health check
-        env:
-          HEALTH_URL: https://byeoldori.duckdns.org/actuator/health
-        run: |
-          echo "헬스체크 시작: ${HEALTH_URL}"
-          for i in $(seq 1 12); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${HEALTH_URL}" || echo "000")
-            echo "시도 ${i}/12 - 응답: ${STATUS}"
-            if [ "$STATUS" = "200" ]; then
-              echo "헬스체크 통과"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "헬스체크 실패"
-          exit 1
+            tar -xzf /tmp/byeoldori-src.tar.gz -C "${{ secrets.DEPLOY_DIR }}"
+            docker compose -f docker-compose.oci.yml build app
+            docker compose -f docker-compose.oci.yml up -d app
+            echo "헬스체크..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8080/actuator/health >/dev/null; then echo "UP (try $i)"; break; fi
+              if [ "$i" = "30" ]; then echo "헬스체크 실패"; exit 1; fi
+              sleep 5
+            done
+            docker image prune -f || true
 
       - name: Notify Discord - Deploy Success
         if: success()
@@ -118,43 +75,22 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
+          [ -z "$DISCORD_URL" ] && exit 0
           SHORT="${SHA:0:7}"
           curl -s -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"✅ 별도리 서버 배포 완료\",
-                \"description\": \"새로운 버전이 성공적으로 배포되었습니다.\",
-                \"color\": 3066993,
-                \"fields\": [
-                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
-                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true}
-                ]
-              }]
-            }" \
-            "$DISCORD_URL"
+            -d "{\"embeds\":[{\"title\":\"✅ 별도리 서버 배포 완료\",\"color\":3066993,\"fields\":[{\"name\":\"커밋\",\"value\":\"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\",\"inline\":true},{\"name\":\"작업자\",\"value\":\"${ACTOR}\",\"inline\":true}]}]}" \
+            "$DISCORD_URL" || true
 
       - name: Notify Discord - Deploy Failure
         if: failure()
         env:
           DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
           SHA: ${{ github.sha }}
-          ACTOR: ${{ github.actor }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          WORKFLOW: ${{ github.workflow }}
         run: |
+          [ -z "$DISCORD_URL" ] && exit 0
           SHORT="${SHA:0:7}"
           curl -s -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"❌ 별도리 서버 배포 실패\",
-                \"description\": \"배포 중 오류가 발생했습니다. 확인이 필요합니다.\",
-                \"color\": 15158332,
-                \"fields\": [
-                  {\"name\": \"커밋\", \"value\": \"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\", \"inline\": true},
-                  {\"name\": \"작업자\", \"value\": \"${ACTOR}\", \"inline\": true},
-                  {\"name\": \"워크플로우\", \"value\": \"[${WORKFLOW}](${RUN_URL})\", \"inline\": false}
-                ]
-              }]
-            }" \
-            "$DISCORD_URL"
+            -d "{\"embeds\":[{\"title\":\"❌ 별도리 서버 배포 실패\",\"color\":15158332,\"fields\":[{\"name\":\"커밋\",\"value\":\"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\",\"inline\":true},{\"name\":\"로그\",\"value\":\"[확인](${RUN_URL})\",\"inline\":true}]}]}" \
+            "$DISCORD_URL" || true
