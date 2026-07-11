@@ -1,11 +1,8 @@
 name: Deploy backend
 
 on:
-  push:
-    branches: [ "main" ]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
+  # main push 자동배포는 비활성(SSH 시크릿 미설정 + VM은 arm64 소스빌드라 GHCR pull 불일치).
+  # 자동배포 필요 시: SSH_HOST/USER/KEY/DEPLOY_DIR 시크릿 설정 + arm64 빌드/소스전송 방식으로 전환 후 push 트리거 복구.
   workflow_dispatch: {}
 
 concurrency:
