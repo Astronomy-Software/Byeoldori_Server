@@ -35,7 +35,7 @@ jobs:
             "$DISCORD_URL" || true
 
       - name: Package source
-        run: git archive --format=tar.gz -o /tmp/byeoldori-src.tar.gz HEAD
+        run: git archive --format=tar.gz -o byeoldori-src.tar.gz HEAD
 
       - name: Copy source to VM
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
@@ -43,7 +43,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: "/tmp/byeoldori-src.tar.gz"
+          source: "byeoldori-src.tar.gz"
           target: "/tmp"
 
       - name: Build & restart on VM (arm64 native)
