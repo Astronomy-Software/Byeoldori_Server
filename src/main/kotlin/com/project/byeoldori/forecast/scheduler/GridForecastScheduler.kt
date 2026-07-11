@@ -49,7 +49,6 @@ class GridForecastScheduler(
             fetchFunction = {
                 val tmfc = ForecastTimeUtil.getStableLiveTmfc()
                 liveGridForecastService.updateLiveData(tmfc)
-                Mono.empty()
             }
         )
     }
@@ -66,7 +65,6 @@ class GridForecastScheduler(
                 val tmfc = ForecastTimeUtil.getStableUltraTmfc()  // ← 60분 전 기준 안정적 tmfc
                 val tmefList = ForecastTimeUtil.getNext6UltraTmef()
                 ultraGridForecastService.updateAllUltraTMEFData(tmfc, tmefList)
-                Mono.empty()
             }
         )
     }
@@ -80,7 +78,6 @@ class GridForecastScheduler(
             tag = "단기예보",
             fetchFunction = {
                 shortGridForecastService.updateAllShortTMEFData(getTMFCTimeForShort(), getTMEFTimesForShortForecast())
-                Mono.empty()
             }
         )
     }

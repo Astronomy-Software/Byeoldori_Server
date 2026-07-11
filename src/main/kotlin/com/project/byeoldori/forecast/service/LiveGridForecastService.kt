@@ -7,9 +7,6 @@ import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
-import kotlin.concurrent.write
 import kotlin.math.abs
 
 data class LiveGridCell(
@@ -30,11 +27,16 @@ class LiveGridForecastService(
     private val weatherData: WeatherData
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
+    // 갱신 시 새 격자를 완성한 뒤 참조를 원자적으로 교체(@Volatile). 읽기는 현재 참조를 그대로 사용.
+    @Volatile
     private var liveGrid: MutableList<MutableList<LiveGridCell>> = mutableListOf()
-    private val lock = ReentrantReadWriteLock()
 
-    fun updateLiveData(tmfc: String) {
-        Mono.zip(
+    /**
+     * 완료를 기다릴 수 있도록 Mono<Void>를 반환한다(호출자가 성공/실패를 관찰·재시도 가능).
+     * 결과가 비면 기존 캐시를 보존한다.
+     */
+    fun updateLiveData(tmfc: String): Mono<Void> {
+        return Mono.zip(
             weatherData.fetchLiveWeather(tmfc, ForecastElement.T1H),
             weatherData.fetchLiveWeather(tmfc, ForecastElement.VEC),
             weatherData.fetchLiveWeather(tmfc, ForecastElement.WSD),
@@ -52,23 +54,24 @@ class LiveGridForecastService(
                 GridDataParser.parseGridData(t.t6),
                 GridDataParser.parseGridData(t.t7),
             )
-        }.subscribe(
-            { grid ->
-                lock.write { liveGrid = grid }
-                logger.info("실황 격자 데이터 업데이트 완료 (tmfc=$tmfc)")
-            },
-            { e -> logger.error("실황 격자 데이터 업데이트 실패", e) }
-        )
+        }.doOnNext { grid ->
+            if (grid.isEmpty() || grid[0].isEmpty()) {
+                logger.warn("실황 격자 데이터가 비어 있어 기존 캐시를 유지합니다. (tmfc=$tmfc)")
+                return@doOnNext
+            }
+            liveGrid = grid  // 원자적 참조 교체
+            logger.info("실황 격자 데이터 업데이트 완료 (tmfc=$tmfc)")
+        }.doOnError { e ->
+            logger.error("실황 격자 데이터 업데이트 실패", e)
+        }.then()
     }
 
     fun getLiveDataForCell(x: Int, y: Int): LiveForecastResponseDTO? {
-        return lock.read {
-            val cell = findNearest(x, y) ?: return@read null
-            LiveForecastResponseDTO(
-                t1h = cell.t1h, vec = cell.vec, wsd = cell.wsd,
-                pty = cell.pty, rn1 = cell.rn1, reh = cell.reh, sky = cell.sky
-            )
-        }
+        val cell = findNearest(x, y) ?: return null
+        return LiveForecastResponseDTO(
+            t1h = cell.t1h, vec = cell.vec, wsd = cell.wsd,
+            pty = cell.pty, rn1 = cell.rn1, reh = cell.reh, sky = cell.sky
+        )
     }
 
     private fun findNearest(x: Int, y: Int, maxRadius: Int = 5): LiveGridCell? {

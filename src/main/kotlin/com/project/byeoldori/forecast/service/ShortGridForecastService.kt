@@ -8,9 +8,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
-import kotlin.concurrent.write
 import kotlin.math.max
 
 // 단일 격자 셀 구조 (ShortGridCell)
@@ -46,9 +43,9 @@ class ShortGridForecastService(
      * tmef -> 2차원 ShortGridCell 매핑
      * 여러 tmef에 대한 격자를 저장해둠
      */
-    private val shortTMEFGridMap = mutableMapOf<String, MutableList<MutableList<ShortGridCell>>>()
-    // ReadWriteLock을 사용해 읽기와 쓰기를 분리
-    private val shortReadWriteLock = ReentrantReadWriteLock()
+    // 불변 스냅샷을 @Volatile 참조로 보관 → 갱신 시 새 Map을 만들어 참조만 한 번에 교체(원자적 swap)
+    @Volatile
+    private var shortTMEFGridMap: Map<String, MutableList<MutableList<ShortGridCell>>> = emptyMap()
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     /**
@@ -141,22 +138,26 @@ class ShortGridForecastService(
     /**
      * 상위 레벨에서 모든 데이터를 수집한 후, 일괄 업데이트하는 메서드
      */
-    fun getDataCount(): Int = shortReadWriteLock.read { shortTMEFGridMap.size }
+    fun getDataCount(): Int = shortTMEFGridMap.size
 
-    fun updateAllShortTMEFData(tmfc: String, tmefList: List<String>) {
-        fetchShortGrids(tmfc, tmefList)
-            .subscribe(
-                { listOfGrids ->
-                    shortReadWriteLock.write {
-                        shortTMEFGridMap.clear()
-                        listOfGrids.forEach { (tmef, grid) ->
-                            shortTMEFGridMap[tmef] = grid
-                        }
-                    }
-                    logger.info("모든 short tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
-                },
-                { e -> logger.error("단기 전체 데이터 업데이트 실패", e) }
-            )
+    /**
+     * 완료를 기다릴 수 있도록 Mono<Void>를 반환한다(호출자가 성공/실패를 관찰·재시도 가능).
+     * 갱신은 새 Map을 완성한 뒤 참조를 원자적으로 교체하며, 결과가 비면 기존 캐시를 보존한다.
+     */
+    fun updateAllShortTMEFData(tmfc: String, tmefList: List<String>): Mono<Void> {
+        return fetchShortGrids(tmfc, tmefList)
+            .doOnNext { listOfGrids ->
+                if (listOfGrids.isEmpty()) {
+                    logger.warn("단기 전체 데이터가 비어 있어 기존 캐시를 유지합니다.")
+                    return@doOnNext
+                }
+                val newMap = LinkedHashMap<String, MutableList<MutableList<ShortGridCell>>>(listOfGrids.size)
+                listOfGrids.forEach { (tmef, grid) -> newMap[tmef] = grid }
+                shortTMEFGridMap = newMap  // 원자적 참조 교체
+                logger.info("모든 short tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
+            }
+            .doOnError { e -> logger.error("단기 전체 데이터 업데이트 실패", e) }
+            .then()
     }
 
     /**
@@ -164,33 +165,32 @@ class ShortGridForecastService(
      * 조회 작업은 readLock을 사용하여 여러 스레드가 동시에 접근 가능하도록 함
      */
     fun getAllShortTMEFDataForCell(x: Int, y: Int): List<ShortForecastResponseDTO> {
-        return shortReadWriteLock.read {
-            // 가장 가까운 유효 데이터를 찾는 로직 호출
-            val nearestCellData = findNearestDataForEachTmef(x, y)
+        // 가장 가까운 유효 데이터를 찾는 로직 호출
+        val nearestCellData = findNearestDataForEachTmef(x, y)
 
-            nearestCellData.map { (tmef, cell) ->
-                ShortForecastResponseDTO(
-                    tmef = tmef,
-                    tmp = cell.tmp,
-                    tmx = cell.tmx,
-                    tmn = cell.tmn,
-                    vec = cell.vec,
-                    wsd = cell.wsd,
-                    sky = cell.sky,
-                    pty = cell.pty,
-                    pcp = cell.pcp,
-                    pop = cell.pop,
-                    sno = cell.sno,
-                    reh = cell.reh
-                )
-            }.sortedBy { it.tmef }
-        }
+        return nearestCellData.map { (tmef, cell) ->
+            ShortForecastResponseDTO(
+                tmef = tmef,
+                tmp = cell.tmp,
+                tmx = cell.tmx,
+                tmn = cell.tmn,
+                vec = cell.vec,
+                wsd = cell.wsd,
+                sky = cell.sky,
+                pty = cell.pty,
+                pcp = cell.pcp,
+                pop = cell.pop,
+                sno = cell.sno,
+                reh = cell.reh
+            )
+        }.sortedBy { it.tmef }
     }
 
     private fun findNearestDataForEachTmef(x: Int, y: Int, maxRadius: Int = 5): List<Pair<String, ShortGridCell>> {
+        val snapshot = shortTMEFGridMap  // 현재 스냅샷을 한 번만 읽어 일관성 보장
         val results = mutableListOf<Pair<String, ShortGridCell>>()
 
-        for ((tmef, grid) in shortTMEFGridMap) {
+        for ((tmef, grid) in snapshot) {
             if (grid.isEmpty() || grid[0].isEmpty()) continue
 
             var foundCell: ShortGridCell? = null
