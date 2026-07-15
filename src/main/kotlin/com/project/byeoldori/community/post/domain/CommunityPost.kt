@@ -24,8 +24,9 @@ class CommunityPost(
     @Column(nullable = false, length = 120)
     var title: String,
 
-    @Lob
-    @Column(nullable = false)
+    // @Lob + length 미지정이면 Hibernate가 MySQL에서 TINYTEXT(255 bytes)로 생성해
+    // 한글 약 85자만 넘어도 "Data too long"으로 저장이 실패한다. LONGTEXT를 명시한다.
+    @Column(nullable = false, columnDefinition = "LONGTEXT")
     var content: String,
 
     @Column(name = "view_count", nullable = false) var viewCount: Long = 0,
