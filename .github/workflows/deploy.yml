@@ -57,14 +57,9 @@ jobs:
             set -e
             cd "${{ secrets.DEPLOY_DIR }}"
             tar -xzf /tmp/byeoldori-src.tar.gz -C "${{ secrets.DEPLOY_DIR }}"
-            docker compose -f docker-compose.oci.yml build app
-            docker compose -f docker-compose.oci.yml up -d app
-            echo "헬스체크..."
-            for i in $(seq 1 30); do
-              if curl -sf http://localhost:8080/actuator/health >/dev/null; then echo "UP (try $i)"; break; fi
-              if [ "$i" = "30" ]; then echo "헬스체크 실패"; exit 1; fi
-              sleep 5
-            done
+            # 블루-그린 무중단 배포: 비활성 색을 빌드·기동→헬스 통과 시에만
+            # nginx upstream 전환→구 색 정지. 실패하면 기존 컨테이너 유지.
+            bash deploy-bluegreen.sh
             docker image prune -f || true
 
       - name: Notify Discord - Deploy Success
