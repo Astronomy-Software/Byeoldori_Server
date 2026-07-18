@@ -1,0 +1,70 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: discord
+    receivers:
+      - uid: discord-main
+        type: discord
+        settings:
+          url: $DISCORD_WEBHOOK_URL
+
+policies:
+  - orgId: 1
+    receiver: discord
+    group_by: ["alertname"]
+
+groups:
+  - orgId: 1
+    name: byeoldori
+    folder: Byeoldori
+    interval: 1m
+    rules:
+      # 활성/비활성 색 모두 다운 = 실제 장애 (한쪽 down은 정상 상태)
+      - uid: backend-down
+        title: "백엔드 다운 (모든 색 down)"
+        condition: C
+        for: 2m
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max(up{job="byeoldori-app"})
+              refId: A
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: C
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+      # 5xx 비율 5% 초과 5분 지속
+      - uid: high-error-rate
+        title: "HTTP 5xx 에러율 5% 초과"
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: OK
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count[5m]))
+              refId: A
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: C
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
