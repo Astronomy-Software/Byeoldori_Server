@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  # 블루-그린 양쪽 색 모두 등록 — 죽어있는 색은 down으로 표시될 뿐 무해
+  - job_name: byeoldori-app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app-blue:8080"]
+        labels: { color: blue }
+      - targets: ["app-green:8080"]
+        labels: { color: green }
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

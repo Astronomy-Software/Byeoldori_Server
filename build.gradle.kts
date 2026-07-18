@@ -42,6 +42,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-starter-cache")
     implementation("org.flywaydb:flyway-mysql")
     implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
