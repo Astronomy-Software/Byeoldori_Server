@@ -35,6 +35,7 @@ class SecurityConfig(
             "/auth/**",
             "/reset-password",
             "/actuator/health",
+            "/actuator/prometheus",
             "/weather/**",
         )
     }
