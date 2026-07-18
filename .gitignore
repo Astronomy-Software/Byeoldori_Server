@@ -41,3 +41,4 @@ out/
 
 ### Enviroment ###
 .envmonitoring/secrets.env
+.env
