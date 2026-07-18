@@ -1,0 +1,61 @@
+# 모니터링 스택 (Prometheus + Grafana + Loki + Alloy)
+# 저리소스 구성: 합계 상한 ~1GB, 보존 30일. 앱과 같은 backend 네트워크에서
+# app-blue/app-green의 /actuator/prometheus를 직접 스크레이프한다.
+# 기동: docker compose -f docker-compose.oci.yml -f docker-compose.monitoring.yml up -d prometheus grafana loki alloy
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: always
+    mem_limit: 400m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks: [backend]
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    restart: always
+    mem_limit: 200m
+    environment:
+      GF_SERVER_ROOT_URL: https://grafana.byeoldori.com
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:3000:3000" # nginx 리버스프록시 전용(외부 미개방)
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks: [backend]
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    restart: always
+    mem_limit: 300m
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    networks: [backend]
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    restart: always
+    mem_limit: 150m
+    command: ["run", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [backend]
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
