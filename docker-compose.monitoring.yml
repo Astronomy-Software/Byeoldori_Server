@@ -22,6 +22,8 @@ services:
     container_name: grafana
     restart: always
     mem_limit: 200m
+    env_file:
+      - ./monitoring/secrets.env # 배포 시 Actions가 생성 (Discord 웹훅 등)
     environment:
       GF_SERVER_ROOT_URL: https://grafana.byeoldori.com
       GF_USERS_ALLOW_SIGN_UP: "false"
