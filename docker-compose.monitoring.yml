@@ -48,6 +48,19 @@ services:
       - loki_data:/loki
     networks: [backend]
 
+  cloudflare-exporter:
+    image: ghcr.io/lablabs/cloudflare_exporter:0.2.3 # arm64 지원 (ko 멀티아치 빌드)
+    container_name: cloudflare-exporter
+    restart: always
+    mem_limit: 100m
+    env_file:
+      - ./monitoring/secrets.env # CF_API_TOKEN, CF_ACCOUNTS 사용
+    environment:
+      FREE_TIER: "true" # free plan zone은 유료 전용 GraphQL 필드 조회 시 오류 발생
+      SCRAPE_DELAY: "30" # 기본 300초 → 기동 후 첫 수집 지연 단축
+      LOG_LEVEL: "info"
+    networks: [backend]
+
   alloy:
     image: grafana/alloy:latest
     container_name: alloy
