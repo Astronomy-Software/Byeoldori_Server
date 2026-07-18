@@ -31,6 +31,8 @@ services:
       - "127.0.0.1:3000:3000" # nginx 리버스프록시 전용(외부 미개방)
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks: [backend]
 
   loki:
