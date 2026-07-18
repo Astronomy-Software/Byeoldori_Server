@@ -1,0 +1,9 @@
+services:
+  app-blue:
+    extends: { file: docker-compose.oci.yml, service: app }
+    container_name: app-blue
+    ports: !override ["8080:8080"]
+  app-green:
+    extends: { file: docker-compose.oci.yml, service: app }
+    container_name: app-green
+    ports: !override ["8081:8080"]
