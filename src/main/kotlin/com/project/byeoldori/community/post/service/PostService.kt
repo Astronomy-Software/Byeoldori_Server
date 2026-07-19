@@ -76,6 +76,7 @@ class PostService(
                     difficulty = d.difficulty,
                     tags = d.tags,
                     status = d.status ?: EducationStatus.DRAFT,
+                    programId = d.programId,
                 )
 
                 d.contentUrl?.trim()?.let { url ->
@@ -207,7 +208,8 @@ class PostService(
                 .filter { it.isNotBlank() }
             EducationResponseDto(
                 difficulty = ep.difficulty,
-                targets = targets, tags = ep.tags, status = ep.status, averageScore = ep.averageScore, contentUrl = ep.contentUrl
+                targets = targets, tags = ep.tags, status = ep.status, averageScore = ep.averageScore,
+                contentUrl = ep.contentUrl, programId = ep.programId
             )
         }
 
@@ -312,6 +314,11 @@ class PostService(
         educationDto.difficulty?.let { educationPost.difficulty = it }
         educationDto.tags?.let { educationPost.tags = it }
         educationDto.status?.let { educationPost.status = it }
+
+        // 연결 프로그램 id (빈 문자열로 오면 연결 해제)
+        educationDto.programId?.let { raw ->
+            educationPost.programId = raw.trim().ifEmpty { null }
+        }
 
         // JSON URL 세팅 (null/미포함이면 무시)
         if (educationDto.contentUrl != null) {

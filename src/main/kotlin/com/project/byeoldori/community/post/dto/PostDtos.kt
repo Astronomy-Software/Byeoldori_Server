@@ -24,7 +24,8 @@ data class EducationRequestDto(
     val targets: List<String>? = null,
     val tags: String? = null,
     val status: EducationStatus? = null, // null → DRAFT
-    val contentUrl: String? = null // 생성시 입력하지 않음
+    val contentUrl: String? = null, // 생성시 입력하지 않음
+    val programId: String? = null // 연결할 인터랙티브 프로그램(MongoDB) id
 )
 
 data class EducationResponseDto(
@@ -33,7 +34,8 @@ data class EducationResponseDto(
     val tags: String? = null,
     val status: EducationStatus? = null,
     val averageScore: Double = 0.0,
-    val contentUrl: String? = null
+    val contentUrl: String? = null,
+    val programId: String? = null
 ) {
     companion object {
         fun from(educationPost: EducationPost,targets: List<String>) = EducationResponseDto(
@@ -42,7 +44,8 @@ data class EducationResponseDto(
             tags = educationPost.tags,
             status = educationPost.status,
             averageScore = educationPost.averageScore,
-            contentUrl = educationPost.contentUrl
+            contentUrl = educationPost.contentUrl,
+            programId = educationPost.programId
         )
     }
 }
