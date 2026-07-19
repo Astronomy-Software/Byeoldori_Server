@@ -12,6 +12,8 @@ import com.project.byeoldori.observationsites.repository.ObservationSiteReposito
 import com.project.byeoldori.star.service.ContentTargetService
 import com.project.byeoldori.star.entity.ContentType
 import com.project.byeoldori.user.entity.User
+import com.project.byeoldori.education.program.domain.ProgramStatus
+import com.project.byeoldori.education.program.repository.EducationProgramRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.*
 import org.springframework.stereotype.Service
@@ -33,7 +35,27 @@ class PostService(
     private val educationRatingRepo: EducationRatingRepository,
     private val storage: StorageService,
     private val contentTargetService: ContentTargetService,
+    private val educationProgramRepository: EducationProgramRepository,
 ) {
+
+    /**
+     * 게시글에 연결하려는 교육 프로그램을 검증한다.
+     *
+     * 검증이 없으면 저작자가 임시저장(DRAFT)만 한 프로그램을 글에 연결해 게시할 수 있는데,
+     * 미발행 프로그램은 작성자·관리자 외에는 조회가 403 이라 방문자에겐 '실행 버튼이
+     * 아무 반응 없는' 상태가 된다. 작성자 본인 화면에서는 정상 동작해 발견되지도 않는다.
+     * 삭제된 프로그램 id 를 남겨두는 고아 참조도 여기서 막는다.
+     */
+    private fun validateProgramId(programId: String) {
+        val program = educationProgramRepository.findById(programId).orElseThrow {
+            InvalidInputException("연결하려는 교육 프로그램을 찾을 수 없습니다.")
+        }
+        if (program.status != ProgramStatus.PUBLISHED) {
+            throw InvalidInputException(
+                "발행되지 않은 교육 프로그램은 게시글에 연결할 수 없습니다. 프로그램을 먼저 발행해주세요."
+            )
+        }
+    }
 
     @Value("\${community.home.item-count:20}")
     private val homeItemCount: Int = 20
@@ -71,12 +93,13 @@ class PostService(
             PostType.EDUCATION -> {
                 val d = req.education ?: EducationRequestDto()
 
+                d.programId?.takeIf { it.isNotBlank() }?.let { validateProgramId(it) }
                 val ep = EducationPost(
                     post = post,
                     difficulty = d.difficulty,
                     tags = d.tags,
                     status = d.status ?: EducationStatus.DRAFT,
-                    programId = d.programId,
+                    programId = d.programId?.takeIf { it.isNotBlank() },
                 )
 
                 d.contentUrl?.trim()?.let { url ->
@@ -317,7 +340,13 @@ class PostService(
 
         // 연결 프로그램 id (빈 문자열로 오면 연결 해제)
         educationDto.programId?.let { raw ->
-            educationPost.programId = raw.trim().ifEmpty { null }
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) {
+                educationPost.programId = null
+            } else {
+                validateProgramId(trimmed)
+                educationPost.programId = trimmed
+            }
         }
 
         // JSON URL 세팅 (null/미포함이면 무시)

@@ -43,7 +43,11 @@ class EducationProgramController(
         // 비로그인 공개 목록(PUBLISHED)을 허용하므로 nullable. mine/pending 은 인증 필요.
         @RequestAttribute(value = "currentUser", required = false) user: User?
     ): PageResponse<ProgramSummaryResponse> {
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"))
+        // 비로그인도 호출 가능한 공개 API 라 상한이 없으면 ?size=1000000 한 방으로
+        // 전체 프로그램(steps 포함)을 메모리에 올리게 된다. 반드시 제한한다.
+        val safePage = page.coerceAtLeast(0)
+        val safeSize = size.coerceIn(1, 50)
+        val pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "updatedAt"))
         return when {
             pending -> service.listPending(requireLogin(user), pageable)
             mine -> service.listMine(requireLogin(user), pageable)
