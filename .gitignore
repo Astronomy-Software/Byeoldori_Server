@@ -40,5 +40,5 @@ out/
 .kotlin
 
 ### Enviroment ###
-.envmonitoring/secrets.env
+monitoring/secrets.env
 .env

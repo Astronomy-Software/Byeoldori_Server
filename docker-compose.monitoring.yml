@@ -48,6 +48,26 @@ services:
       - loki_data:/loki
     networks: [backend]
 
+  # 자작 경량 exporter (stdlib만, 의존성 0). lablabs/cloudflare-exporter 0.2.3은
+  # '고정 1분 창'만 조회해 무료플랜 저트래픽 worker 메트릭이 항상 0이 되는 구조적
+  # 결함이 있어 교체. 이 exporter는 연속(비겹침) 창을 누적해 정확한 counter를 만든다.
+  # 상세: monitoring/cf-worker-exporter.py 상단 주석.
+  cloudflare-exporter:
+    image: python:3.12-alpine
+    container_name: cloudflare-exporter
+    restart: always
+    mem_limit: 96m
+    env_file:
+      - ./monitoring/secrets.env # CF_API_TOKEN, CF_ACCOUNT_ID(또는 CF_ACCOUNTS) 사용
+    environment:
+      REFRESH_SECONDS: "60"
+      SETTLE_SECONDS: "180" # 애널리틱스 수집 지연 보정
+      BACKFILL_MINUTES: "60" # 기동 시 과거 60분 1회 백필 → 즉시 데이터 표시
+    volumes:
+      - ./monitoring/cf-worker-exporter.py:/app/exporter.py:ro
+    command: ["python", "/app/exporter.py"]
+    networks: [backend]
+
   alloy:
     image: grafana/alloy:latest
     container_name: alloy
