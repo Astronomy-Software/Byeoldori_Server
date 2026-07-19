@@ -60,14 +60,14 @@ jobs:
             tar -xzf /tmp/byeoldori-src.tar.gz -C "${{ secrets.DEPLOY_DIR }}"
             # 모니터링용 시크릿을 VM에 전달 (Grafana 알림·CF exporter가 env_file로 읽음)
             umask 077
-            printf 'DISCORD_WEBHOOK_URL=%s\nCF_API_TOKEN=%s\nCF_ACCOUNT_ID=%s\n' \
-              "$DISCORD_WEBHOOK_BACKEND_URL" "$CLOUDFLARE_API_TOKEN" "$CLOUDFLARE_ACCOUNT_ID" \
+            printf 'DISCORD_WEBHOOK_URL=%s\nCF_API_TOKEN=%s\nCF_ACCOUNT_ID=%s\nCF_ACCOUNTS=%s\n' \
+              "$DISCORD_WEBHOOK_BACKEND_URL" "$CLOUDFLARE_API_TOKEN" "$CLOUDFLARE_ACCOUNT_ID" "$CLOUDFLARE_ACCOUNT_ID" \
               > monitoring/secrets.env
             # 블루-그린 무중단 배포: 비활성 색을 빌드·기동→헬스 통과 시에만
             # nginx upstream 전환→구 색 정지. 실패하면 기존 컨테이너 유지.
             bash deploy-bluegreen.sh
             # 모니터링 스택 반영 (설정 변경 시에만 재생성됨)
-            docker compose -f docker-compose.oci.yml -f docker-compose.monitoring.yml up -d prometheus grafana loki alloy || true
+            docker compose -f docker-compose.oci.yml -f docker-compose.monitoring.yml up -d prometheus grafana loki alloy cloudflare-exporter || true
             docker image prune -f || true
         env:
           DISCORD_WEBHOOK_BACKEND_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
