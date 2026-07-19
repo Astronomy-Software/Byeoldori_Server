@@ -30,6 +30,12 @@ class EducationPost(
     @Column(name = "content_url", length = 1024)
     var contentUrl: String? = null,
 
+    // 연결된 인터랙티브 교육 프로그램(MongoDB education_programs)의 id.
+    // 게시글은 MySQL, 프로그램(씬 JSON)은 MongoDB 로 분리돼 있어 id 로만 잇는다.
+    // null 이면 재생할 프로그램이 없는 일반 교육 글.
+    @Column(name = "program_id", length = 64)
+    var programId: String? = null,
+
     @Column(name = "average_score", nullable = false)
     var averageScore: Double = 0.0, // 평균 평점
 
