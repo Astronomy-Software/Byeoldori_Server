@@ -15,7 +15,8 @@ data class CreateProgramRequest(
     val subtitle: String? = null,
     val difficulty: EducationDifficulty? = null,
     val targets: List<String>? = null,
-    val steps: List<Document>? = null
+    // 프론트 인터랙티브 씬 배열. 요청은 표준 Map 으로 받아(Jackson 안전) 서비스에서 org.bson.Document 로 변환.
+    val steps: List<Map<String, Any?>>? = null
 )
 
 data class UpdateProgramRequest(
@@ -24,7 +25,7 @@ data class UpdateProgramRequest(
     val subtitle: String? = null,
     val difficulty: EducationDifficulty? = null,
     val targets: List<String>? = null,
-    val steps: List<Document>? = null
+    val steps: List<Map<String, Any?>>? = null
 )
 
 data class ProgramSummaryResponse(

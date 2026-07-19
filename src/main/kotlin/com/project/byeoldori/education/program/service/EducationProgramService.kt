@@ -37,7 +37,7 @@ class EducationProgramService(
             authorId = user.id,
             authorName = user.nickname,
             status = ProgramStatus.DRAFT,
-            steps = req.steps ?: emptyList()
+            steps = req.steps?.map { org.bson.Document(it) } ?: emptyList()
         )
         return ProgramDetailResponse.from(repo.save(program))
     }
@@ -53,7 +53,7 @@ class EducationProgramService(
         req.subtitle?.let { p.subtitle = it }
         req.difficulty?.let { p.difficulty = it }
         req.targets?.let { p.targets = it }
-        req.steps?.let { p.steps = it }
+        req.steps?.let { list -> p.steps = list.map { org.bson.Document(it) } }
 
         return ProgramDetailResponse.from(repo.save(p))
     }
