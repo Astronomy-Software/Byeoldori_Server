@@ -122,10 +122,12 @@ class EducationProgramService(
             .toPageResponse()
     }
 
-    fun get(id: String, user: User): ProgramDetailResponse {
+    /** PUBLISHED 는 비로그인 포함 누구나. DRAFT/PREVIEW 는 작성자 또는 관리자만. */
+    fun get(id: String, user: User?): ProgramDetailResponse {
         val p = findOrThrow(id)
-        if (p.status != ProgramStatus.PUBLISHED && p.authorId != user.id && !isAdmin(user)) {
-            throw ForbiddenException("해당 프로그램을 조회할 권한이 없습니다.")
+        if (p.status != ProgramStatus.PUBLISHED) {
+            val allowed = user != null && (p.authorId == user.id || isAdmin(user))
+            if (!allowed) throw ForbiddenException("해당 프로그램을 조회할 권한이 없습니다.")
         }
         return ProgramDetailResponse.from(p)
     }

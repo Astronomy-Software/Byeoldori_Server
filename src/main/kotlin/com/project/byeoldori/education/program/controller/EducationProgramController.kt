@@ -1,5 +1,6 @@
 package com.project.byeoldori.education.program.controller
 
+import com.project.byeoldori.common.exception.ForbiddenException
 import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.education.program.dto.CreateProgramRequest
@@ -39,21 +40,26 @@ class EducationProgramController(
         @RequestParam(defaultValue = "20") size: Int,
         @RequestParam(required = false, defaultValue = "false") mine: Boolean,
         @RequestParam(required = false, defaultValue = "false") pending: Boolean,
-        @RequestAttribute("currentUser") user: User
+        // 비로그인 공개 목록(PUBLISHED)을 허용하므로 nullable. mine/pending 은 인증 필요.
+        @RequestAttribute(value = "currentUser", required = false) user: User?
     ): PageResponse<ProgramSummaryResponse> {
         val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"))
         return when {
-            pending -> service.listPending(user, pageable)
-            mine -> service.listMine(user, pageable)
+            pending -> service.listPending(requireLogin(user), pageable)
+            mine -> service.listMine(requireLogin(user), pageable)
             else -> service.listPublished(pageable)
         }
     }
+
+    private fun requireLogin(user: User?): User =
+        user ?: throw ForbiddenException("로그인이 필요합니다.")
 
     @GetMapping("/{id}")
     @Operation(summary = "교육 프로그램 상세", description = "PUBLISHED 는 누구나, DRAFT/PREVIEW 는 작성자 또는 관리자만.")
     fun get(
         @PathVariable id: String,
-        @RequestAttribute("currentUser") user: User
+        // PUBLISHED 는 비로그인도 조회 가능하므로 nullable
+        @RequestAttribute(value = "currentUser", required = false) user: User?
     ): ProgramDetailResponse = service.get(id, user)
 
     @PatchMapping("/{id}")
@@ -99,7 +105,8 @@ class EducationProgramController(
     @Operation(summary = "조회수 증가")
     fun incrementView(
         @PathVariable id: String,
-        @RequestAttribute("currentUser") user: User
+        @Suppress("UNUSED_PARAMETER")
+        @RequestAttribute(value = "currentUser", required = false) user: User?
     ): ResponseEntity<ApiResponse<Unit>> {
         service.incrementView(id)
         return ResponseEntity.ok(ApiResponse.ok())
