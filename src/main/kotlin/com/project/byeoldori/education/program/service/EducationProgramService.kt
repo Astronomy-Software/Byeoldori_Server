@@ -16,12 +16,17 @@ import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.repository.EducationProgramRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.data.domain.Pageable
+import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.data.mongodb.core.query.Criteria
+import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Service
 
 @Service
 class EducationProgramService(
     private val repo: EducationProgramRepository,
-    private val systemConfigService: SystemConfigService
+    private val systemConfigService: SystemConfigService,
+    private val mongoTemplate: MongoTemplate
 ) {
     private fun isAdmin(user: User): Boolean = user.roles.contains("ADMIN")
 
@@ -138,9 +143,24 @@ class EducationProgramService(
         repo.delete(p)
     }
 
+    /**
+     * 조회수 증가 — 반드시 원자적 부분 갱신으로 처리한다.
+     *
+     * 예전에는 문서를 통째로 읽어 save() 했는데, 이 API 는 비로그인 포함 누구나
+     * 재생할 때마다 호출된다. 저작자가 편집 중이면 (읽기 → 저작자 저장 → 여기서 save)
+     * 순서로 방금 저장한 steps 가 통째로 덮어써져 조용히 사라졌다.
+     * $inc 만 보내면 다른 필드는 건드리지 않는다.
+     *
+     * PUBLISHED 만 카운트해 미발행 프로그램의 조회수 조작과 불필요한 쓰기를 막는다.
+     */
     fun incrementView(id: String) {
-        val p = findOrThrow(id)
-        p.viewCount += 1
-        repo.save(p)
+        mongoTemplate.updateFirst(
+            Query(
+                Criteria.where("_id").`is`(id)
+                    .and("status").`is`(ProgramStatus.PUBLISHED.name)
+            ),
+            Update().inc("viewCount", 1),
+            EducationProgram::class.java
+        )
     }
 }
