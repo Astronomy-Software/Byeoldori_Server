@@ -42,6 +42,7 @@ enum class ErrorCode(
     SITE_NOT_FOUND(HttpStatus.NOT_FOUND, "관측지를 찾을 수 없습니다."),
     SAVED_SITE_NOT_FOUND(HttpStatus.NOT_FOUND, "즐겨찾기 목록에 없는 항목입니다."),
     EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "계획/기록을 찾을 수 없습니다."),
+    EDU_PROGRAM_NOT_FOUND(HttpStatus.NOT_FOUND, "교육 프로그램을 찾을 수 없습니다."),
 
     // 409 Conflict - 리소스 충돌
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
