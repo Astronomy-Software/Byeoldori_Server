@@ -1,0 +1,25 @@
+# 교육 프로그램 저장용 MongoDB (프로덕션 오버레이)
+# 로컬 compose.yml의 mongo를 프로덕션 기준으로: 포트 미노출(내부망 전용),
+# mem_limit, 비밀번호는 .env(MONGO_ROOT_PASSWORD)로 주입, backend 네트워크에서 app과 통신.
+# 기동: docker compose -f docker-compose.oci.yml -f docker-compose.mongo.yml up -d mongo
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: mongodb
+    restart: always
+    mem_limit: 400m
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-root}
+      MONGO_INITDB_DATABASE: byeoldori
+    volumes:
+      - mongo_data:/data/db
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mongo_data:
