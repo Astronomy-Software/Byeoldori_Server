@@ -72,6 +72,11 @@ class SecurityConfig(
                     // CORS preflight
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers(*PUBLIC_URLS).permitAll()
+                    // 교육 프로그램(천체투영관 감상)은 비로그인도 열람/재생 가능 — 읽기 전용.
+                    // 서비스단에서 PUBLISHED 만 익명에게 노출하고, DRAFT/PREVIEW 는 작성자·관리자만 본다.
+                    // 작성·수정·발행·삭제 등 변경 계열은 아래 anyRequest().authenticated() 로 보호된다.
+                    .requestMatchers(HttpMethod.GET, "/education/programs", "/education/programs/*").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/education/programs/*/view").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
