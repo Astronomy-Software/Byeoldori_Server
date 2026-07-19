@@ -1,0 +1,341 @@
+{
+  "uid": "backend",
+  "title": "Backend",
+  "tags": ["byeoldori", "backend", "spring"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "1m",
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "HTTP",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "HTTP 요청 처리율 (req/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(http_server_requests_seconds_count{job=\"byeoldori-app\"}[5m]))",
+          "legendFormat": "HTTP {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "5xx 비율 (%)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(http_server_requests_seconds_count{job=\"byeoldori-app\", status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{job=\"byeoldori-app\"}[5m])), 1e-10)",
+          "legendFormat": "5xx %"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "응답 지연 (p95 / p50 / max)",
+      "description": "p50/p95는 앱에 management.metrics.distribution.percentiles-histogram.http.server.requests=true 설정 시 표시. 그 전까지는 max(실측)만 표시.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"byeoldori-app\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"byeoldori-app\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "C",
+          "expr": "max(http_server_requests_seconds_max{job=\"byeoldori-app\"})",
+          "legendFormat": "max(실측)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "인스턴스 업타임 (up)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"byeoldori-app\"}",
+          "legendFormat": "{{color}}"
+        }
+      ]
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "JVM",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "JVM 힙 메모리",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum by (color) (jvm_memory_used_bytes{job=\"byeoldori-app\", area=\"heap\"})", "legendFormat": "used ({{color}})" },
+        { "refId": "B", "expr": "sum by (color) (jvm_memory_max_bytes{job=\"byeoldori-app\", area=\"heap\"})", "legendFormat": "max ({{color}})" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "JVM 논힙 메모리",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum by (color) (jvm_memory_used_bytes{job=\"byeoldori-app\", area=\"nonheap\"})", "legendFormat": "used ({{color}})" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "GC pause (초/초)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum by (color) (rate(jvm_gc_pause_seconds_sum{job=\"byeoldori-app\"}[5m]))", "legendFormat": "gc time ({{color}})" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "JVM 스레드",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum by (color) (jvm_threads_live_threads{job=\"byeoldori-app\"})", "legendFormat": "live ({{color}})" },
+        { "refId": "B", "expr": "sum by (color) (jvm_threads_daemon_threads{job=\"byeoldori-app\"})", "legendFormat": "daemon ({{color}})" }
+      ]
+    },
+    {
+      "id": 300,
+      "type": "row",
+      "title": "시스템 · DB",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "CPU 사용률 (process / system)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "avg by (color) (process_cpu_usage{job=\"byeoldori-app\"})", "legendFormat": "process ({{color}})" },
+        { "refId": "B", "expr": "avg(system_cpu_usage{job=\"byeoldori-app\"})", "legendFormat": "system" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "디스크 사용률 (actuator)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "max((disk_total_bytes{job=\"byeoldori-app\"} - disk_free_bytes{job=\"byeoldori-app\"}) / clamp_min(disk_total_bytes{job=\"byeoldori-app\"}, 1))", "legendFormat": "used %" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "DB 커넥션 (HikariCP)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum by (color) (hikaricp_connections_active{job=\"byeoldori-app\"})", "legendFormat": "active ({{color}})" },
+        { "refId": "B", "expr": "sum by (color) (hikaricp_connections_idle{job=\"byeoldori-app\"})", "legendFormat": "idle ({{color}})" },
+        { "refId": "C", "expr": "sum by (color) (hikaricp_connections_pending{job=\"byeoldori-app\"})", "legendFormat": "pending ({{color}})" },
+        { "refId": "D", "expr": "sum by (color) (hikaricp_connections{job=\"byeoldori-app\"})", "legendFormat": "max ({{color}})" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "로그 에러율 (logback error events/s)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" },
+          "color": { "mode": "fixed", "fixedColor": "red" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum by (color) (rate(logback_events_total{job=\"byeoldori-app\", level=\"error\"}[5m]))", "legendFormat": "error ({{color}})" }
+      ]
+    },
+    {
+      "id": 400,
+      "type": "row",
+      "title": "로그 (Loki)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 }
+    },
+    {
+      "id": 13,
+      "type": "logs",
+      "title": "앱 로그 라이브 (app-blue / app-green)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 52 },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        { "refId": "A", "expr": "{container=~\"app-.*\"}", "queryType": "range" }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "logs",
+      "title": "에러 로그 (error / exception 필터)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 63 },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        { "refId": "A", "expr": "{container=~\"app-.*\"} |~ \"(?i)(error|exception|severity=error|level=error)\"", "queryType": "range" }
+      ]
+    }
+  ]
+}

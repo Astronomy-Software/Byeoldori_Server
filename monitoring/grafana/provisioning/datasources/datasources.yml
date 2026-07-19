@@ -1,4 +1,10 @@
 apiVersion: 1
+# 기존에 자동 uid로 provisioning된 Loki를 제거 후 고정 uid로 재생성한다.
+# (uid 없이 만들어진 데이터소스의 uid를 나중에 강제 지정하면 Grafana가
+#  "data source not found"로 provisioning에 실패하므로 먼저 삭제한다.)
+deleteDatasources:
+  - name: Loki
+    orgId: 1
 datasources:
   - name: Prometheus
     type: prometheus
@@ -9,4 +15,5 @@ datasources:
   - name: Loki
     type: loki
     access: proxy
+    uid: loki
     url: http://loki:3100

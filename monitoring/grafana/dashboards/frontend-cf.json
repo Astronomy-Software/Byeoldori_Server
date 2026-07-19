@@ -1,6 +1,6 @@
 {
   "uid": "frontend-cf",
-  "title": "Frontend - Cloudflare Worker (byeoldori-web)",
+  "title": "Frontend",
   "tags": ["byeoldori", "frontend", "cloudflare"],
   "timezone": "browser",
   "schemaVersion": 39,
