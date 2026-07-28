@@ -112,6 +112,31 @@ class LocalStorageService(
         }
     }
 
+    override fun storeFile(file: MultipartFile): String {
+        val ext = AttachmentPolicy.validateAndExt(file)
+
+        val today = LocalDate.now()
+        val dir = Paths.get(
+            baseDir, "files",
+            today.year.toString(),
+            "%02d".format(today.monthValue),
+            "%02d".format(today.dayOfMonth)
+        )
+        Files.createDirectories(dir)
+
+        val filename = UUID.randomUUID().toString().replace("-", "") + "." + ext
+        val target = dir.resolve(filename)
+        file.inputStream.use { Files.copy(it, target, StandardCopyOption.REPLACE_EXISTING) }
+
+        return listOf(
+            publicBaseUrl.trimEnd('/'), "files",
+            today.year.toString(),
+            "%02d".format(today.monthValue),
+            "%02d".format(today.dayOfMonth),
+            filename
+        ).joinToString("/")
+    }
+
     override fun storeJson(file: MultipartFile): String {
         if (file.isEmpty) throw InvalidInputException("빈 파일입니다.")
         val ct = (file.contentType ?: "").lowercase()

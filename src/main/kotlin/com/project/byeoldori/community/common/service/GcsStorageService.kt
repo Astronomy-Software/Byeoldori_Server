@@ -98,6 +98,23 @@ class GcsStorageService(
         }
     }
 
+    override fun storeFile(file: MultipartFile): String {
+        val ext = AttachmentPolicy.validateAndExt(file)
+
+        val today = LocalDate.now()
+        val datePath = "%d/%02d/%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val filename = UUID.randomUUID().toString().replace("-", "") + "." + ext
+        val objectName = "files/$datePath/$filename"
+
+        val builder = BlobInfo.newBuilder(bucketName, objectName)
+        file.contentType?.let { builder.setContentType(it) }
+        val blobInfo = builder.build()
+
+        file.inputStream.use { input -> storage.create(blobInfo, input.readBytes()) }
+
+        return "${publicBaseUrl.trimEnd('/')}/$objectName"
+    }
+
     override fun storeJson(file: MultipartFile): String {
         if (file.isEmpty) throw InvalidInputException("빈 파일입니다.")
         val ct = (file.contentType ?: "").lowercase()
