@@ -12,19 +12,25 @@ data class CreateProgramRequest(
     @field:NotBlank(message = "제목은 필수입니다.")
     @field:Size(max = 200)
     val title: String,
+    @field:Size(max = 300, message = "부제는 300자를 넘을 수 없습니다.")
     val subtitle: String? = null,
     val difficulty: EducationDifficulty? = null,
+    @field:Size(max = 30, message = "대상 천체는 최대 30개입니다.")
     val targets: List<String>? = null,
     // 프론트 인터랙티브 씬 배열. 요청은 표준 Map 으로 받아(Jackson 안전) 서비스에서 org.bson.Document 로 변환.
+    @field:Size(max = 500, message = "스텝은 최대 500개입니다.")
     val steps: List<Map<String, Any?>>? = null
 )
 
 data class UpdateProgramRequest(
     @field:Size(max = 200)
     val title: String? = null,
+    @field:Size(max = 300, message = "부제는 300자를 넘을 수 없습니다.")
     val subtitle: String? = null,
     val difficulty: EducationDifficulty? = null,
+    @field:Size(max = 30, message = "대상 천체는 최대 30개입니다.")
     val targets: List<String>? = null,
+    @field:Size(max = 500, message = "스텝은 최대 500개입니다.")
     val steps: List<Map<String, Any?>>? = null
 )
 
