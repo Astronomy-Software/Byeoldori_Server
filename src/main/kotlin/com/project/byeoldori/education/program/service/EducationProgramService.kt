@@ -28,10 +28,29 @@ class EducationProgramService(
     private val systemConfigService: SystemConfigService,
     private val mongoTemplate: MongoTemplate
 ) {
+    companion object {
+        private const val MAX_STEPS_BYTES = 512 * 1024 // 512KB
+    }
+
     private fun isAdmin(user: User): Boolean = user.roles.contains("ADMIN")
 
     private fun findOrThrow(id: String): EducationProgram =
         repo.findById(id).orElseThrow { NotFoundException(ErrorCode.EDU_PROGRAM_NOT_FOUND) }
+
+    /**
+     * steps 를 org.bson.Document 로 변환하며 전체 직렬화 크기를 제한한다.
+     * @Size(max=500) 은 스텝 "개수"만 막으므로, 스텝 하나에 거대한 text/base64 이미지를
+     * 넣는 식의 남용은 막지 못한다. 문서 하나가 Mongo 를 잠식하지 않도록 512KB 상한을 둔다.
+     */
+    private fun toSteps(raw: List<Map<String, Any?>>?): List<org.bson.Document> {
+        if (raw.isNullOrEmpty()) return emptyList()
+        val docs = raw.map { org.bson.Document(it) }
+        val bytes = org.bson.Document("s", docs).toJson().toByteArray(Charsets.UTF_8).size
+        if (bytes > MAX_STEPS_BYTES) {
+            throw InvalidInputException("프로그램 내용이 너무 큽니다(최대 512KB). 이미지 URL 은 링크로 넣어주세요.")
+        }
+        return docs
+    }
 
     fun create(user: User, req: CreateProgramRequest): ProgramDetailResponse {
         val program = EducationProgram(
@@ -42,7 +61,7 @@ class EducationProgramService(
             authorId = user.id,
             authorName = user.nickname,
             status = ProgramStatus.DRAFT,
-            steps = req.steps?.map { org.bson.Document(it) } ?: emptyList()
+            steps = toSteps(req.steps)
         )
         return ProgramDetailResponse.from(repo.save(program))
     }
@@ -58,7 +77,7 @@ class EducationProgramService(
         req.subtitle?.let { p.subtitle = it }
         req.difficulty?.let { p.difficulty = it }
         req.targets?.let { p.targets = it }
-        req.steps?.let { list -> p.steps = list.map { org.bson.Document(it) } }
+        req.steps?.let { p.steps = toSteps(it) }
 
         return ProgramDetailResponse.from(repo.save(p))
     }
