@@ -29,4 +29,12 @@ class FileController(
         val resp = FileUploadResponse(url, file.originalFilename ?: "", file.size, file.contentType)
         return ApiResponse.ok(resp)
     }
+
+    @PostMapping("/upload", consumes = ["multipart/form-data"])
+    @Operation(summary = "일반 파일 업로드", description = "게시글 첨부용 문서/파일 업로드 후 공개 URL 반환(확장자 화이트리스트·20MB 제한)")
+    fun uploadFile(@RequestPart("file") file: MultipartFile): ApiResponse<FileUploadResponse> {
+        val url = storage.storeFile(file)
+        val resp = FileUploadResponse(url, file.originalFilename ?: "", file.size, file.contentType)
+        return ApiResponse.ok(resp)
+    }
 }
