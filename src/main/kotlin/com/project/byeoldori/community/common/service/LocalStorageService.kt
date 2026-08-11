@@ -78,28 +78,34 @@ class LocalStorageService(
             logger.warn("썸네일 생성 실패 (원본 저장은 정상): {}", e.message)
         }
 
-        // 6) 공개 URL 조합
-        return listOf(publicBaseUrl.trimEnd('/'), datePath, filename).joinToString("/")
+        // 6) 공개 URL 조합.
+        // 리소스 핸들러가 /files/** → baseDir/ 로 서빙하므로 URL 에 반드시 "files" 세그먼트를 넣어야
+        // 실제 접근이 된다. (deleteImageByUrl 도 .../files/date/... 형식을 기대함)
+        return listOf(publicBaseUrl.trimEnd('/'), "files", datePath, filename).joinToString("/")
     }
 
     override fun deleteImageByUrl(url: String) {
         val baseUrl = publicBaseUrl.trimEnd('/')
-        // 1. URL이 우리 서버의 URL(publicBaseUrl)로 시작하는지 확인
-        if (!url.startsWith(baseUrl)) {
+        // 1. 우리 서버의 서빙 URL(publicBaseUrl + /files/) 로 시작하는지 확인
+        if (!url.startsWith("$baseUrl/files/")) {
             logger.warn("외부 URL이거나 형식이 잘못되어 삭제를 건너뜁니다: {}", url)
             return
         }
 
         try {
-            // 2. Public URL에서 상대 경로(relative path) 추출
-            // e.g., "http://.../files/2025/10/19/uuid.jpg" -> "/2025/10/19/uuid.jpg"
-            val relativePath = url.substring(baseUrl.length)
+            // 2. 서빙 URL 은 publicBaseUrl + "/files/" + <디스크 상대경로> 이므로 프리픽스를 뗀다.
+            val relativePath = url.substring("$baseUrl/files/".length)
 
-            // 3. BaseDir와 합쳐서 실제 파일 시스템 경로 생성
-            // e.g., "uploads" + "/2025/10/19/uuid.jpg"
-            val filePath = Paths.get(baseDir, relativePath).toAbsolutePath()
+            // 3. 경로 조작(Path Traversal) 방어 — 정규화한 최종 경로가 baseDir 안에 있어야만 삭제.
+            //    imageUrls 는 클라이언트가 넣는 값이라 "../" 로 baseDir 밖 임의 파일을 지정할 수 있다.
+            val root = Paths.get(baseDir).toAbsolutePath().normalize()
+            val filePath = root.resolve(relativePath).normalize()
+            if (!filePath.startsWith(root)) {
+                logger.warn("baseDir 밖을 가리키는 삭제 요청을 차단했습니다: {}", url)
+                return
+            }
 
-            // 4. 파일 시스템에서 삭제
+            // 4. 삭제
             if (Files.exists(filePath)) {
                 Files.delete(filePath)
                 logger.info("파일 삭제 성공: {}", filePath)
@@ -107,7 +113,6 @@ class LocalStorageService(
                 logger.warn("삭제할 파일이 존재하지 않습니다: {}", filePath)
             }
         } catch (e: Exception) {
-            // Path 조작 실패, 권한 문제 등
             logger.error("파일 삭제 중 오류 발생 (URL: {}): {}", url, e.message)
         }
     }
@@ -115,26 +120,20 @@ class LocalStorageService(
     override fun storeFile(file: MultipartFile): String {
         val ext = AttachmentPolicy.validateAndExt(file)
 
+        // 리소스 핸들러는 /files/** → baseDir/ 로 서빙한다. 그러므로 디스크는 baseDir/attach/date 에
+        // 저장하고 URL 은 publicBaseUrl/files/attach/date 로 반환해야 실제 접근 경로가 일치한다.
+        // (URL 의 "files"는 핸들러 프리픽스, "attach"는 baseDir 하위 실제 폴더)
         val today = LocalDate.now()
-        val dir = Paths.get(
-            baseDir, "files",
-            today.year.toString(),
-            "%02d".format(today.monthValue),
-            "%02d".format(today.dayOfMonth)
-        )
+        val datePath = "%d/%02d/%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val dir = Paths.get(baseDir, "attach", datePath)
         Files.createDirectories(dir)
 
         val filename = UUID.randomUUID().toString().replace("-", "") + "." + ext
         val target = dir.resolve(filename)
         file.inputStream.use { Files.copy(it, target, StandardCopyOption.REPLACE_EXISTING) }
 
-        return listOf(
-            publicBaseUrl.trimEnd('/'), "files",
-            today.year.toString(),
-            "%02d".format(today.monthValue),
-            "%02d".format(today.dayOfMonth),
-            filename
-        ).joinToString("/")
+        return listOf(publicBaseUrl.trimEnd('/'), "files", "attach", datePath, filename)
+            .joinToString("/")
     }
 
     override fun storeJson(file: MultipartFile): String {
