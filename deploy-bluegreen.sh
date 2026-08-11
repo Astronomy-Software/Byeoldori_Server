@@ -9,7 +9,9 @@ docker compose -f docker-compose.oci.yml -f docker-compose.bluegreen.yml build a
 docker rm -f app-$NEW 2>/dev/null || true
 [ "$NEW" = "blue" ] && docker rm -f app 2>/dev/null || true   # 구 단일컨테이너(8080) 정리
 docker compose -f docker-compose.oci.yml -f docker-compose.bluegreen.yml up -d --no-deps app-$NEW
-for i in $(seq 1 36); do
+# arm64 느린 기동 대비 6분(72×5s) 게이트. mail 은 health 에서 제외되어 있으므로
+# 이 UP 은 실제 서비스 준비 완료를 뜻한다.
+for i in $(seq 1 72); do
   if curl -sf http://127.0.0.1:$PORT/actuator/health | grep -q "\"status\":\"UP\""; then OK=1; break; fi
   sleep 5
 done
