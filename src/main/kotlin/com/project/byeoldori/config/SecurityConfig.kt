@@ -77,6 +77,10 @@ class SecurityConfig(
                     // 작성·수정·발행·삭제 등 변경 계열은 아래 anyRequest().authenticated() 로 보호된다.
                     .requestMatchers(HttpMethod.GET, "/education/programs", "/education/programs/*").permitAll()
                     .requestMatchers(HttpMethod.POST, "/education/programs/*/view").permitAll()
+                    // 업로드된 게시글 이미지/첨부 서빙(GET)은 공개. <img src>·<a href> 는 Authorization
+                    // 헤더를 안 보내므로 인증 뒤에 두면 로그인 사용자도 파일을 볼 수 없다.
+                    // 업로드(POST /files/image, /files/upload, /files/json)는 아래 authenticated 로 유지.
+                    .requestMatchers(HttpMethod.GET, "/files/**").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
