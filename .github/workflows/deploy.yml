@@ -71,6 +71,9 @@ jobs:
             # 모니터링 스택 반영 (설정 변경 시에만 재생성됨)
             docker compose -f docker-compose.oci.yml -f docker-compose.monitoring.yml up -d prometheus grafana loki alloy cloudflare-exporter || true
             docker image prune -f || true
+            # VM 소스 빌드마다 캐시가 누적돼 24GB(디스크 89%)까지 찼던 것 방지.
+            # 최근 사용분 3GB만 남겨 다음 빌드 속도는 유지한다.
+            docker builder prune -f --max-used-space 3GB || true
         env:
           DISCORD_WEBHOOK_BACKEND_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

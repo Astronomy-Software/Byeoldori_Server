@@ -20,6 +20,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 20
+    # 헬스체크 접속마다 info 로그가 남아 로테이션 없이 2.5GB까지 쌓였던 것 방지
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
 
 volumes:
   mongo_data:

@@ -1,9 +1,16 @@
+# 앱 stdout 로그 로테이션 (json-file 기본은 무제한). 이력은 alloy→loki 에 30일 보존.
+x-logging: &default-logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
 services:
   app-blue:
     extends: { file: docker-compose.oci.yml, service: app }
     container_name: app-blue
     ports: !override ["8080:8080"]
+    logging: *default-logging
   app-green:
     extends: { file: docker-compose.oci.yml, service: app }
     container_name: app-green
     ports: !override ["8081:8080"]
+    logging: *default-logging
