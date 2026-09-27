@@ -4,6 +4,7 @@ import com.project.byeoldori.common.exception.ByeoldoriException
 import com.project.byeoldori.common.exception.ErrorCode
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -14,6 +15,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.servlet.NoHandlerFoundException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -73,6 +76,16 @@ class GlobalExceptionHandler {
         val message = e.bindingResult.fieldErrors.firstOrNull()?.defaultMessage ?: "입력값이 올바르지 않습니다."
         log.warn("Validation Exception: {}", message)
         return ResponseEntity.badRequest().body(ApiResponse.fail(message = message))
+    }
+
+    // 없는 경로·정적 파일(/files/** 포함) → 404.
+    // 이 핸들러가 없으면 아래 Exception 캐치올이 잡아 500 으로 응답했다. 스캐너가 임의 경로를
+    // 두드릴 때마다 error 로그와 Grafana 5xx 알림이 오탐으로 쌓이므로 debug 로만 남긴다.
+    @ExceptionHandler(NoResourceFoundException::class, NoHandlerFoundException::class)
+    fun handleNotFound(e: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
+        log.debug("Not found: {}", req.requestURI)
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiResponse.fail(message = "요청한 리소스를 찾을 수 없습니다."))
     }
 
     // 위에서 처리하지 못한 모든 예외를 처리하는 최후의 보루
