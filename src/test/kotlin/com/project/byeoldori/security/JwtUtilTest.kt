@@ -45,8 +45,12 @@ class JwtUtilTest {
     @Test
     fun `변조된 토큰은 검증에 실패한다`() {
         val token = jwt.generateAccessToken("user@example.com")
-        // 마지막 문자를 바꿔 서명 무효화
-        val tampered = token.dropLast(1) + if (token.last() == 'A') 'B' else 'A'
+        // 서명 첫 글자를 바꿔 서명 무효화.
+        // 마지막 글자는 쓰면 안 된다: HS256 서명(32바이트)의 base64url 마지막 글자는 하위 4비트가
+        // 버려지는 비트라 'A'→'B' 같은 변경은 같은 서명으로 디코딩돼 약 25% 확률로 테스트가 실패했다.
+        val sigStart = token.lastIndexOf('.') + 1
+        val c = token[sigStart]
+        val tampered = token.substring(0, sigStart) + (if (c == 'A') 'B' else 'A') + token.substring(sigStart + 1)
         assertThat(jwt.validateToken(tampered)).isFalse()
     }
 
