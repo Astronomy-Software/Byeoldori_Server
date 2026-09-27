@@ -1,0 +1,81 @@
+# 운영(OCI VM, arm64) 기본 스택: app + mysql + redis.
+# 배포(.github/workflows/deploy.yml)가 레포를 VM(~/byeoldori-server)에 풀면서 이 파일을 덮어쓴다.
+# 오버레이와 함께 쓴다: docker-compose.bluegreen.yml(app-blue/green), docker-compose.mongo.yml,
+# docker-compose.monitoring.yml. 비밀값은 전부 VM 의 .env(레포 제외)에서 온다 — 목록은 .env.example.
+# 예전엔 VM 에만 있던 파일이다(2026-09-27 레포로 이관, 내용 동일).
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: byeoldori-server:local
+    container_name: app
+    restart: always
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Seoul
+      SPRING_PROFILES_ACTIVE: prod
+
+      SERVER_PORT: "8080"
+      SERVER_ADDRESS: "0.0.0.0"
+
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_BASE_DIR: /data/uploads
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/byeoldori?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
+
+      # 새 DB: Flyway 증분 스크립트 대신 Hibernate가 엔티티 기준 전체 스키마 생성
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - uploads:/data/uploads
+    networks: [backend]
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password --lower_case_table_names=1
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: byeoldori
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks: [backend]
+
+networks:
+  backend: {}
+
+volumes:
+  mysql_data: {}
+  redis_data: {}
+  uploads: {}
