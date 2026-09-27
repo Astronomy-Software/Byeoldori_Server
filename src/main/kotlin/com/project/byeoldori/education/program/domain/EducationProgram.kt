@@ -40,6 +40,9 @@ class EducationProgram(
 
     var viewCount: Long = 0,
 
+    // 관리자가 반려(PREVIEW → DRAFT)할 때 남긴 사유. 재검수 요청·발행 시 비운다.
+    var rejectReason: String? = null,
+
     @CreatedDate
     var createdAt: LocalDateTime? = null,
 

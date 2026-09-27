@@ -14,6 +14,7 @@ import com.project.byeoldori.education.program.dto.ProgramDetailResponse
 import com.project.byeoldori.education.program.dto.ProgramSummaryResponse
 import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.repository.EducationProgramRepository
+import com.project.byeoldori.education.program.repository.QuizAttemptRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.data.domain.Pageable
 import org.springframework.data.mongodb.core.MongoTemplate
@@ -26,7 +27,8 @@ import org.springframework.stereotype.Service
 class EducationProgramService(
     private val repo: EducationProgramRepository,
     private val systemConfigService: SystemConfigService,
-    private val mongoTemplate: MongoTemplate
+    private val mongoTemplate: MongoTemplate,
+    private val quizAttemptRepo: QuizAttemptRepository
 ) {
     companion object {
         private const val MAX_STEPS_BYTES = 512 * 1024 // 512KB
@@ -49,6 +51,8 @@ class EducationProgramService(
         if (bytes > MAX_STEPS_BYTES) {
             throw InvalidInputException("프로그램 내용이 너무 큽니다(최대 512KB). 이미지 URL 은 링크로 넣어주세요.")
         }
+        // 잘못된 quiz 스텝은 저장 시점에 막는다 — 채점 기준이 깨진 채 발행되지 않도록
+        QuizSteps.validate(docs)
         return docs
     }
 
@@ -90,6 +94,7 @@ class EducationProgramService(
             throw InvalidInputException("작성 중(DRAFT) 상태에서만 검수 요청을 할 수 있습니다.")
         }
         p.status = ProgramStatus.PREVIEW
+        p.rejectReason = null
         return ProgramDetailResponse.from(repo.save(p))
     }
 
@@ -112,17 +117,19 @@ class EducationProgramService(
         if (!allowed) throw ForbiddenException("발행 권한이 없습니다.")
 
         p.status = ProgramStatus.PUBLISHED
+        p.rejectReason = null
         return ProgramDetailResponse.from(repo.save(p))
     }
 
     /** PREVIEW → DRAFT (ADMIN 반려) */
-    fun reject(id: String, user: User): ProgramDetailResponse {
+    fun reject(id: String, user: User, reason: String? = null): ProgramDetailResponse {
         if (!isAdmin(user)) throw ForbiddenException("관리자만 반려할 수 있습니다.")
         val p = findOrThrow(id)
         if (p.status != ProgramStatus.PREVIEW) {
             throw InvalidInputException("검수 대기(PREVIEW) 상태에서만 반려할 수 있습니다.")
         }
         p.status = ProgramStatus.DRAFT
+        p.rejectReason = reason?.trim()?.takeIf { it.isNotEmpty() }
         return ProgramDetailResponse.from(repo.save(p))
     }
 
@@ -160,6 +167,8 @@ class EducationProgramService(
         val p = findOrThrow(id)
         if (p.authorId != user.id && !isAdmin(user)) throw ForbiddenException()
         repo.delete(p)
+        // 응시 기록은 프로그램 없이는 의미가 없다(통계·이력 제목도 못 붙인다)
+        p.id?.let { quizAttemptRepo.deleteByProgramId(it) }
     }
 
     /**
