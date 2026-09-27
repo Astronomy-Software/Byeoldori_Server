@@ -24,7 +24,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 @Transactional
 class PostService(
-    @Value("\${storage.public-base-url}") private val publicBaseUrl: String,
     private val postRepo: CommunityPostRepository,
     private val reviewRepo: ReviewPostRepository,
     private val eduRepo: EducationPostRepository,
@@ -102,12 +101,7 @@ class PostService(
                     programId = d.programId?.takeIf { it.isNotBlank() },
                 )
 
-                d.contentUrl?.trim()?.let { url ->
-                    if (url.isNotEmpty()) {
-                        validateJsonUrl(url)
-                        ep.contentUrl = url
-                    }
-                }
+                rejectContentUrl(d.contentUrl)
 
                 eduRepo.save(ep)
 
@@ -349,26 +343,20 @@ class PostService(
             }
         }
 
-        // JSON URL 세팅 (null/미포함이면 무시)
+        // 예전 JSON 프로그램 연결은 빈 문자열로 해제만 허용한다
         if (educationDto.contentUrl != null) {
-            val raw = educationDto.contentUrl.trim()
-            if (raw.isEmpty()) {
-                // 비우고 싶을 때 빈 문자열로 오면 null 처리
-                educationPost.contentUrl = null
-            } else {
-                validateJsonUrl(raw)
-                educationPost.contentUrl = raw
-            }
+            rejectContentUrl(educationDto.contentUrl)
+            educationPost.contentUrl = null
         }
     }
 
-    private fun validateJsonUrl(url: String) {
-        if (!url.startsWith(publicBaseUrl.trimEnd('/'))) {
-            throw InvalidInputException("허용되지 않은 파일 URL입니다.")
-        }
-
-        if (!url.lowercase().endsWith(".json")) {
-            throw InvalidInputException("JSON(.json) 파일만 연결할 수 있습니다.")
+    /**
+     * 교육 프로그램은 MongoDB(programId)로 일원화했다. JSON 파일(contentUrl) 연결은 더 이상 받지 않는다.
+     * 기존 JSON 프로그램은 LegacyEducationMigration 이 Mongo 로 옮겼다.
+     */
+    private fun rejectContentUrl(contentUrl: String?) {
+        if (!contentUrl.isNullOrBlank()) {
+            throw InvalidInputException("JSON 파일 프로그램은 더 이상 지원하지 않습니다. 교육 프로그램(programId)을 연결해주세요.")
         }
     }
 

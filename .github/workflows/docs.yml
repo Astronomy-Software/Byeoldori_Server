@@ -18,7 +18,7 @@ concurrency:
 env:
   SERVICE_NAME: byeoldori-server
   REGION: asia-northeast3
-  API_URL: https://byeoldori.duckdns.org
+  API_URL: https://api.byeoldori.com
 
 jobs:
   deploy-docs:
