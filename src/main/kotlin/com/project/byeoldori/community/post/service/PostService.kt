@@ -97,7 +97,8 @@ class PostService(
                     post = post,
                     difficulty = d.difficulty,
                     tags = d.tags,
-                    status = d.status ?: EducationStatus.DRAFT,
+                    // 웹에는 작성 중(DRAFT) 저장 UI 가 없다. 상태 누락 시 DRAFT 로 두면 목록에서 사라지므로 발행으로 본다
+                    status = d.status ?: EducationStatus.PUBLISHED,
                     programId = d.programId?.takeIf { it.isNotBlank() },
                 )
 
@@ -133,7 +134,7 @@ class PostService(
     @Transactional(readOnly = true)
     fun getNewEducations(user: User? = null): List<PostSummaryResponse> {
         val pageable = PageRequest.of(0, homeItemCount, Sort.by(Sort.Direction.DESC, "createdAt"))
-        val posts = postRepo.findAllByType(PostType.EDUCATION, pageable)
+        val posts = postRepo.findVisibleByType(PostType.EDUCATION, pageable)
         return mapToSummaryResponse(posts.content, user)
     }
 
@@ -154,13 +155,13 @@ class PostService(
     ): PageResponse<PostSummaryResponse> {
 
         val postPage = if (keyword.isNullOrBlank()) {
-            postRepo.findAllByType(type, pageable)
+            postRepo.findVisibleByType(type, pageable)
         } else {
             when (searchBy) {
                 // native query는 ORDER BY를 직접 명시 → Sort 없는 Pageable 전달
                 PostSearchBy.TITLE    -> postRepo.searchByTitle(type.name, "$keyword*", PageRequest.of(pageable.pageNumber, pageable.pageSize))
                 PostSearchBy.CONTENT  -> postRepo.searchByContent(type.name, "$keyword*", PageRequest.of(pageable.pageNumber, pageable.pageSize))
-                PostSearchBy.NICKNAME -> postRepo.findByTypeAndAuthorNicknameContaining(type, keyword, pageable)
+                PostSearchBy.NICKNAME -> postRepo.findVisibleByTypeAndAuthorNickname(type, keyword, pageable)
             }
         }
 
@@ -186,8 +187,13 @@ class PostService(
         }
         if (ids.isEmpty()) return emptyList()
 
+        // 교육글은 발행(PUBLISHED)된 것만 노출
+        val publishedEdu: Set<Long> = if (type == PostType.EDUCATION) {
+            eduRepo.findAllById(ids).filter { it.status == EducationStatus.PUBLISHED }.mapNotNull { it.id }.toSet()
+        } else emptySet()
         val posts = postRepo.findAllById(ids)
             .filter { it.type == type }
+            .filter { type != PostType.EDUCATION || it.id in publishedEdu }
             .sortedByDescending { it.createdAt }
 
         return mapToSummaryResponse(posts, user)
@@ -195,6 +201,12 @@ class PostService(
 
     @Transactional
     fun detail(postId: Long, user: User? = null): PostResponse {
+        // 작성 중(DRAFT) 교육글은 작성자 외에는 없는 글로 취급한다(조회수도 올리지 않음)
+        eduRepo.findById(postId).orElse(null)?.let { ep ->
+            if (ep.status == EducationStatus.DRAFT && ep.post.author.id != user?.id) {
+                throw NotFoundException(ErrorCode.POST_NOT_FOUND)
+            }
+        }
         val updated = postRepo.increaseViewCount(postId)
         if (updated == 0) throw NotFoundException(ErrorCode.POST_NOT_FOUND)
 
@@ -293,6 +305,8 @@ class PostService(
             }
             PostType.EDUCATION -> {
                 contentTargetService.upsertTargets(ContentType.EDUCATION, postId, emptyList())
+                // 평점 FK 에 cascade 가 없어 먼저 지우지 않으면 평점 달린 교육글은 삭제가 실패한다
+                educationRatingRepo.deleteAllByPostId(postId)
             }
             else -> {}
         }

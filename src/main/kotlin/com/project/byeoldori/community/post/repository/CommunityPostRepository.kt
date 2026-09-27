@@ -15,24 +15,36 @@ interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     @EntityGraph(attributePaths = ["author"])
     fun findAllByType(type: PostType, pageable: Pageable): Page<CommunityPost>
 
+    // 공개 목록용 — 교육 게시글은 발행(PUBLISHED)된 것만. 작성 중(DRAFT)은 작성자 외에 보이면 안 된다.
+    @EntityGraph(attributePaths = ["author"])
+    @Query(
+        value = "select p from CommunityPost p where p.type = :type and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))",
+        countQuery = "select count(p) from CommunityPost p where p.type = :type and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))"
+    )
+    fun findVisibleByType(@Param("type") type: PostType, pageable: Pageable): Page<CommunityPost>
+
     // FULLTEXT 검색 (MATCH-AGAINST, Boolean Mode) — native query는 Sort 미지원, ORDER BY 직접 명시
     @Query(
-        value = "SELECT * FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE) ORDER BY created_at DESC",
-        countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE)",
+        value = "SELECT * FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE) AND (type <> 'EDUCATION' OR EXISTS (SELECT 1 FROM education_post e WHERE e.post_id = community.id AND e.status = 'PUBLISHED')) ORDER BY created_at DESC",
+        countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(title) AGAINST (:keyword IN BOOLEAN MODE) AND (type <> 'EDUCATION' OR EXISTS (SELECT 1 FROM education_post e WHERE e.post_id = community.id AND e.status = 'PUBLISHED'))",
         nativeQuery = true
     )
     fun searchByTitle(@Param("type") type: String, @Param("keyword") keyword: String, pageable: Pageable): Page<CommunityPost>
 
     @Query(
-        value = "SELECT * FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE) ORDER BY created_at DESC",
-        countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE)",
+        value = "SELECT * FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE) AND (type <> 'EDUCATION' OR EXISTS (SELECT 1 FROM education_post e WHERE e.post_id = community.id AND e.status = 'PUBLISHED')) ORDER BY created_at DESC",
+        countQuery = "SELECT COUNT(*) FROM community WHERE type = :type AND MATCH(content) AGAINST (:keyword IN BOOLEAN MODE) AND (type <> 'EDUCATION' OR EXISTS (SELECT 1 FROM education_post e WHERE e.post_id = community.id AND e.status = 'PUBLISHED'))",
         nativeQuery = true
     )
     fun searchByContent(@Param("type") type: String, @Param("keyword") keyword: String, pageable: Pageable): Page<CommunityPost>
 
     // 닉네임 검색은 FULLTEXT 부적합 (짧은 값) → 기존 LIKE 유지
     @EntityGraph(attributePaths = ["author"])
-    fun findByTypeAndAuthorNicknameContaining(type: PostType, nickname: String, pageable: Pageable): Page<CommunityPost>
+    @Query(
+        value = "select p from CommunityPost p where p.type = :type and p.author.nickname like concat('%', :nickname, '%') and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))",
+        countQuery = "select count(p) from CommunityPost p where p.type = :type and p.author.nickname like concat('%', :nickname, '%') and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))"
+    )
+    fun findVisibleByTypeAndAuthorNickname(@Param("type") type: PostType, @Param("nickname") nickname: String, pageable: Pageable): Page<CommunityPost>
 
     @Query("SELECT SUM(p.likeCount) FROM ReviewPost r JOIN r.post p WHERE r.observationSite.id = :siteId")
     fun sumLikesBySiteId(@Param("siteId") siteId: Long): Long?
