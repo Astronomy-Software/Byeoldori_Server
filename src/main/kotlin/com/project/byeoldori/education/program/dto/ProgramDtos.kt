@@ -41,7 +41,8 @@ data class ProgramSummaryResponse(
     val status: ProgramStatus,
     val authorName: String?,
     val viewCount: Long,
-    val updatedAt: LocalDateTime?
+    val updatedAt: LocalDateTime?,
+    val rejectReason: String?
 ) {
     companion object {
         fun from(p: EducationProgram) = ProgramSummaryResponse(
@@ -51,7 +52,8 @@ data class ProgramSummaryResponse(
             status = p.status,
             authorName = p.authorName,
             viewCount = p.viewCount,
-            updatedAt = p.updatedAt
+            updatedAt = p.updatedAt,
+            rejectReason = p.rejectReason
         )
     }
 }
@@ -64,7 +66,9 @@ data class ProgramDetailResponse(
     val schemaVersion: Int,
     val steps: List<Document>,
     val status: ProgramStatus,
-    val authorId: Long
+    val authorId: Long,
+    val authorName: String?,
+    val rejectReason: String?
 ) {
     companion object {
         fun from(p: EducationProgram) = ProgramDetailResponse(
@@ -75,9 +79,16 @@ data class ProgramDetailResponse(
             schemaVersion = p.schemaVersion,
             steps = p.steps,
             status = p.status,
-            authorId = p.authorId
+            authorId = p.authorId,
+            authorName = p.authorName,
+            rejectReason = p.rejectReason
         )
     }
 }
 
 data class IdStringResponse(val id: String?)
+
+data class RejectProgramRequest(
+    @field:Size(max = 500, message = "반려 사유는 500자를 넘을 수 없습니다.")
+    val reason: String? = null
+)

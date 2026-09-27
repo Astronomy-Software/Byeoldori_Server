@@ -6,6 +6,7 @@ import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.education.program.dto.CreateProgramRequest
 import com.project.byeoldori.education.program.dto.ProgramDetailResponse
 import com.project.byeoldori.education.program.dto.ProgramSummaryResponse
+import com.project.byeoldori.education.program.dto.RejectProgramRequest
 import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.service.EducationProgramService
 import com.project.byeoldori.user.entity.User
@@ -89,11 +90,13 @@ class EducationProgramController(
     ): ProgramDetailResponse = service.publish(id, user)
 
     @PostMapping("/{id}/reject")
-    @Operation(summary = "반려", description = "PREVIEW → DRAFT (관리자 전용).")
+    @Operation(summary = "반려", description = "PREVIEW → DRAFT (관리자 전용). 본문의 reason 은 작성자에게 보여줄 반려 사유(선택).")
     fun reject(
         @PathVariable id: String,
+        // 기존 클라이언트는 본문 없이 호출하므로 선택 입력
+        @Valid @RequestBody(required = false) req: RejectProgramRequest?,
         @RequestAttribute("currentUser") user: User
-    ): ProgramDetailResponse = service.reject(id, user)
+    ): ProgramDetailResponse = service.reject(id, user, req?.reason)
 
     @DeleteMapping("/{id}")
     @Operation(summary = "교육 프로그램 삭제", description = "작성자 또는 관리자.")
