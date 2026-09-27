@@ -57,6 +57,9 @@ jobs:
           script: |
             set -e
             cd "${{ secrets.DEPLOY_DIR }}"
+            # 압축 해제는 덮어쓰기만 하고 레포에서 지운 파일은 남긴다. 예전 마이그레이션(V2~V6)이
+            # src 에 남아 새 V2 와 버전이 겹쳐 기동 실패했다(2026-09-27). src 는 전부 레포에 있으므로 비우고 푼다.
+            rm -rf src
             tar -xzf /tmp/byeoldori-src.tar.gz -C "${{ secrets.DEPLOY_DIR }}"
             # 모니터링용 시크릿을 VM에 전달 (Grafana 알림·CF exporter가 env_file로 읽음)
             umask 077
