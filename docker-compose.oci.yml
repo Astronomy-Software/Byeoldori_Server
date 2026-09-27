@@ -31,9 +31,8 @@ services:
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: "6379"
 
-      # 새 DB: Flyway 증분 스크립트 대신 Hibernate가 엔티티 기준 전체 스키마 생성
-      SPRING_FLYWAY_ENABLED: "false"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+      # 스키마는 Flyway(db/migration)가 관리하고 Hibernate 는 검증만 한다
+      # (application-prod.properties: flyway.enabled=true, ddl-auto=validate). 2026-09-27 ddl-auto=update 에서 전환.
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
     ports:
       - "8080:8080"
