@@ -27,7 +27,8 @@ class Comment(
     @JoinColumn(name = "parent_id")
     var parent: Comment? = null,
 
-    @Column(nullable = false)
+    // 예전엔 기본 255 라 긴 댓글이 500 을 냈다. 운영 컬럼은 기동 시 1회 ALTER(LegacyEducationMigration)로 늘린다.
+    @Column(nullable = false, length = 1000)
     var content: String,
 
     @Column(nullable = false)

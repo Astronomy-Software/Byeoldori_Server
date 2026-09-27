@@ -1,10 +1,12 @@
 package com.project.byeoldori.community.comment.dto
 
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
 
 data class CommentCreateRequest(
     @field:NotBlank(message = "내용은 비워둘 수 없습니다.")
+    @field:Size(max = 1000, message = "댓글은 1000자를 넘을 수 없습니다.")
     val content: String,
     val parentId: Long? = null // null 이면 댓글, 값 있으면 대댓글
 )
@@ -25,5 +27,6 @@ data class CommentResponse(
 
 data class CommentUpdateRequest(
     @field:NotBlank(message = "내용은 비워둘 수 없습니다.")
+    @field:Size(max = 1000, message = "댓글은 1000자를 넘을 수 없습니다.")
     val content: String
 )

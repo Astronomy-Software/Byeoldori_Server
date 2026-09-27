@@ -32,6 +32,9 @@ import java.nio.file.Paths
  *    게시글은 program_id 로 새 프로그램을 가리키고 content_url 은 비운다. JSON 파일은 백업으로 남긴다.
  *    파일을 찾지 못하거나 해석하지 못한 글은 건드리지 않고 로그만 남긴다(GCP 시절 파일은 이미 없다).
  * 2) 저장된 URL 의 예전 호스트(byeoldori.duckdns.org) → 현재 공개 주소. DuckDNS 도메인 은퇴 준비.
+ * 3) 작성 중(DRAFT) 교육 게시글 → 발행. 웹에 DRAFT 저장 UI 가 없어 전부 예전 "상태 누락" 버그의 산물이다.
+ *    목록에서 DRAFT 를 거르기 시작하므로, 지금 보이던 글이 사라지지 않게 한 번 발행 처리한다.
+ * 4) comment.content VARCHAR(255) → 1000. ddl-auto=update 는 기존 컬럼 길이를 바꾸지 않는다.
  *
  * 테스트(H2, Mongo 없음)에서는 byeoldori.migration.enabled=false 로 끈다.
  */
@@ -55,12 +58,22 @@ class LegacyEducationMigration(
     companion object {
         const val JSON_TO_MONGO_KEY = "migration.edu-json-to-mongo.v1"
         const val DUCKDNS_KEY = "migration.duckdns-url-rewrite.v1"
+        const val EDU_DRAFT_KEY = "migration.edu-draft-publish.v1"
+        const val COMMENT_LEN_KEY = "migration.comment-content-1000.v1"
         const val OLD_HOST = "https://byeoldori.duckdns.org"
     }
 
     override fun run(args: ApplicationArguments) {
         runOnce(JSON_TO_MONGO_KEY) { migrateJsonPrograms() }
         runOnce(DUCKDNS_KEY) { rewriteDuckDnsUrls() }
+        runOnce(EDU_DRAFT_KEY) {
+            val n = jdbc.update("UPDATE education_post SET status = 'PUBLISHED' WHERE status = 'DRAFT'")
+            "DRAFT → PUBLISHED ${n}건"
+        }
+        runOnce(COMMENT_LEN_KEY) {
+            jdbc.execute("ALTER TABLE comment MODIFY content VARCHAR(1000) NOT NULL")
+            "comment.content VARCHAR(1000)"
+        }
     }
 
     private fun runOnce(key: String, block: () -> String) {

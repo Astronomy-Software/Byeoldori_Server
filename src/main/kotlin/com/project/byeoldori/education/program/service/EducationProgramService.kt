@@ -15,6 +15,7 @@ import com.project.byeoldori.education.program.dto.ProgramSummaryResponse
 import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.repository.EducationProgramRepository
 import com.project.byeoldori.education.program.repository.QuizAttemptRepository
+import com.project.byeoldori.community.post.repository.EducationPostRepository
 import com.project.byeoldori.user.entity.User
 import org.springframework.data.domain.Pageable
 import org.springframework.data.mongodb.core.MongoTemplate
@@ -28,7 +29,8 @@ class EducationProgramService(
     private val repo: EducationProgramRepository,
     private val systemConfigService: SystemConfigService,
     private val mongoTemplate: MongoTemplate,
-    private val quizAttemptRepo: QuizAttemptRepository
+    private val quizAttemptRepo: QuizAttemptRepository,
+    private val educationPostRepo: EducationPostRepository
 ) {
     companion object {
         private const val MAX_STEPS_BYTES = 512 * 1024 // 512KB
@@ -168,7 +170,11 @@ class EducationProgramService(
         if (p.authorId != user.id && !isAdmin(user)) throw ForbiddenException()
         repo.delete(p)
         // 응시 기록은 프로그램 없이는 의미가 없다(통계·이력 제목도 못 붙인다)
-        p.id?.let { quizAttemptRepo.deleteByProgramId(it) }
+        p.id?.let {
+            quizAttemptRepo.deleteByProgramId(it)
+            // 이 프로그램을 연결한 교육 게시글의 "프로그램 실행" 링크가 깨지지 않도록 연결을 끊는다
+            educationPostRepo.clearProgramId(it)
+        }
     }
 
     /**
