@@ -156,12 +156,19 @@ class PostService(
 
         val postPage = if (keyword.isNullOrBlank()) {
             postRepo.findVisibleByType(type, pageable)
+        } else if (searchBy == PostSearchBy.NICKNAME) {
+            postRepo.findVisibleByTypeAndAuthorNickname(type, keyword.trim(), pageable)
         } else {
-            when (searchBy) {
-                // native query는 ORDER BY를 직접 명시 → Sort 없는 Pageable 전달
-                PostSearchBy.TITLE    -> postRepo.searchByTitle(type.name, "$keyword*", PageRequest.of(pageable.pageNumber, pageable.pageSize))
-                PostSearchBy.CONTENT  -> postRepo.searchByContent(type.name, "$keyword*", PageRequest.of(pageable.pageNumber, pageable.pageSize))
-                PostSearchBy.NICKNAME -> postRepo.findVisibleByTypeAndAuthorNickname(type, keyword, pageable)
+            // native query는 ORDER BY를 직접 명시 → Sort 없는 Pageable 전달
+            val unsorted = PageRequest.of(pageable.pageNumber, pageable.pageSize)
+            when (val plan = SearchKeyword.plan(keyword)) {
+                is SearchKeyword.FullText ->
+                    if (searchBy == PostSearchBy.TITLE) postRepo.searchByTitle(type.name, plan.against, unsorted)
+                    else postRepo.searchByContent(type.name, plan.against, unsorted)
+                is SearchKeyword.Like ->
+                    if (searchBy == PostSearchBy.TITLE) postRepo.findVisibleByTypeAndTitleLike(type, plan.pattern, pageable)
+                    else postRepo.findVisibleByTypeAndContentLike(type, plan.pattern, pageable)
+                SearchKeyword.Empty -> Page.empty(pageable)
             }
         }
 

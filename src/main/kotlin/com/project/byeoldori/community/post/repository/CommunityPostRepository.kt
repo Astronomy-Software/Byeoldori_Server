@@ -38,6 +38,21 @@ interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     )
     fun searchByContent(@Param("type") type: String, @Param("keyword") keyword: String, pageable: Pageable): Page<CommunityPost>
 
+    // 한 글자 검색어용 LIKE 대체(ngram FULLTEXT 는 2글자 미만을 못 찾음). pattern 은 SearchKeyword 가 이스케이프한 값
+    @EntityGraph(attributePaths = ["author"])
+    @Query(
+        value = "select p from CommunityPost p where p.type = :type and p.title like concat('%', :pattern, '%') escape '!' and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))",
+        countQuery = "select count(p) from CommunityPost p where p.type = :type and p.title like concat('%', :pattern, '%') escape '!' and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))"
+    )
+    fun findVisibleByTypeAndTitleLike(@Param("type") type: PostType, @Param("pattern") pattern: String, pageable: Pageable): Page<CommunityPost>
+
+    @EntityGraph(attributePaths = ["author"])
+    @Query(
+        value = "select p from CommunityPost p where p.type = :type and p.content like concat('%', :pattern, '%') escape '!' and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))",
+        countQuery = "select count(p) from CommunityPost p where p.type = :type and p.content like concat('%', :pattern, '%') escape '!' and (p.type <> com.project.byeoldori.community.common.domain.PostType.EDUCATION or exists (select 1 from EducationPost e where e.post = p and e.status = com.project.byeoldori.community.common.domain.EducationStatus.PUBLISHED))"
+    )
+    fun findVisibleByTypeAndContentLike(@Param("type") type: PostType, @Param("pattern") pattern: String, pageable: Pageable): Page<CommunityPost>
+
     // 닉네임 검색은 FULLTEXT 부적합 (짧은 값) → 기존 LIKE 유지
     @EntityGraph(attributePaths = ["author"])
     @Query(
