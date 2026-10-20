@@ -7,11 +7,14 @@ import com.project.byeoldori.calendar.entity.EventStatus
 import com.project.byeoldori.calendar.entity.ObservationEvent
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Size
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+// 문자열 길이 제한은 observation_event 컬럼 길이(title 120, place_name 255)와 맞춘다.
+// 넘으면 DB 저장 단계에서 실패(500)하므로 요청 단계에서 400 으로 거른다.
 data class CreateEventRequest(
-    @field:NotBlank val title: String,
+    @field:NotBlank @field:Size(max = 120) val title: String,
     @field:NotNull
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     val startAt: LocalDateTime,
@@ -21,7 +24,7 @@ data class CreateEventRequest(
     val targets: List<String>? = null,
     val lat: Double? = null,
     val lon: Double? = null,
-    val placeName: String? = null,
+    @field:Size(max = 255) val placeName: String? = null,
     val memo: String? = null,
     val status: EventStatus = EventStatus.PLANNED, // COMPLETED는 '기록'
     @JsonAlias("addImageUrls", "imageUrls", "photos")
@@ -30,7 +33,7 @@ data class CreateEventRequest(
 )
 
 data class UpdateEventRequest(
-    val title: String? = null,
+    @field:Size(max = 120) val title: String? = null,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     val startAt: LocalDateTime? = null,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
@@ -39,7 +42,7 @@ data class UpdateEventRequest(
     val observationSiteId: Long? = null,
     val lat: Double? = null,
     val lon: Double? = null,
-    val placeName: String? = null,
+    @field:Size(max = 255) val placeName: String? = null,
     val memo: String? = null,
     val status: EventStatus? = null,
     val removeImageIds: List<Long>? = null,

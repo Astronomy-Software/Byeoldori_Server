@@ -55,10 +55,12 @@ class CommentService(
 
     @Transactional(readOnly = true)
     fun list(postId: Long, page: Int, size: Int, user: User?): PageResponse<CommentResponse> {
-        require(page >= 0) { "페이지 번호는 0 이상이어야 합니다." }
+        // require 는 IllegalArgumentException(→500)이라 범위 밖 값은 거부 대신 보정한다(size 상한 포함).
+        val safePage = page.coerceAtLeast(0)
+        val safeSize = size.coerceIn(1, 100)
 
         val sort = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"))
-        val pageable = PageRequest.of(page, size, sort)
+        val pageable = PageRequest.of(safePage, safeSize, sort)
         val result = commentRepo.findByPostId(postId, pageable)
 
         val commentIds = result.content.mapNotNull { it.id }
@@ -70,8 +72,8 @@ class CommentService(
 
         return PageResponse(
             content = result.content.map { it.toResponse(likedCommentIds.contains(it.id)) }, // <-- [수정]
-            page = page,
-            size = size,
+            page = safePage,
+            size = safeSize,
             totalElements = result.totalElements,
             totalPages = result.totalPages
         )
