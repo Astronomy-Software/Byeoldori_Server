@@ -55,7 +55,7 @@ class CalendarController(
     @Operation(summary = "계획 및 기록 수정", description = "작성한 관측 계획/기록을 수정")
     fun update(
         @PathVariable id: Long,
-        @RequestBody req: UpdateEventRequest,
+        @Valid @RequestBody req: UpdateEventRequest,
         @RequestAttribute("currentUser") user: User
     ): ApiResponse<EventResponse> = ApiResponse.ok(service.update(user, id, req))
 
