@@ -60,3 +60,27 @@
 | `GOOGLE_CLIENT_SECRET` | 구글 OAuth 클라이언트 시크릿 | `...` |
 | `MAIL_USERNAME` | SMTP 발송 이메일 | `example@gmail.com` |
 | `MAIL_PASSWORD` | SMTP 앱 비밀번호 | `abcd 1234 ...` |
+
+---
+
+## 🗄 운영 데이터 백업과 복원
+
+운영 VM 에서는 `scripts/backup.sh` 가 매일 03:30(KST) cron 으로 돈다. cron 항목은 배포 때 `scripts/install-backup-cron.sh` 가 설치·갱신한다.
+
+- 대상: MySQL `byeoldori` 전체 덤프, MongoDB 전체(`mongodump --archive --gzip`), 업로드 파일(`uploads` 볼륨)
+- 위치: `~/byeoldori-backups/<YYYYMMDD-HHMMSS>/` (기본 7일 보관), 실행 로그는 `~/byeoldori-backups/backup.log`
+- 실패하면 Discord(Grafana 알림과 같은 웹훅)로 알린다.
+- 로컬 백업은 같은 부트볼륨에 있어서 VM 을 통째로 잃으면 함께 사라진다. VM 밖 보관은 `~/.byeoldori-backup.env` 에 `BACKUP_OCI_BUCKET=<버킷>` 을 두고 VM 에 oci CLI 를 설정하면 켜진다(버킷 수명주기 규칙으로 보존 기간 관리). OCI 콘솔의 부트볼륨 백업 정책도 함께 켜 둔다.
+
+복원(VM 에서, 대상 폴더로 이동한 뒤):
+
+```bash
+sha256sum -c SHA256SUMS
+# MySQL — 덤프에 CREATE DATABASE/USE 가 들어 있어 byeoldori 를 통째로 다시 만든다
+gunzip -c mysql-byeoldori.sql.gz | docker exec -i mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot'
+# MongoDB — --drop 은 백업에 있는 컬렉션을 지우고 다시 넣는다
+docker exec -i mongodb sh -c 'exec mongorestore --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --archive --gzip --drop' < mongo.archive.gz
+# 업로드 파일
+VOL=$(docker volume ls -q --filter label=com.docker.compose.volume=uploads | head -1)
+docker run --rm -i --user 0 --entrypoint tar -v "$VOL":/data/uploads byeoldori-server:local -xzf - -C /data/uploads < uploads.tar.gz
+```
