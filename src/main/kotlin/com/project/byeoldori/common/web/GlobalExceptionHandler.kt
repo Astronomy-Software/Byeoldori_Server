@@ -4,9 +4,15 @@ import com.project.byeoldori.common.exception.ByeoldoriException
 import com.project.byeoldori.common.exception.ErrorCode
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.security.access.AccessDeniedException
+import org.springframework.web.ErrorResponse
+import org.springframework.web.HttpMediaTypeNotAcceptableException
+import org.springframework.web.HttpMediaTypeNotSupportedException
+import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingRequestValueException
@@ -86,6 +92,42 @@ class GlobalExceptionHandler {
         log.debug("Not found: {}", req.requestURI)
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ApiResponse.fail(message = "요청한 리소스를 찾을 수 없습니다."))
+    }
+
+    // @PreAuthorize 거부(AuthorizationDeniedException ⊂ AccessDeniedException) → 403.
+    // 메서드 보안 예외는 컨트롤러 호출 안에서 나서 SecurityConfig 의 accessDeniedHandler 보다
+    // 이 advice 가 먼저 잡는다. 핸들러가 없으면 아래 캐치올이 500 으로 응답했다.
+    @ExceptionHandler(AccessDeniedException::class)
+    fun handleAccessDenied(e: AccessDeniedException, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
+        log.warn("Access denied at {} -> {}", req.requestURI, e.message)
+        return ResponseEntity.status(ErrorCode.FORBIDDEN.status)
+            .body(ApiResponse.fail(ErrorCode.FORBIDDEN.message, code = ErrorCode.FORBIDDEN.name))
+    }
+
+    // 지원하지 않는 HTTP 메서드(405)·Content-Type(415). 클라이언트 실수라 500 이 아니라 해당 상태로 응답한다.
+    @ExceptionHandler(HttpRequestMethodNotSupportedException::class, HttpMediaTypeNotSupportedException::class)
+    fun handleUnsupported(e: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
+        log.debug("Unsupported request at {} -> {}", req.requestURI, e.message)
+        // 두 예외 모두 ErrorResponse 라 상태(405/415)와 Allow·Accept 헤더를 그대로 쓴다.
+        val er = e as ErrorResponse
+        return ResponseEntity.status(er.statusCode).headers(er.headers)
+            .body(ApiResponse.fail(message = "지원하지 않는 요청 방식입니다."))
+    }
+
+    // 응답 형식 협상 실패(406). 클라이언트가 JSON 을 받지 않겠다고 했으므로 본문 없이 상태만 돌려준다.
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException::class)
+    fun handleNotAcceptable(e: HttpMediaTypeNotAcceptableException, req: HttpServletRequest): ResponseEntity<Void> {
+        log.debug("Not acceptable at {} -> {}", req.requestURI, e.message)
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).build()
+    }
+
+    // UNIQUE·FK·컬럼 길이 등 DB 제약 위반 → 409. DTO 검증을 빠져나간 경우의 보조 수단이다.
+    // 제약 이름·SQL 같은 내부 정보는 로그에만 남기고 클라이언트에는 고정 메시지를 준다.
+    @ExceptionHandler(DataIntegrityViolationException::class)
+    fun handleDataIntegrity(e: DataIntegrityViolationException, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
+        log.warn("Data integrity violation at {} -> {}", req.requestURI, e.mostSpecificCause.message)
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiResponse.fail(message = "요청을 처리할 수 없습니다. 입력값이 이미 사용 중이거나 허용 범위를 벗어났습니다."))
     }
 
     // 위에서 처리하지 못한 모든 예외를 처리하는 최후의 보루

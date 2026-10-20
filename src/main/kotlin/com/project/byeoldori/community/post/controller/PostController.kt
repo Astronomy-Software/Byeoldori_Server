@@ -46,7 +46,9 @@ class PostController(
     ): PageResponse<PostSummaryResponse> {
 
         val sort = Sort.by(Sort.Direction.DESC, sortBy.property)
-        val pageable = PageRequest.of(page, size, sort)
+        // page<0·size<1 이면 PageRequest.of 가 IllegalArgumentException(→500)을 던지고,
+        // 상한이 없으면 ?size=100000 한 번에 전체 글과 부가 쿼리를 메모리에 올린다. 범위를 보정한다.
+        val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, 50), sort)
 
         return service.list(type, pageable, searchBy, keyword, user)
     }

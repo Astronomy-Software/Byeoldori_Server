@@ -7,4 +7,5 @@ interface CalendarImageRepository : JpaRepository<CalendarImage, Long> {
     fun findAllByEventIdOrderByIdAsc(eventId: Long): List<CalendarImage>
     fun countByEventId(eventId: Long): Long
     fun findAllByEventIdIn(eventIds: List<Long>): List<CalendarImage>
+    fun existsByUrl(url: String): Boolean
 }
