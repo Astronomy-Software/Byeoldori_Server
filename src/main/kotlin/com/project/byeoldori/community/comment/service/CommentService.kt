@@ -39,7 +39,8 @@ class CommentService(
             Comment(post = post, author = author, content = content, parent = parent, depth = depth)
         )
 
-        post.commentCount++
+        // 원자적 증가 — post.commentCount++ 는 행 전체를 옛 값으로 다시 써서 동시에 달린 댓글·좋아요·조회수를 덮어쓴다
+        postRepo.addCommentCount(postId, 1)
 
         // 본인 게시글이 아닌 경우 작성자에게 알림 발송
         if (post.author.id != author.id) {
@@ -87,9 +88,8 @@ class CommentService(
         if (!c.deleted) {
             c.deleted = true
             c.content = "삭제된 댓글입니다."
-            if (c.post.commentCount > 0) {
-                c.post.commentCount--
-            }
+            // 원자적 감소(0 아래로는 내려가지 않음)
+            postRepo.addCommentCount(postId, -1)
         }
     }
 

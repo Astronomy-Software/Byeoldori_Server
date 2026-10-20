@@ -6,7 +6,10 @@ import com.project.byeoldori.community.common.domain.PostType
 import com.project.byeoldori.community.like.domain.LikeEntity
 import com.project.byeoldori.user.entity.User
 import jakarta.persistence.*
+import org.hibernate.annotations.DynamicUpdate
 
+// 바뀐 컬럼만 UPDATE 한다 — 글 수정이 트랜잭션 시작 때 읽은 조회수·좋아요·댓글 수로 덮어쓰지 않도록
+@DynamicUpdate
 @Entity
 @Table(name = "community")
 class CommunityPost(
