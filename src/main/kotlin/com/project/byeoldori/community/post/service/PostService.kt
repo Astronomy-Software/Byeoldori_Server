@@ -4,6 +4,7 @@ import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.community.common.domain.*
 import com.project.byeoldori.community.common.dto.*
 import com.project.byeoldori.community.common.service.StorageService
+import com.project.byeoldori.community.common.service.UploadedFileService
 import com.project.byeoldori.community.post.domain.*
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
@@ -18,8 +19,6 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.transaction.support.TransactionSynchronization
-import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 @Transactional
@@ -35,6 +34,7 @@ class PostService(
     private val storage: StorageService,
     private val contentTargetService: ContentTargetService,
     private val educationProgramRepository: EducationProgramRepository,
+    private val uploadedFiles: UploadedFileService,
 ) {
 
     /**
@@ -275,7 +275,7 @@ class PostService(
         }
 
         req.imageUrls?.let { requestedUrls ->
-            updatePostImages(p, requestedUrls)
+            updatePostImages(p, requestedUrls, user.id)
         }
 
         when (p.type) {
@@ -324,7 +324,7 @@ class PostService(
         if (images.isNotEmpty()) imgRepo.deleteAll(images)
         postRepo.delete(p)
 
-        deleteImagesAfterCommit(urls)
+        uploadedFiles.deleteOwnedUnreferencedAfterCommit(urls, user.id)
     }
 
     private fun updateReviewPost(postId: Long, reviewDto: ReviewDto) {
@@ -381,7 +381,7 @@ class PostService(
         }
     }
 
-    private fun updatePostImages(post: CommunityPost, requestedUrls: List<String>) {
+    private fun updatePostImages(post: CommunityPost, requestedUrls: List<String>, actorId: Long) {
         val existingImages = imgRepo.findAllByPostIdOrderBySortOrderAsc(post.id!!)
         val existingImageMap = existingImages.associateBy { it.url }
 
@@ -405,18 +405,8 @@ class PostService(
         if (imagesToAdd.isNotEmpty()) {
             imgRepo.saveAll(imagesToAdd)
         }
-        deleteImagesAfterCommit(urlsToDelete)
-    }
-
-    private fun deleteImagesAfterCommit(urls: List<String>) {
-        if (urls.isEmpty()) return
-        TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
-            override fun afterCommit() {
-                urls.forEach { url ->
-                    try { storage.deleteImageByUrl(url) } catch (_: Exception) { }
-                }
-            }
-        })
+        // 빠진 URL 은 본인이 올렸고 더는 참조되지 않는 파일만 커밋 후 지운다(남의 파일 URL 삭제 방지)
+        uploadedFiles.deleteOwnedUnreferencedAfterCommit(urlsToDelete, actorId)
     }
 
     private fun likedSet(user: User?, postIds: List<Long>): Set<Long> {
