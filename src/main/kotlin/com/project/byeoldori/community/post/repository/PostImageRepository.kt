@@ -6,4 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface PostImageRepository : JpaRepository<PostImage, Long> {
     fun findAllByPostIdOrderBySortOrderAsc(postId: Long): List<PostImage>
     fun findByPostIdInOrderByPostIdAscSortOrderAsc(postIds: List<Long>): List<PostImage>
+    fun existsByUrl(url: String): Boolean
 }

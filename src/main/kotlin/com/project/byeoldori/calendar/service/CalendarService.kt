@@ -7,12 +7,11 @@ import com.project.byeoldori.calendar.repository.ObservationEventRepository
 import com.project.byeoldori.common.exception.InvalidInputException
 import com.project.byeoldori.common.exception.NotFoundException
 import com.project.byeoldori.common.exception.ErrorCode
-import com.project.byeoldori.community.common.service.StorageService
+import com.project.byeoldori.community.common.service.UploadedFileService
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import com.project.byeoldori.star.service.ContentTargetService
 import com.project.byeoldori.star.entity.ContentType
 import com.project.byeoldori.user.entity.User
-import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,12 +23,10 @@ import java.time.YearMonth
 class CalendarService(
     private val events: ObservationEventRepository,
     private val photos: CalendarImageRepository,
-    private val storage: StorageService,
+    private val uploadedFiles: UploadedFileService,
     private val siteRepo: ObservationSiteRepository,
     private val contentTargets: ContentTargetService,
 ) {
-    private val logger = LoggerFactory.getLogger(this::class.java)
-
     @Value("\${calendar.max-photos-per-event:10}")
     private val maxPhotosPerEvent: Int = 10
 
@@ -159,29 +156,29 @@ class CalendarService(
             )
         }
 
-        val currentImages = req.removeImageIds?.let { ids ->
-            val exists = photos.findAllByEventIdOrderByIdAsc(e.id!!)
-            val toDelete = exists.filter { it.id != null && ids.contains(it.id) }
+        val existingImages = photos.findAllByEventIdOrderByIdAsc(e.id!!)
+        val toDelete = req.removeImageIds?.let { ids ->
+            existingImages.filter { it.id != null && ids.contains(it.id) }
+        } ?: emptyList()
+        val currentImages = existingImages.filterNot { toDelete.contains(it) }
 
-            photos.deleteAll(toDelete)
-            toDelete.forEach { img ->
-                try { storage.deleteImageByUrl(img.url) } catch (_: Exception) { }
-            }
-
-            exists.filterNot { toDelete.contains(it) }
-        } ?: photos.findAllByEventIdOrderByIdAsc(e.id!!)
-
-        req.addImageUrls?.let { urls ->
+        // 추가 개수 검증을 삭제보다 먼저 한다. 검증 실패로 롤백되면 행은 돌아오지만 파일은 못 돌아온다.
+        val toAttach = req.addImageUrls?.let { urls ->
             val cleaned = urls.map { it.trim() }.filter { it.isNotBlank() }.distinct()
             val existingUrls = currentImages.map { it.url }.toSet()
-            val toAttach = cleaned.filterNot { it in existingUrls }
+            val attach = cleaned.filterNot { it in existingUrls }
 
             val room = maxPhotosPerEvent - currentImages.size
-            if (toAttach.size > room) throw InvalidInputException(ErrorCode.MAX_IMAGE_COUNT_EXCEEDED.message)
+            if (attach.size > room) throw InvalidInputException(ErrorCode.MAX_IMAGE_COUNT_EXCEEDED.message)
+            attach
+        } ?: emptyList()
 
-            val newImages = toAttach.map { u -> CalendarImage(event = e, url = u, contentType = null) }
-            if (newImages.isNotEmpty()) photos.saveAll(newImages)
+        if (toDelete.isNotEmpty()) photos.deleteAll(toDelete)
+        if (toAttach.isNotEmpty()) {
+            photos.saveAll(toAttach.map { u -> CalendarImage(event = e, url = u, contentType = null) })
         }
+        // 파일은 커밋 후, 본인이 올렸고 더는 참조되지 않는 것만 지운다(같은 URL 을 다시 붙인 경우도 보존)
+        uploadedFiles.deleteOwnedUnreferencedAfterCommit(toDelete.map { it.url }, user.id)
 
         val resultImages = photos.findAllByEventIdOrderByIdAsc(e.id!!)
         return EventResponse.from(e, resultImages, getTargetNames(e.id!!))
@@ -198,11 +195,7 @@ class CalendarService(
         if (children.isNotEmpty()) photos.deleteAll(children)
         events.delete(e)
 
-        urlsToDelete.forEach { url ->
-            try { storage.deleteImageByUrl(url) } catch (ex: Exception) {
-                logger.warn("스토리지 파일 삭제 실패 (Event ID: ${e.id}, URL: $url): {}", ex.message)
-            }
-        }
+        uploadedFiles.deleteOwnedUnreferencedAfterCommit(urlsToDelete, user.id)
     }
 
     @Transactional

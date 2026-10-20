@@ -54,6 +54,9 @@ enum class ErrorCode(
     // 413 파일 용량 업로드 초과
     FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "이미지 파일이 너무 큽니다. (최대 10MB)"),
 
+    // 429 Too Many Requests - 사용자별 업로드 쿼터 초과
+    UPLOAD_QUOTA_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "업로드 한도를 초과했습니다. 잠시 후 다시 시도해주세요."),
+
     // 418 I'm a Teapot - 서비스 지역 벗어남 (특수 케이스)
     OUT_OF_SERVICE_AREA(HttpStatus.I_AM_A_TEAPOT, "서비스 지역을 벗어났습니다."),
 
