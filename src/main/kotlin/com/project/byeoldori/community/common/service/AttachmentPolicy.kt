@@ -14,9 +14,10 @@ object AttachmentPolicy {
     const val MAX_BYTES: Long = 20L * 1024 * 1024 // 20MB
 
     // 실행/스크립트 계열은 제외. 필요 시 확장.
+    // svg 는 <script> 를 담을 수 있어 브라우저에서 열리면 저장형 XSS 가 된다 → 받지 않는다.
     val ALLOWED_EXT: Set<String> = setOf(
         // 이미지
-        "jpg", "jpeg", "png", "gif", "webp", "svg",
+        "jpg", "jpeg", "png", "gif", "webp",
         // 문서
         "pdf", "txt", "csv", "md",
         "doc", "docx", "ppt", "pptx", "xls", "xlsx", "hwp", "hwpx",
