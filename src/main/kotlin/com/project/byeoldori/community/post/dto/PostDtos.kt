@@ -2,6 +2,7 @@ package com.project.byeoldori.community.post.dto
 
 import com.project.byeoldori.community.common.domain.*
 import com.project.byeoldori.community.post.domain.EducationPost
+import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -9,11 +10,12 @@ import jakarta.validation.constraints.Size
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+// 문자열 길이 제한은 review_post / education_post 컬럼 길이와 맞춘다(넘으면 DB 저장 단계에서 500).
 data class ReviewDto(
-    val location: String? = null,
+    @field:Size(max = 255) val location: String? = null,
     val observationSiteId: Long? = null,
     val targets: List<String>? = null,
-    val equipment: String? = null,
+    @field:Size(max = 255) val equipment: String? = null,
     val observationDate: LocalDate? = null,
     @field:Min(1) @field:Max(5)
     val score: Int? = null // 1~5점
@@ -22,10 +24,10 @@ data class ReviewDto(
 data class EducationRequestDto(
     val difficulty: EducationDifficulty? = null,
     val targets: List<String>? = null,
-    val tags: String? = null,
+    @field:Size(max = 255) val tags: String? = null,
     val status: EducationStatus? = null, // null → DRAFT
-    val contentUrl: String? = null, // 생성시 입력하지 않음
-    val programId: String? = null // 연결할 인터랙티브 프로그램(MongoDB) id
+    @field:Size(max = 1024) val contentUrl: String? = null, // 생성시 입력하지 않음
+    @field:Size(max = 64) val programId: String? = null // 연결할 인터랙티브 프로그램(MongoDB) id
 )
 
 data class EducationResponseDto(
@@ -56,16 +58,17 @@ data class PostCreateRequest(
 
     @field:NotBlank(message = "본문은 필수입니다.")
     val content: String,
-    val review: ReviewDto? = null,
-    val education: EducationRequestDto? = null,
+    // @Valid 가 없으면 중첩 DTO 의 제약(별점 1~5, 길이)이 검사되지 않는다.
+    @field:Valid val review: ReviewDto? = null,
+    @field:Valid val education: EducationRequestDto? = null,
     val imageUrls: List<String>? = emptyList()
 )
 
 data class PostUpdateRequest(
     @field:Size(max = 120) val title: String? = null,
     val content: String? = null,
-    val review: ReviewDto? = null,
-    val education: EducationRequestDto? = null,
+    @field:Valid val review: ReviewDto? = null,
+    @field:Valid val education: EducationRequestDto? = null,
     val imageUrls: List<String>? = null
 )
 

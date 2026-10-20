@@ -16,14 +16,14 @@ class User(
     val id: Long = 0,  // 사용자 고유 ID (자동 생성)
 
     @Column(nullable = false, unique = true)
-    val email: String,  // 사용자 이메일 (중복 불가)
+    var email: String,  // 사용자 이메일 (중복 불가). 탈퇴 시 DeletedAccount.tombstoneEmail 로 바뀐다
 
     @Column(nullable = false)
     @JsonProperty(access = Access.WRITE_ONLY)
     var passwordHash: String,
 
     @Column(nullable = false)
-    val name: String,
+    var name: String,
 
     @Column(nullable = false)
     var phone: String,

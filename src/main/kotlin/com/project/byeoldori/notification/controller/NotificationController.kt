@@ -25,8 +25,8 @@ class NotificationController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
     ): PageResponse<NotificationResponse> {
-        require(page >= 0) { "페이지 번호는 0 이상이어야 합니다." }
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        // require·PageRequest.of 의 IllegalArgumentException 은 500 이 되므로 범위를 보정한다(size 상한 포함).
+        val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, 50), Sort.by(Sort.Direction.DESC, "createdAt"))
         val result = notificationRepository.findByUserIdOrderByCreatedAtDesc(user.id, pageable)
         return result.map { it.toResponse() }.toPageResponse()
     }
