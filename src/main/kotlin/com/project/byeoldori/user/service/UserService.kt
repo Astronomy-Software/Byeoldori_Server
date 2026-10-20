@@ -10,6 +10,9 @@ import com.project.byeoldori.user.entity.PasswordResetToken
 import com.project.byeoldori.user.entity.RefreshToken
 import com.project.byeoldori.user.entity.User
 import com.project.byeoldori.user.repository.*
+import com.project.byeoldori.user.utils.DeletedAccount
+import com.project.byeoldori.user.utils.EmailMasker
+import com.project.byeoldori.user.utils.NicknameRules
 import com.project.byeoldori.user.utils.PasswordValidator
 import com.project.byeoldori.user.utils.PhoneNormalizer
 import com.project.byeoldori.user.utils.TokenHasher
@@ -53,10 +56,14 @@ class UserService(
     fun signup(req: SignupRequestDto) {
         if (req.password != req.passwordConfirm) throw InvalidInputException(ErrorCode.PASSWORD_MISMATCH.message)
         if (!PasswordValidator.isValid(req.password)) throw InvalidInputException(ErrorCode.INVALID_PASSWORD_FORMAT.message)
-        if (userRepository.existsByEmail(req.email)) throw ConflictException(ErrorCode.EMAIL_ALREADY_EXISTS)
-        if (req.nickname?.isNotBlank() == true) {
-            if (userRepository.existsByNickname(req.nickname)) throw ConflictException(ErrorCode.NICKNAME_ALREADY_EXISTS)
+        // 내부 전용 도메인(탈퇴 계정 자리표시자·이메일 없는 소셜 계정)은 가입 이메일로 쓸 수 없다
+        val emailDomain = req.email.substringAfterLast('@').lowercase()
+        if (emailDomain == DeletedAccount.EMAIL_DOMAIN || emailDomain == NO_EMAIL_DOMAIN) {
+            throw InvalidInputException("사용할 수 없는 이메일입니다.")
         }
+        if (userRepository.existsByEmail(req.email)) throw ConflictException(ErrorCode.EMAIL_ALREADY_EXISTS)
+        val nickname = NicknameRules.normalize(req.nickname)
+        if (nickname != null) validateNewNickname(nickname)
 
         val user = userRepository.save(
             User(
@@ -64,7 +71,7 @@ class UserService(
                 passwordHash = passwordEncoder.encode(req.password),
                 name = req.name,
                 phone = req.phone,
-                nickname = req.nickname,
+                nickname = nickname,
                 birthdate = req.birthdate
             )
         )
@@ -85,22 +92,28 @@ class UserService(
 
     @Transactional(readOnly = true)
     fun findEmailsByNameAndPhone(name: String, phone: String): List<String> {
-        return userRepository.findAllByNameAndPhone(name, phone).map { it.email }
+        // 인증 없이 이름+전화번호만으로 호출되므로 이메일 원문 대신 마스킹한 값을 돌려준다
+        return userRepository.findAllByNameAndPhone(name, phone)
+            .filter { it.deletedAt == null }
+            .map { EmailMasker.mask(it.email) }
     }
 
     @Transactional
     fun login(req: LoginRequestDto): AuthResponseDto {
-        val user = userRepository.findByEmail(req.email)
-            .orElseThrow { NotFoundException(ErrorCode.USER_NOT_FOUND, "이메일 또는 비밀번호가 올바르지 않습니다.") }
+        // 미가입·탈퇴·비밀번호 오류는 같은 상태코드(400)와 메시지로 응답해 계정 존재 여부를 드러내지 않는다
+        val user = userRepository.findByEmail(req.email).orElse(null)
+            ?.takeIf { it.deletedAt == null }
+            ?: throw InvalidInputException(LOGIN_FAILED_MESSAGE)
 
         if (user.provider != null) {
             throw ConflictException(ErrorCode.LOGIN_METHOD_MISMATCH, "${user.provider} 계정입니다. ${user.provider}으로 로그인해주세요.")
         }
 
-        if (!user.emailVerified) throw ForbiddenException(ErrorCode.EMAIL_NOT_VERIFIED.message)
+        // 비밀번호를 먼저 확인해야 비밀번호를 모르는 사람에게 "인증 안 된 계정"이라는 정보가 새지 않는다
         if (!passwordEncoder.matches(req.password, user.passwordHash)) {
-            throw InvalidInputException("이메일 또는 비밀번호가 올바르지 않습니다.")
+            throw InvalidInputException(LOGIN_FAILED_MESSAGE)
         }
+        if (!user.emailVerified) throw ForbiddenException(ErrorCode.EMAIL_NOT_VERIFIED.message)
 
         return issueTokensAndGetResponse(user)
     }
@@ -113,6 +126,7 @@ class UserService(
         val email = jwt.extractEmail(refreshToken)
         val user = userRepository.findByEmail(email)
             .orElseThrow { NotFoundException(ErrorCode.USER_NOT_FOUND) }
+        if (user.deletedAt != null) throw UnauthorizedException("탈퇴한 계정입니다.")
 
         val stored = refreshTokenRepo.findByUserIdForUpdate(user.id)
             .orElseThrow { NotFoundException(ErrorCode.REFRESH_TOKEN_NOT_FOUND) }
@@ -213,11 +227,13 @@ class UserService(
     @Transactional
     fun updateMe(req: UserUpdateRequestDto) {
         val user = currentUserResolver.getUser()
-        req.nickname?.let {
-            if (it.isNotBlank() && it != user.nickname) {
-                if (userRepository.existsByNickname(it)) throw ConflictException(ErrorCode.NICKNAME_ALREADY_EXISTS)
+        req.nickname?.let { raw ->
+            // 빈 닉네임("")을 그대로 저장하면 UNIQUE 충돌(두 번째 사용자부터 500)이 나므로 거부한다
+            val nickname = NicknameRules.normalize(raw) ?: throw InvalidInputException("닉네임을 입력해주세요.")
+            if (nickname != user.nickname) {
+                validateNewNickname(nickname)
+                user.nickname = nickname
             }
-            user.nickname = it
         }
         req.birthdate?.let { user.birthdate = it }
         req.phone?.let { user.phone = it }
@@ -254,6 +270,9 @@ class UserService(
         passwordResetTokenRepo.deleteAllByUserId(user.id)
 
         // 소프트 딜리트: PII 익명화 후 삭제 시각 기록 (게시글/댓글은 "탈퇴한 사용자"로 유지)
+        // email 은 UNIQUE 라 그대로 두면 같은 이메일로 재가입·소셜 로그인을 영영 못 한다 → 자리표시자로 바꾼다
+        user.email = DeletedAccount.tombstoneEmail(user.id)
+        user.name = DeletedAccount.ANONYMOUS_NAME
         user.passwordHash = "DELETED"
         user.phone = ""
         user.nickname = null
@@ -418,10 +437,11 @@ class UserService(
         picture: String?,
         providerEmailVerified: Boolean?
     ): User {
-        var user = userRepository.findByProviderAndProviderId(provider, providerId)
+        // 탈퇴(deletedAt) 계정에는 다시 연결하지 않는다(연결돼도 인증 필터가 거부해 쓸 수 없는 토큰만 발급된다)
+        var user = userRepository.findByProviderAndProviderId(provider, providerId)?.takeIf { it.deletedAt == null }
 
         if (user == null && email.isNotBlank()) {
-            val byEmail = userRepository.findByEmail(email).orElse(null)
+            val byEmail = userRepository.findByEmail(email).orElse(null)?.takeIf { it.deletedAt == null }
             if (byEmail != null) {
                 when {
                     // 다른 소셜 provider 로 이미 가입된 이메일 → 연동 불가 (기존 동작 유지)
@@ -447,7 +467,7 @@ class UserService(
         }
 
         if (user == null) {
-            val effectiveEmail = if (email.isBlank()) "$provider.$providerId@noemail.byeoldori" else email
+            val effectiveEmail = if (email.isBlank()) "$provider.$providerId@$NO_EMAIL_DOMAIN" else email
             user = User(
                 email = effectiveEmail,
                 passwordHash = "OAUTH2:$provider:$providerId",
@@ -465,6 +485,14 @@ class UserService(
         }
 
         return userRepository.save(user)
+    }
+
+    // 새로 쓰려는 닉네임(정규화된 값)의 길이·중복 검사
+    private fun validateNewNickname(nickname: String) {
+        if (nickname.length > NicknameRules.MAX_LENGTH) {
+            throw InvalidInputException("닉네임은 ${NicknameRules.MAX_LENGTH}자 이하로 입력해주세요.")
+        }
+        if (userRepository.existsByNickname(nickname)) throw ConflictException(ErrorCode.NICKNAME_ALREADY_EXISTS)
     }
 
     // OAuth 응답의 email_verified 류 값을 안전하게 Boolean? 으로 해석 (Boolean / "true"/"false" 문자열 모두 대응)
@@ -497,5 +525,11 @@ class UserService(
             jwt.extractExpiration(access).atZone(zone).toInstant(),
             jwt.extractExpiration(refresh).atZone(zone).toInstant()
         )
+    }
+
+    private companion object {
+        const val LOGIN_FAILED_MESSAGE = "이메일 또는 비밀번호가 올바르지 않습니다."
+        // 이메일을 주지 않는 소셜 계정의 자리표시자 도메인
+        const val NO_EMAIL_DOMAIN = "noemail.byeoldori"
     }
 }
