@@ -73,6 +73,14 @@ jobs:
             bash deploy-bluegreen.sh
             # 모니터링 스택 반영 (설정 변경 시에만 재생성됨)
             docker compose -f docker-compose.oci.yml -f docker-compose.monitoring.yml up -d prometheus grafana loki alloy cloudflare-exporter || true
+            # Grafana 는 알림 룰(provisioning)을 기동 때만 읽는다. 파일만 바뀌면 위 up -d 가 재생성하지 않으므로
+            # 알림 룰이 바뀐 배포에서만 재시작해 반영한다.
+            ALERT_SUM=$(sha256sum monitoring/grafana/provisioning/alerting/alerting.yml | cut -d' ' -f1)
+            if [ "$(cat monitoring/.alerting.sha256 2>/dev/null)" != "$ALERT_SUM" ]; then
+              docker restart grafana && echo "$ALERT_SUM" > monitoring/.alerting.sha256 || true
+            fi
+            # 운영 데이터(MySQL·MongoDB·업로드) 일일 백업 cron 설치/갱신(멱등). 실패해도 배포는 계속한다.
+            bash scripts/install-backup-cron.sh || true
             docker image prune -f || true
             # VM 소스 빌드마다 캐시가 누적돼 24GB(디스크 89%)까지 찼던 것 방지.
             # 최근 사용분 3GB만 남겨 다음 빌드 속도는 유지한다.
