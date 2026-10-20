@@ -86,6 +86,9 @@ class MidCombinedForecastService(
 
             if (existing != null) {
                 combinedForecastRepository.delete(existing)
+                // IDENTITY 키 save 는 INSERT 를 즉시 실행하지만 delete 는 flush 까지 미뤄진다.
+                // 먼저 flush 하지 않으면 옛 행이 남은 채 같은 (tm_fc, tm_ef, si_reg_id) 를 넣어 유니크 키 충돌로 전체가 롤백된다.
+                combinedForecastRepository.flush()
                 logger.info(
                     String.format(LogMessages.DELETE_FORECAST, forecast.tmFc, forecast.tmEf, forecast.siRegId)
                 )
