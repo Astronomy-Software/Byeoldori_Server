@@ -66,16 +66,20 @@ class LocalStorageService(
 
         // 7) 썸네일 생성 (400x400, JPEG, EXIF 스트리핑)
         //    이름은 원본과 같은 uuid → thumbnailUrlOf 로 찾고 deleteImageByUrl 로 함께 지운다
+        //    BufferedImage(img)가 아니라 원본 스트림에서 만들어야 EXIF Orientation 대로 회전된다
+        //    (폰 세로 사진이 썸네일에서만 90도 돌아가 보이는 문제 방지)
         try {
             val thumbDir = Paths.get(baseDir, "thumbnails", datePath)
             Files.createDirectories(thumbDir)
             val thumbTarget = thumbDir.resolve("$uuid.jpg")
-            Thumbnails.of(img)
-                .size(400, 400)
-                .keepAspectRatio(true)
-                .outputFormat("jpeg")
-                .outputQuality(0.85)
-                .toFile(thumbTarget.toFile())
+            file.inputStream.use { input ->
+                Thumbnails.of(input)
+                    .size(400, 400)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpeg")
+                    .outputQuality(0.85)
+                    .toFile(thumbTarget.toFile())
+            }
         } catch (e: Exception) {
             logger.warn("썸네일 생성 실패 (원본 저장은 정상): {}", e.message)
         }

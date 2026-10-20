@@ -51,6 +51,38 @@ class LocalStorageServiceTest {
         assertThat(Files.exists(thumbFile)).isFalse()
     }
 
+    /** 800x600 JPEG 에 EXIF Orientation=6(시계방향 90도 회전해서 보여야 함)을 넣는다 — 폰 세로 사진과 같은 형태 */
+    private fun jpegWithOrientation6(): MockMultipartFile {
+        val out = ByteArrayOutputStream()
+        ImageIO.write(BufferedImage(800, 600, BufferedImage.TYPE_INT_RGB), "jpeg", out)
+        val jpeg = out.toByteArray()
+        val tiff = byteArrayOf(
+            0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08,             // 빅엔디언 TIFF 헤더, IFD0 오프셋 8
+            0x00, 0x01,                                                 // 엔트리 1개
+            0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00, // Orientation(SHORT)=6
+            0x00, 0x00, 0x00, 0x00                                      // 다음 IFD 없음
+        )
+        val payload = "Exif".toByteArray() + byteArrayOf(0, 0) + tiff
+        val len = payload.size + 2
+        val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (len shr 8).toByte(), len.toByte()) + payload
+        // SOI(2) 뒤의 JFIF APP0 세그먼트 다음에 APP1(Exif)을 끼워 넣는다
+        val app0End = 4 + (((jpeg[4].toInt() and 0xFF) shl 8) or (jpeg[5].toInt() and 0xFF))
+        val bytes = jpeg.copyOfRange(0, app0End) + app1 + jpeg.copyOfRange(app0End, jpeg.size)
+        return MockMultipartFile("file", "portrait.jpg", "image/jpeg", bytes)
+    }
+
+    @Test
+    fun `EXIF Orientation 이 있는 사진은 썸네일에서도 회전이 반영된다`() {
+        val storage = service()
+        val url = storage.storeImage(jpegWithOrientation6())
+
+        val thumbFile = dir.resolve(storage.thumbnailUrlOf(url)!!.removePrefix("$base/files/"))
+        val thumb = ImageIO.read(thumbFile.toFile())
+        // 원본은 가로(800x600)지만 Orientation=6 이라 세로로 보여야 한다 → 300x400
+        assertThat(thumb.height).isGreaterThan(thumb.width)
+        assertThat(thumb.height).isEqualTo(400)
+    }
+
     @Test
     fun `썸네일이 없는 예전 이미지·외부 URL 은 null`() {
         val storage = service()

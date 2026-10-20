@@ -61,14 +61,17 @@ class GcsStorageService(
         }
 
         // 썸네일 생성 (400x400, JPEG, EXIF 스트리핑 포함)
+        // 원본 스트림에서 만들어야 EXIF Orientation 대로 회전된다(BufferedImage 로는 회전 정보가 사라짐)
         try {
             val thumbBytes = ByteArrayOutputStream().also { out ->
-                Thumbnails.of(img)
-                    .size(400, 400)
-                    .keepAspectRatio(true)
-                    .outputFormat("jpeg")
-                    .outputQuality(0.85)
-                    .toOutputStream(out)
+                file.inputStream.use { input ->
+                    Thumbnails.of(input)
+                        .size(400, 400)
+                        .keepAspectRatio(true)
+                        .outputFormat("jpeg")
+                        .outputQuality(0.85)
+                        .toOutputStream(out)
+                }
             }.toByteArray()
             // 이름은 원본과 같은 uuid → deleteImageByUrl 로 함께 지운다
             val thumbName = "thumbnails/$datePath/$uuid.jpg"
