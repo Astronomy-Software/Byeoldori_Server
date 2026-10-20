@@ -1,0 +1,50 @@
+name: Uptime check
+
+# VM 바깥(GitHub Actions)에서 실제 서비스 주소의 /actuator/health 를 확인한다.
+# Grafana 알림(backend-down)은 같은 VM 에서 돌아 VM·Docker·Grafana 가 죽으면 알림도 같이 죽고,
+# 메트릭 스크레이프 성공(up)만 봐서 DB 다운이나 nginx 가 가리키는 색의 장애를 놓친다.
+# 이 체크는 nginx 를 거쳐 실제 라우팅되는 색의 health(DB·Mongo·Redis 포함)를 본다.
+# 실패하면 DISCORD_WEBHOOK_BACKEND_URL 로 알린다(장애가 이어지는 동안 실행마다 알림).
+# 참고: GitHub 의 schedule 은 수 분씩 늦게 돌 수 있고, 저장소에 60일간 활동이 없으면 자동 비활성화된다.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: uptime-check
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /actuator/health
+        env:
+          HEALTH_URL: https://api.byeoldori.com/actuator/health
+        run: |
+          # 일시적인 네트워크 흔들림으로 오탐하지 않게 20초 간격으로 3번까지 시도한다.
+          for i in 1 2 3; do
+            BODY=$(curl -s --max-time 10 "$HEALTH_URL" || true)
+            if echo "$BODY" | grep -q '"status":"UP"'; then
+              echo "UP (attempt $i)"
+              exit 0
+            fi
+            echo "attempt $i: ${BODY:-응답 없음}"
+            if [ "$i" -lt 3 ]; then sleep 20; fi
+          done
+          exit 1
+
+      - name: Notify Discord - Down
+        if: failure()
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$DISCORD_URL" ] && exit 0
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"🚨 별도리 API 헬스체크 실패 (외부 확인)\",\"description\":\"https://api.byeoldori.com/actuator/health 가 3회 연속 UP 이 아님\",\"color\":15158332,\"fields\":[{\"name\":\"로그\",\"value\":\"[확인](${RUN_URL})\",\"inline\":true}]}]}" \
+            "$DISCORD_URL" || true

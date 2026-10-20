@@ -68,3 +68,29 @@ groups:
               expression: A
               conditions:
                 - evaluator: { type: gt, params: [0.05] }
+      # 디스크 사용률 85% 초과 10분 지속. MySQL·Loki·Prometheus·빌드 캐시가 같은 부트볼륨을 쓰고,
+      # 89%(24GB)까지 찼던 적이 있다. 앱의 DiskSpaceMetrics(컨테이너 overlay = 호스트 docker 루트 FS)를
+      # 대시보드 패널과 같은 식으로 본다. 앱이 모두 다운이면 데이터가 없으므로 OK(백엔드 다운 룰이 담당).
+      - uid: disk-high
+        title: "디스크 사용률 85% 초과"
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: OK
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max((disk_total_bytes{job="byeoldori-app"} - disk_free_bytes{job="byeoldori-app"}) / clamp_min(disk_total_bytes{job="byeoldori-app"}, 1))
+              refId: A
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: C
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.85] }
