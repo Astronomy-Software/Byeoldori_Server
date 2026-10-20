@@ -48,7 +48,8 @@ class GcsStorageService(
         if (mega > maxMegaPixels) throw InvalidInputException(ErrorCode.FILE_TOO_LARGE.message)
 
         val datePath = LocalDate.now(ZoneId.of("Asia/Seoul")).toString().replace("-", "/")
-        val filename = "${UUID.randomUUID()}.$sniff"
+        val uuid = UUID.randomUUID().toString()
+        val filename = "$uuid.$sniff"
         val objectName = "images/$datePath/$filename"
 
         val blobInfo = BlobInfo.newBuilder(bucketName, objectName)
@@ -69,7 +70,8 @@ class GcsStorageService(
                     .outputQuality(0.85)
                     .toOutputStream(out)
             }.toByteArray()
-            val thumbName = "thumbnails/$datePath/${UUID.randomUUID()}.jpg"
+            // 이름은 원본과 같은 uuid → deleteImageByUrl 로 함께 지운다
+            val thumbName = "thumbnails/$datePath/$uuid.jpg"
             val thumbInfo = BlobInfo.newBuilder(bucketName, thumbName)
                 .setContentType("image/jpeg")
                 .build()
@@ -93,6 +95,8 @@ class GcsStorageService(
             val deleted = storage.delete(bucketName, objectName)
             if (deleted) logger.info("GCS 파일 삭제 성공: {}", objectName)
             else logger.warn("GCS 파일이 존재하지 않습니다: {}", objectName)
+            StorageService.thumbnailPathOf(objectName.removePrefix("images/"))
+                ?.let { storage.delete(bucketName, it) }
         } catch (e: Exception) {
             logger.error("GCS 파일 삭제 오류 (URL: {}): {}", url, e.message)
         }

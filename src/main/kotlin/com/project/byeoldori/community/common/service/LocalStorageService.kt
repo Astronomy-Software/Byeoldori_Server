@@ -55,7 +55,8 @@ class LocalStorageService(
         Files.createDirectories(dir)
 
         // 5) 안전한 파일명(UUID + sniff 확장자)
-        val filename = "${UUID.randomUUID()}.$sniff"
+        val uuid = UUID.randomUUID().toString()
+        val filename = "$uuid.$sniff"
         val target = dir.resolve(filename)
 
         // MultipartFile 스트림은 한 번 읽으면 소진되므로, 위에서 read한 후 다시 InputStream을 열어야 함
@@ -64,10 +65,11 @@ class LocalStorageService(
         }
 
         // 7) 썸네일 생성 (400x400, JPEG, EXIF 스트리핑)
+        //    이름은 원본과 같은 uuid → thumbnailUrlOf 로 찾고 deleteImageByUrl 로 함께 지운다
         try {
             val thumbDir = Paths.get(baseDir, "thumbnails", datePath)
             Files.createDirectories(thumbDir)
-            val thumbTarget = thumbDir.resolve("${UUID.randomUUID()}.jpg")
+            val thumbTarget = thumbDir.resolve("$uuid.jpg")
             Thumbnails.of(img)
                 .size(400, 400)
                 .keepAspectRatio(true)
@@ -112,8 +114,23 @@ class LocalStorageService(
             } else {
                 logger.warn("삭제할 파일이 존재하지 않습니다: {}", filePath)
             }
+
+            // 5. 원본에서 정해지는 썸네일도 함께 지운다(없으면 무시)
+            StorageService.thumbnailPathOf(root.relativize(filePath).joinToString("/"))
+                ?.let { Files.deleteIfExists(root.resolve(it)) }
         } catch (e: Exception) {
             logger.error("파일 삭제 중 오류 발생 (URL: {}): {}", url, e.message)
+        }
+    }
+
+    override fun thumbnailUrlOf(url: String): String? {
+        val prefix = "${publicBaseUrl.trimEnd('/')}/files/"
+        if (!url.startsWith(prefix)) return null
+        val thumbPath = StorageService.thumbnailPathOf(url.substring(prefix.length)) ?: return null
+        return try {
+            if (Files.exists(Paths.get(baseDir).resolve(thumbPath))) prefix + thumbPath else null
+        } catch (e: Exception) {
+            null
         }
     }
 

@@ -487,7 +487,8 @@ class PostService(
         val thumbnailsMap = mutableMapOf<Long, String>()
         imgRepo.findByPostIdInOrderByPostIdAscSortOrderAsc(postIds).forEach { img ->
             val pid = img.post.id!!
-            if (!thumbnailsMap.containsKey(pid)) thumbnailsMap[pid] = img.url
+            // 목록은 400px 썸네일을 쓴다(원본은 최대 20MB). 썸네일이 없는 예전 이미지는 원본으로 대체
+            if (!thumbnailsMap.containsKey(pid)) thumbnailsMap[pid] = storage.thumbnailUrlOf(img.url) ?: img.url
         }
 
         return posts.map { post ->
