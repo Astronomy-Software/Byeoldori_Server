@@ -5,4 +5,5 @@ class UnauthorizedException(message: String = ErrorCode.UNAUTHORIZED.message) : 
 class ForbiddenException(message: String = ErrorCode.FORBIDDEN.message) : ByeoldoriException(ErrorCode.FORBIDDEN, message)
 class NotFoundException(errorCode: ErrorCode, message: String = errorCode.message) : ByeoldoriException(errorCode, message)
 class ConflictException(errorCode: ErrorCode, message: String = errorCode.message) : ByeoldoriException(errorCode, message)
+class UploadQuotaExceededException(message: String = ErrorCode.UPLOAD_QUOTA_EXCEEDED.message) : ByeoldoriException(ErrorCode.UPLOAD_QUOTA_EXCEEDED, message)
 class InternalServerException(message: String = ErrorCode.INTERNAL_SERVER_ERROR.message) : ByeoldoriException(ErrorCode.INTERNAL_SERVER_ERROR, message)

@@ -1,5 +1,6 @@
 package com.project.byeoldori.observationsites.service
 
+import com.project.byeoldori.calendar.repository.ObservationEventRepository
 import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.community.post.repository.ReviewPostRepository
@@ -17,7 +18,8 @@ class ObservationSiteService(
     private val observationSiteRepository: ObservationSiteRepository,
     private val userSavedSiteRepository: UserSavedSiteRepository,
     private val reviewPostRepository: ReviewPostRepository,
-    private val communityPostRepository: CommunityPostRepository
+    private val communityPostRepository: CommunityPostRepository,
+    private val observationEventRepository: ObservationEventRepository
 ) {
 
     // 관측지 등록
@@ -47,16 +49,13 @@ class ObservationSiteService(
         }
     }
 
-    // 관측지 검색 (FULLTEXT, 2자 미만 키워드는 LIKE fallback)
+    // 관측지 검색 (LIKE 부분 일치).
+    // 예전에는 2글자 이상이면 MATCH ... AGAINST(FULLTEXT)를 썼지만 observation_site.name 에 FULLTEXT 인덱스가
+    // 없어(V1~V3) 운영에서 ER_FT_MATCHING_KEY_NOT_FOUND → 500 이 났다. 관측지는 수십 건이라 LIKE 로 충분하다.
+    // Containing 은 Spring Data 가 % _ 를 이스케이프하므로 검색어의 와일드카드가 그대로 글자로 취급된다.
     @Transactional(readOnly = true)
-    fun searchByName(keyword: String): List<ObservationSiteResponseDto> {
-        val list = if (keyword.length >= 2) {
-            observationSiteRepository.searchByName("$keyword*")
-        } else {
-            observationSiteRepository.findByNameContaining(keyword)
-        }
-        return list.map { it.toResponseDto() }
-    }
+    fun searchByName(keyword: String): List<ObservationSiteResponseDto> =
+        observationSiteRepository.findByNameContaining(keyword.trim()).map { it.toResponseDto() }
 
     // 상세 정보 조회 메서드
     @Transactional(readOnly = true)
@@ -94,10 +93,12 @@ class ObservationSiteService(
     // 관측지 삭제
     @Transactional
     fun deleteSiteById(id: Long) {
-        if (!observationSiteRepository.existsById(id)) {
-            throw NotFoundException(ErrorCode.SITE_NOT_FOUND)
-        }
+        val site = observationSiteRepository.findById(id)
+            .orElseThrow { NotFoundException(ErrorCode.SITE_NOT_FOUND) }
         userSavedSiteRepository.deleteAllBySite_Id(id)
+        // 후기·캘린더 기록이 이 관측지를 FK 로 참조하면 삭제가 실패(500)하므로 먼저 연결을 끊는다.
+        reviewPostRepository.detachObservationSite(id, site.name)
+        observationEventRepository.detachObservationSite(id)
         observationSiteRepository.deleteById(id)
     }
 }

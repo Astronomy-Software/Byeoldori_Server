@@ -5,9 +5,12 @@ import com.project.byeoldori.community.post.domain.CommunityPost
 import com.project.byeoldori.user.entity.User
 import jakarta.persistence.*
 import java.time.LocalDateTime
+import org.hibernate.annotations.DynamicUpdate
 import org.hibernate.annotations.OnDelete
 import org.hibernate.annotations.OnDeleteAction
 
+// 바뀐 컬럼만 UPDATE 한다 — 댓글 수정·삭제가 옛 좋아요 수로 덮어쓰지 않도록
+@DynamicUpdate
 @Entity
 @Table(name = "comment")
 class Comment(

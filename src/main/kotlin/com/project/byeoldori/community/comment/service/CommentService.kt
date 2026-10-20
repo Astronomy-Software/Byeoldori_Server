@@ -39,7 +39,8 @@ class CommentService(
             Comment(post = post, author = author, content = content, parent = parent, depth = depth)
         )
 
-        post.commentCount++
+        // 원자적 증가 — post.commentCount++ 는 행 전체를 옛 값으로 다시 써서 동시에 달린 댓글·좋아요·조회수를 덮어쓴다
+        postRepo.addCommentCount(postId, 1)
 
         // 본인 게시글이 아닌 경우 작성자에게 알림 발송
         if (post.author.id != author.id) {
@@ -55,10 +56,12 @@ class CommentService(
 
     @Transactional(readOnly = true)
     fun list(postId: Long, page: Int, size: Int, user: User?): PageResponse<CommentResponse> {
-        require(page >= 0) { "페이지 번호는 0 이상이어야 합니다." }
+        // require 는 IllegalArgumentException(→500)이라 범위 밖 값은 거부 대신 보정한다(size 상한 포함).
+        val safePage = page.coerceAtLeast(0)
+        val safeSize = size.coerceIn(1, 100)
 
         val sort = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"))
-        val pageable = PageRequest.of(page, size, sort)
+        val pageable = PageRequest.of(safePage, safeSize, sort)
         val result = commentRepo.findByPostId(postId, pageable)
 
         val commentIds = result.content.mapNotNull { it.id }
@@ -70,8 +73,8 @@ class CommentService(
 
         return PageResponse(
             content = result.content.map { it.toResponse(likedCommentIds.contains(it.id)) }, // <-- [수정]
-            page = page,
-            size = size,
+            page = safePage,
+            size = safeSize,
             totalElements = result.totalElements,
             totalPages = result.totalPages
         )
@@ -85,9 +88,8 @@ class CommentService(
         if (!c.deleted) {
             c.deleted = true
             c.content = "삭제된 댓글입니다."
-            if (c.post.commentCount > 0) {
-                c.post.commentCount--
-            }
+            // 원자적 감소(0 아래로는 내려가지 않음)
+            postRepo.addCommentCount(postId, -1)
         }
     }
 

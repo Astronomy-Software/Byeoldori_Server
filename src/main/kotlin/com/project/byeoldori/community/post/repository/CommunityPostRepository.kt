@@ -67,4 +67,19 @@ interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update CommunityPost p set p.viewCount = p.viewCount + 1 where p.id = :postId")
     fun increaseViewCount(@Param("postId") postId: Long): Int
+
+    // 댓글·좋아요 수도 조회수처럼 원자적 증감으로만 바꾼다. 엔티티 필드를 고쳐 flush 하면
+    // 트랜잭션 시작 때 읽은 값으로 행 전체를 다시 써서 동시에 올라간 다른 카운터를 덮어쓴다.
+    // 0 아래로는 내려가지 않는다(이미 0 이면 0 행 갱신).
+    @Modifying(flushAutomatically = true)
+    @Query("update CommunityPost p set p.commentCount = p.commentCount + :delta where p.id = :postId and p.commentCount + :delta >= 0")
+    fun addCommentCount(@Param("postId") postId: Long, @Param("delta") delta: Long): Int
+
+    @Modifying(flushAutomatically = true)
+    @Query("update CommunityPost p set p.likeCount = p.likeCount + :delta where p.id = :postId and p.likeCount + :delta >= 0")
+    fun addLikeCount(@Param("postId") postId: Long, @Param("delta") delta: Long): Int
+
+    // 영속성 컨텍스트의 엔티티가 아닌 DB 의 현재 값(방금 원자적으로 바꾼 값 포함)을 읽는다
+    @Query("select p.likeCount from CommunityPost p where p.id = :postId")
+    fun findLikeCountById(@Param("postId") postId: Long): Long?
 }
