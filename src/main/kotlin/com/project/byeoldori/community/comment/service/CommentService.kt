@@ -9,6 +9,7 @@ import com.project.byeoldori.community.like.repository.CommentLikeRepository
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.notification.service.NotificationService
 import com.project.byeoldori.user.entity.User
+import com.project.byeoldori.user.utils.NicknameRules
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
@@ -46,7 +47,7 @@ class CommentService(
         if (post.author.id != author.id) {
             notificationService.notifyNewComment(
                 postAuthorId = post.author.id,
-                commenterName = author.nickname ?: author.name,
+                commenterName = author.nickname ?: NicknameRules.FALLBACK_DISPLAY_NAME,
                 preview = content.take(30)
             )
         }

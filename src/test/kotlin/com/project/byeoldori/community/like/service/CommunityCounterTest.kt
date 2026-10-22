@@ -161,4 +161,21 @@ class CommunityCounterTest @Autowired constructor(
         assertThat(commentRepo.findById(c.id!!).get().likeCount).isZero()
         verify(notificationService, times(1)).notifyCommentLiked(author.id, "카운터9")
     }
+
+    @Test
+    fun `닉네임이 없는 사용자의 댓글·좋아요 알림에는 실명 대신 고정 문구가 들어간다`() {
+        val author = user(10)
+        val noNick = em.persist(
+            User(email = "nonick@test.com", passwordHash = "x", name = "홍실명", phone = "010", nickname = null)
+        )
+        val p = post(author)
+        val c = em.persist(Comment(post = p, author = author, content = "댓글"))
+        em.flush()
+
+        commentService.write(p.id!!, noNick, "안녕하세요")
+        likeService.toggleCommentLike(p.id!!, c.id!!, noNick)
+
+        verify(notificationService).notifyNewComment(author.id, "익명 사용자", "안녕하세요")
+        verify(notificationService).notifyCommentLiked(author.id, "익명 사용자")
+    }
 }
