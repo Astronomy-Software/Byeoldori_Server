@@ -11,6 +11,7 @@ import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.repository.EducationProgramRepository
 import com.project.byeoldori.education.program.repository.QuizAttemptRepository
 import com.project.byeoldori.user.entity.User
+import com.project.byeoldori.user.repository.UserRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -20,7 +21,12 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.data.mongodb.core.index.CompoundIndexes
+import org.springframework.data.mongodb.repository.Query
+import java.time.LocalDateTime
 import java.util.Optional
 
 /**
@@ -33,8 +39,9 @@ class EducationProgramServiceTest {
     private val systemConfig = mock(SystemConfigService::class.java)
     private val quizAttemptRepo = mock(QuizAttemptRepository::class.java)
     private val educationPostRepo = mock(EducationPostRepository::class.java)
+    private val userRepo = mock(UserRepository::class.java)
     private val service = EducationProgramService(
-        repo, systemConfig, mock(MongoTemplate::class.java), quizAttemptRepo, educationPostRepo
+        repo, systemConfig, mock(MongoTemplate::class.java), quizAttemptRepo, educationPostRepo, userRepo
     )
 
     private val author = User(id = 1, email = "a@test.com", passwordHash = "x", name = "작성자", phone = "010", nickname = "작성자")
@@ -45,6 +52,7 @@ class EducationProgramServiceTest {
     @BeforeEach
     fun setUp() {
         `when`(repo.save(any(EducationProgram::class.java))).thenAnswer { it.arguments[0] }
+        for (u in listOf(author, other, admin)) `when`(userRepo.findById(u.id)).thenReturn(Optional.of(u))
     }
 
     private fun program(status: ProgramStatus, rejectReason: String? = null): EducationProgram {
@@ -206,5 +214,50 @@ class EducationProgramServiceTest {
         val res = service.create(author, CreateProgramRequest(title = "작은 프로그램"))
         assertThat(res.status).isEqualTo(ProgramStatus.DRAFT)
         assertThat(res.authorId).isEqualTo(author.id)
+        assertThat(res.authorName).isEqualTo("작성자")
+    }
+
+    // ── 작성자 표시 이름: 저장된 생성 시점 닉네임 대신 현재 사용자 정보 ──
+
+    @Test
+    fun `상세의 작성자 이름은 현재 닉네임이고 탈퇴한 작성자는 탈퇴한 사용자로 보인다`() {
+        val p = program(ProgramStatus.PUBLISHED)
+        p.authorName = "옛닉네임"
+        assertThat(service.get("prog-1", null).authorName).isEqualTo("작성자")
+
+        val deleted = User(id = 1, email = "deleted+1@deleted.byeoldori", passwordHash = "DELETED", name = "탈퇴한 사용자", phone = "")
+            .apply { deletedAt = LocalDateTime.now() }
+        `when`(userRepo.findById(1L)).thenReturn(Optional.of(deleted))
+        assertThat(service.get("prog-1", null).authorName).isEqualTo("탈퇴한 사용자")
+
+        `when`(userRepo.findById(1L)).thenReturn(Optional.empty())
+        assertThat(service.get("prog-1", null).authorName).isEqualTo("탈퇴한 사용자")
+    }
+
+    @Test
+    fun `공개 목록은 steps 를 뺀 조회를 쓰고 작성자 이름을 한 번에 조회해 채운다`() {
+        val deleted = User(id = 9, email = "deleted+9@deleted.byeoldori", passwordHash = "DELETED", name = "탈퇴한 사용자", phone = "")
+            .apply { deletedAt = LocalDateTime.now() }
+        val pageable = PageRequest.of(0, 20)
+        val rows = listOf(
+            EducationProgram(id = "a", title = "A", authorId = author.id, authorName = "옛닉네임", status = ProgramStatus.PUBLISHED),
+            EducationProgram(id = "b", title = "B", authorId = deleted.id, authorName = "탈퇴 전 닉네임", status = ProgramStatus.PUBLISHED),
+            EducationProgram(id = "c", title = "C", authorId = author.id, status = ProgramStatus.PUBLISHED),
+        )
+        `when`(repo.findSummariesByStatus(ProgramStatus.PUBLISHED, pageable)).thenReturn(PageImpl(rows, pageable, 3))
+        `when`(userRepo.findAllById(setOf(author.id, deleted.id))).thenReturn(listOf(author, deleted))
+
+        val res = service.listPublished(pageable)
+        assertThat(res.content.map { it.authorName }).containsExactly("작성자", "탈퇴한 사용자", "작성자")
+    }
+
+    @Test
+    fun `목록 조회 쿼리는 steps 를 제외하고 status·authorId 인덱스를 둔다`() {
+        for (name in listOf("findSummariesByStatus", "findSummariesByAuthorId")) {
+            val q = EducationProgramRepository::class.java.methods.first { it.name == name }.getAnnotation(Query::class.java)
+            assertThat(q.fields.replace(" ", "")).isEqualTo("{'steps':0}")
+        }
+        val defs = EducationProgram::class.java.getAnnotation(CompoundIndexes::class.java).value.map { it.def.replace(" ", "") }
+        assertThat(defs).containsExactlyInAnyOrder("{'status':1,'updatedAt':-1}", "{'authorId':1,'updatedAt':-1}")
     }
 }

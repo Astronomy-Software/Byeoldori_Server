@@ -8,12 +8,14 @@ import io.jsonwebtoken.MalformedJwtException
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.dao.DataAccessException
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
 import org.springframework.stereotype.Component
+import org.springframework.transaction.TransactionException
 import org.springframework.web.filter.OncePerRequestFilter
 import io.jsonwebtoken.security.SignatureException
 import java.nio.charset.StandardCharsets
@@ -74,6 +76,14 @@ class JwtAuthenticationFilter(
                 sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "잘못된 토큰 형식입니다.")
                 return
             } catch (e: Exception) {
+                // 사용자 조회 중 DB 장애(커넥션 풀 고갈·DB 재시작 등)는 토큰 문제가 아니다.
+                // 401 로 답하면 웹이 재발급 실패 후 로그인 상태를 지워 버리므로 503 으로 구분한다.
+                // (커넥션을 못 얻으면 DataAccessException 이 아니라 CannotCreateTransactionException 이 난다)
+                if (e is DataAccessException || e is TransactionException) {
+                    logger.error("JWT 인증 중 사용자 조회 실패(DB 장애) - IP: ${request.remoteAddr}", e)
+                    sendErrorResponse(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "일시적인 서버 오류입니다. 잠시 후 다시 시도해주세요.")
+                    return
+                }
                 logger.error("알 수 없는 JWT 인증 오류 - IP: ${request.remoteAddr}", e)
                 sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "인증에 실패했습니다.")
                 return

@@ -2,6 +2,7 @@ package com.project.byeoldori.community.post.dto
 
 import com.project.byeoldori.community.common.domain.*
 import com.project.byeoldori.community.post.domain.EducationPost
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_COUNT
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -14,6 +15,7 @@ import java.time.LocalDateTime
 data class ReviewDto(
     @field:Size(max = 255) val location: String? = null,
     val observationSiteId: Long? = null,
+    @field:Size(max = CONTENT_TARGET_MAX_COUNT, message = "대상 천체는 최대 ${CONTENT_TARGET_MAX_COUNT}개입니다.")
     val targets: List<String>? = null,
     @field:Size(max = 255) val equipment: String? = null,
     val observationDate: LocalDate? = null,
@@ -23,6 +25,7 @@ data class ReviewDto(
 
 data class EducationRequestDto(
     val difficulty: EducationDifficulty? = null,
+    @field:Size(max = CONTENT_TARGET_MAX_COUNT, message = "대상 천체는 최대 ${CONTENT_TARGET_MAX_COUNT}개입니다.")
     val targets: List<String>? = null,
     @field:Size(max = 255) val tags: String? = null,
     val status: EducationStatus? = null, // null → DRAFT
