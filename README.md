@@ -81,7 +81,8 @@ sha256sum -c SHA256SUMS
 docker stop -t 35 app-blue app-green 2>/dev/null || true
 # MySQL — 덤프에 DROP DATABASE/CREATE DATABASE/USE 가 들어 있어 byeoldori 를 통째로 지우고 다시 만든다
 # (백업 뒤에 생긴 테이블도 지워져 flyway_schema_history 와 어긋나지 않는다).
-# 2026-10-23 이전 백업에는 DROP DATABASE 가 없으므로 먼저 직접 지운다:
+# 예전 backup.sh 로 만든 덤프에는 DROP DATABASE 가 없다. 아래 확인에서 0 이 나오면 먼저 직접 지운다:
+#   gunzip -c mysql-byeoldori.sql.gz | grep -c '^DROP DATABASE'
 #   docker exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "DROP DATABASE byeoldori"'
 gunzip -c mysql-byeoldori.sql.gz | docker exec -i mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot'
 # MongoDB — --drop 은 백업에 있는 컬렉션을 지우고 다시 넣는다
@@ -89,6 +90,8 @@ docker exec -i mongodb sh -c 'exec mongorestore --username "$MONGO_INITDB_ROOT_U
 # 업로드 파일
 VOL=$(docker volume ls -q --filter label=com.docker.compose.volume=uploads | head -1)
 docker run --rm -i --user 0 --entrypoint tar -v "$VOL":/data/uploads byeoldori-server:local -xzf - -C /data/uploads < uploads.tar.gz
-# 서비스 중이던 색을 다시 올린다(nginx upstream 이 가리키는 색)
-docker start app-$(cat /etc/nginx/byeoldori_active)
+# 서비스 중이던 색을 다시 올린다. active 파일은 전환 실패 때 어긋날 수 있으므로 deploy-bluegreen.sh 처럼
+# nginx upstream 포트로 정한다(8080=blue, 8081=green)
+PORT=$(grep -o '127.0.0.1:[0-9]*' /etc/nginx/conf.d/byeoldori-upstream.conf | head -1 | cut -d: -f2)
+[ "$PORT" = 8081 ] && docker start app-green || docker start app-blue
 ```
