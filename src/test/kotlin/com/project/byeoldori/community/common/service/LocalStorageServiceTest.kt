@@ -12,6 +12,8 @@ import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.Base64
 import java.util.zip.CRC32
 import javax.imageio.ImageIO
 
@@ -113,6 +115,33 @@ class LocalStorageServiceTest {
         assertThat(ImageHeaderReader.readSize(bomb)).isEqualTo(20_000 to 20_000)
         assertThatThrownBy { service().storeImage(bomb) }.isInstanceOf(InvalidInputException::class.java)
         // 거부된 업로드는 디스크에 아무것도 남기지 않는다
+        assertThat(Files.list(dir).use { it.count() }).isZero()
+    }
+
+    // 1x1 무손실(VP8L) WebP. JDK ImageIO 만으로는 리더가 없어 항상 "이미지를 읽을 수 없습니다"가 났다
+    private val webp1x1 = Base64.getDecoder().decode("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")
+
+    @Test
+    fun `WebP 는 헤더로 크기를 읽고 원본과 썸네일을 저장한다`() {
+        val file = MockMultipartFile("file", "a.webp", "image/webp", webp1x1)
+        assertThat(ImageHeaderReader.readSize(file)).isEqualTo(1 to 1)
+
+        val storage = LocalStorageService(dir.toString(), base, listOf("image/webp"), 50)
+        val url = storage.storeImage(file)
+        assertThat(url).endsWith(".webp")
+        assertThat(Files.exists(dir.resolve(url.removePrefix("$base/files/")))).isTrue()
+        assertThat(storage.thumbnailUrlOf(url)).isNotNull()
+    }
+
+    @Test
+    fun `헤더상 픽셀 수 상한을 넘는 WebP 도 디코딩 전에 거부한다`() {
+        // VP8L 헤더(시그니처 0x2F 다음 4바이트, 리틀엔디언)의 가로·세로를 각각 16384 로 바꾼다
+        val bytes = webp1x1.copyOf()
+        ByteBuffer.wrap(bytes, 21, 4).order(ByteOrder.LITTLE_ENDIAN).putInt(0x3FFF or (0x3FFF shl 14) or (1 shl 28))
+        val bomb = MockMultipartFile("file", "bomb.webp", "image/webp", bytes)
+        assertThat(ImageHeaderReader.readSize(bomb)).isEqualTo(16_384 to 16_384)
+        assertThatThrownBy { LocalStorageService(dir.toString(), base, listOf("image/webp"), 50).storeImage(bomb) }
+            .isInstanceOf(InvalidInputException::class.java)
         assertThat(Files.list(dir).use { it.count() }).isZero()
     }
 }

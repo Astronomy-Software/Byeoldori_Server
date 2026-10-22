@@ -82,6 +82,8 @@ dependencies {
 
     // 이미지 썸네일 생성 (EXIF 스트리핑 포함)
     implementation("net.coobird:thumbnailator:0.4.20")
+    // JDK ImageIO 에는 WebP 리더가 없어 WebP 업로드가 헤더 검사에서 항상 거부됐다 → ImageIO 플러그인으로 추가(순수 자바)
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
 
     // 구조화 로깅 (JSON 출력)
     implementation("net.logstash.logback:logstash-logback-encoder:7.4")
