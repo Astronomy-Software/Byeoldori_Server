@@ -52,23 +52,33 @@ data class EducationResponseDto(
     }
 }
 
+// 본문은 웹 에디터의 Lexical JSON 문자열이라 평문보다 훨씬 길다. 기존 글 수정이 막히지 않도록 넉넉히 1,000,000자로 둔다.
+const val POST_CONTENT_MAX_LENGTH = 1_000_000
+
+// 게시글 첨부 이미지 개수 상한. URL 마다 post_image 행이 하나씩 생기므로 상한이 없으면 요청 한 번으로 행을 무제한 넣을 수 있다.
+const val POST_IMAGE_MAX_COUNT = 20
+
 data class PostCreateRequest(
     @field:NotBlank(message = "제목은 필수입니다.")
     @field:Size(max = 120) val title: String,
 
     @field:NotBlank(message = "본문은 필수입니다.")
+    @field:Size(max = POST_CONTENT_MAX_LENGTH, message = "본문이 너무 깁니다.")
     val content: String,
     // @Valid 가 없으면 중첩 DTO 의 제약(별점 1~5, 길이)이 검사되지 않는다.
     @field:Valid val review: ReviewDto? = null,
     @field:Valid val education: EducationRequestDto? = null,
+    @field:Size(max = POST_IMAGE_MAX_COUNT, message = "이미지는 최대 ${POST_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.")
     val imageUrls: List<String>? = emptyList()
 )
 
 data class PostUpdateRequest(
     @field:Size(max = 120) val title: String? = null,
+    @field:Size(max = POST_CONTENT_MAX_LENGTH, message = "본문이 너무 깁니다.")
     val content: String? = null,
     @field:Valid val review: ReviewDto? = null,
     @field:Valid val education: EducationRequestDto? = null,
+    @field:Size(max = POST_IMAGE_MAX_COUNT, message = "이미지는 최대 ${POST_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.")
     val imageUrls: List<String>? = null
 )
 

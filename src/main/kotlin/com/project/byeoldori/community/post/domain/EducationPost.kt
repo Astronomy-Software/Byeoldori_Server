@@ -3,10 +3,14 @@ package com.project.byeoldori.community.post.domain
 import com.project.byeoldori.community.common.domain.EducationDifficulty
 import com.project.byeoldori.community.common.domain.EducationStatus
 import jakarta.persistence.*
+import org.hibernate.annotations.DynamicUpdate
 import org.hibernate.annotations.OnDelete
 import org.hibernate.annotations.OnDeleteAction
 
+// 바뀐 컬럼만 UPDATE 한다 — 평점 재계산·프로그램 연결 해제(clearProgramId)와 글 수정이 겹쳐도
+// 서로의 컬럼을 트랜잭션 시작 때 읽은 옛 값으로 덮어쓰지 않도록.
 @Entity
+@DynamicUpdate
 @Table(name = "education_post")
 class EducationPost(
     @Id
