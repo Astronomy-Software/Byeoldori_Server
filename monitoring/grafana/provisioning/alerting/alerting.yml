@@ -94,3 +94,30 @@ groups:
               expression: A
               conditions:
                 - evaluator: { type: gt, params: [0.85] }
+      # Cloudflare 엣지 응답 5xx 비율 5% 초과 5분 지속. 위 룰은 모두 앱(byeoldori-app) 메트릭이라
+      # 웹(byeoldori.com, Workers) SSR 500·프록시 502 같은 장애를 못 본다. cf-worker-exporter 의
+      # zone 누적 counter 를 쓴다(애널리틱스 지연 때문에 약 3분 늦게 반영). 트래픽이 적을 때 한두 건으로
+      # 울리지 않게 10분간 요청이 20건 이상일 때만 판정한다. exporter 가 죽거나 트래픽이 없으면 OK.
+      - uid: cf-edge-5xx
+        title: "Cloudflare 엣지 5xx 비율 5% 초과 (웹·API)"
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: OK
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: (sum(rate(cloudflare_zone_requests_status{status=~"5.."}[10m])) or on() vector(0)) / sum(rate(cloudflare_zone_requests_status[10m])) and on() sum(increase(cloudflare_zone_requests_status[10m])) >= 20
+              refId: A
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: C
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }

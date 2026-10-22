@@ -69,9 +69,12 @@ sudo systemctl reload nginx
 SWITCHING=2
 echo $NEW | sudo tee "$ACTIVE_FILE" >/dev/null
 # 이전 배포(restart: always 시절)에 만들어진 구 색은 정책을 먼저 바꿔야 재부팅 후 되살아나지 않는다.
+# reload 직후엔 nginx 구 워커가 아직 구 색으로 요청을 보낼 수 있어 잠깐 기다린 뒤 내린다.
+# 정지는 앱의 graceful shutdown(30초)보다 길게 기다린다(-t 35). 기본 10초면 처리 중이던 긴 요청이 SIGKILL 로 끊긴다.
 if [ "$OLD" != "none" ]; then
   docker update --restart=unless-stopped app-$OLD >/dev/null 2>&1 || true
-  docker stop app-$OLD 2>/dev/null || true
+  sleep 2
+  docker stop -t 35 app-$OLD 2>/dev/null || true
 fi
 docker rm -f app 2>/dev/null || true
 echo "[BG] switched → $NEW"

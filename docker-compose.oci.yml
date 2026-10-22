@@ -13,6 +13,9 @@ services:
     # always 면 배포 때 docker stop 한 구 색이 VM 재부팅·docker 재시작 후 되살아나 두 색이 함께 돈다.
     # unless-stopped 는 수동 정지한 컨테이너를 꺼진 채로 둔다(블루-그린 app-blue/green 이 extends 로 물려받음).
     restart: unless-stopped
+    # 앱의 graceful shutdown(spring.lifecycle.timeout-per-shutdown-phase=30s)보다 길게 둔다.
+    # 기본 10초면 처리 중이던 긴 요청(업로드·지연된 예보)과 @Scheduled 작업이 SIGKILL 로 잘린다.
+    stop_grace_period: 35s
     env_file:
       - .env
     environment:

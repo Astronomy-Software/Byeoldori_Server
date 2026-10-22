@@ -61,7 +61,7 @@ run_bg
 check "성공 코드" '[ "$RC" -eq 0 ]'
 check "upstream 이 8081" '[ "$(upstream_port)" = "8081" ]'
 check "active 가 green" '[ "$(active)" = "green" ]'
-check "구 색(blue) 정지" 'grep -q "^stop app-blue" "$T/docker.log"'
+check "구 색(blue) 정지(graceful 30초보다 긴 35초 대기)" 'grep -q "^stop -t 35 app-blue" "$T/docker.log"'
 rm -rf "$T"
 
 echo "[2] nginx -t 실패: upstream 을 되돌리고 active 는 그대로, 두 색 모두 유지"

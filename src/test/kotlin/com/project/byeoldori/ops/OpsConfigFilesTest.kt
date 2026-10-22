@@ -54,6 +54,32 @@ class OpsConfigFilesTest {
     }
 
     @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `알림 룰에 Cloudflare 엣지 5xx 비율 경보가 있다`() {
+        val groups = yaml("monitoring/grafana/provisioning/alerting/alerting.yml")["groups"] as List<Map<String, Any?>>
+        val rule = groups.flatMap { it["rules"] as List<Map<String, Any?>> }.first { it["uid"] == "cf-edge-5xx" }
+        val data = rule["data"] as List<Map<String, Any?>>
+        val expr = data.first { it["refId"] == "A" }.obj("model")["expr"] as String
+        assertThat(expr).contains("cloudflare_zone_requests_status{status=~\"5..\"}")
+        val evaluator = (data.first { it["refId"] == "C" }.obj("model")["conditions"] as List<Map<String, Any?>>)
+            .first().obj("evaluator")
+        assertThat(evaluator["type"]).isEqualTo("gt")
+        assertThat((evaluator["params"] as List<Number>).first().toDouble()).isEqualTo(0.05)
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `외부 업타임 체크는 API 와 웹(byeoldori_com)을 모두 보고 각각 Discord 로 알린다`() {
+        val steps = yaml(".github/workflows/uptime.yml").obj("jobs").obj("check")["steps"] as List<Map<String, Any?>>
+        val web = steps.first { it["id"] == "web" }
+        assertThat(web["if"] as String).contains("!cancelled()")
+        assertThat(web.obj("env")["WEB_URLS"] as String).contains("https://byeoldori.com/")
+        assertThat(steps.mapNotNull { it["if"] as String? })
+            .anySatisfy { assertThat(it).contains("steps.api.outcome == 'failure'") }
+            .anySatisfy { assertThat(it).contains("steps.web.outcome == 'failure'") }
+    }
+
+    @Test
     fun `블루그린 스크립트는 전환 전 실패 시 새 색을 내리고 nginx 검사 실패를 무시하지 않는다`() {
         val script = File("deploy-bluegreen.sh").readText()
         assertThat(script).contains("trap cleanup_new EXIT")
@@ -67,6 +93,22 @@ class OpsConfigFilesTest {
         val script = File("deploy-bluegreen.sh").readText()
         assertThat(script).contains("grep -oE '127\\.0\\.0\\.1:808[01]' \"\$UPSTREAM_CONF\"")
         assertThat(script).contains("sudo cp -p \"\$UPSTREAM_CONF.bak\" \"\$UPSTREAM_CONF\"")
+    }
+
+    @Test
+    fun `구 색 정지는 앱 graceful shutdown(30초)보다 길게 기다린다`() {
+        val app = yaml("docker-compose.oci.yml").obj("services").obj("app")
+        assertThat(app["stop_grace_period"]).isEqualTo("35s")
+
+        val props = Properties().apply {
+            File("src/main/resources/application.properties").inputStream().use { load(it) }
+        }
+        assertThat(props.getProperty("server.shutdown")).isEqualTo("graceful")
+        assertThat(props.getProperty("spring.lifecycle.timeout-per-shutdown-phase")).isEqualTo("30s")
+
+        val script = File("deploy-bluegreen.sh").readText()
+        assertThat(script).contains("docker stop -t 35 app-\$OLD")
+        assertThat(script).doesNotContain("docker stop app-\$OLD")
     }
 
     @Test
