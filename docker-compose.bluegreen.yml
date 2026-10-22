@@ -3,14 +3,17 @@ x-logging: &default-logging
   driver: json-file
   options: { max-size: "10m", max-file: "3" }
 
+# 앱 포트는 루프백에만 연다. nginx upstream·배포 헬스게이트는 127.0.0.1:$PORT, Prometheus 는 docker 네트워크
+# (app-blue:8080)로 붙는다. 0.0.0.0 으로 열면 Docker DNAT 가 호스트 방화벽을 우회해 nginx 차단
+# (/actuator/prometheus 404, X-Forwarded-For 덮어쓰기)을 건너뛴 직접 접근이 가능해진다.
 services:
   app-blue:
     extends: { file: docker-compose.oci.yml, service: app }
     container_name: app-blue
-    ports: !override ["8080:8080"]
+    ports: !override ["127.0.0.1:8080:8080"]
     logging: *default-logging
   app-green:
     extends: { file: docker-compose.oci.yml, service: app }
     container_name: app-green
-    ports: !override ["8081:8080"]
+    ports: !override ["127.0.0.1:8081:8080"]
     logging: *default-logging

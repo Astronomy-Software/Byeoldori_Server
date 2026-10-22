@@ -41,7 +41,7 @@ services:
       # health 상세(show-details)는 application-prod.properties 의 never 를 따른다. 여기서 always 로 덮으면
       # 인증 없이 열린 /actuator/health 에 DB 버전·디스크 용량·경로가 노출된다. 배포 헬스게이트는 status 만 본다.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080" # 루프백 전용(nginx 경유만 외부 공개). 이유는 docker-compose.bluegreen.yml 머리말
     depends_on:
       mysql:
         condition: service_healthy
