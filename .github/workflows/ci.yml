@@ -36,6 +36,11 @@ jobs:
           chmod +x gradlew
           ./gradlew test --no-daemon
 
+      - name: Ops script tests
+        run: |
+          bash scripts/tests/backup_test.sh
+          bash scripts/tests/bluegreen_test.sh
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

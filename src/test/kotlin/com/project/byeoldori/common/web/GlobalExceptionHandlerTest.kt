@@ -14,6 +14,9 @@ import org.springframework.web.HttpMediaTypeNotAcceptableException
 import org.springframework.web.HttpMediaTypeNotSupportedException
 import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.method.annotation.ExceptionHandlerMethodResolver
+import org.springframework.web.multipart.MaxUploadSizeExceededException
+import org.springframework.web.multipart.MultipartException
+import org.springframework.web.multipart.support.MissingServletRequestPartException
 import org.springframework.web.servlet.NoHandlerFoundException
 import org.springframework.web.servlet.resource.NoResourceFoundException
 
@@ -98,5 +101,18 @@ class GlobalExceptionHandlerTest {
         val res = handler.handleDataIntegrity(e, MockHttpServletRequest("PATCH", "/users/me"))
         assertThat(res.statusCode).isEqualTo(HttpStatus.CONFLICT)
         assertThat(res.body?.message).doesNotContain("Duplicate", "UK2ty")
+    }
+
+    @Test
+    fun `multipart 파트 누락·깨진 multipart 는 400, 용량 초과는 그대로 413`() {
+        val missingPart = MissingServletRequestPartException("file")
+        val broken = MultipartException("Failed to parse multipart servlet request")
+        assertThat(resolver.resolveMethod(missingPart)?.name).isEqualTo("handleBadRequest")
+        assertThat(resolver.resolveMethod(broken)?.name).isEqualTo("handleBadRequest")
+        assertThat(resolver.resolveMethod(MaxUploadSizeExceededException(1L))?.name).isEqualTo("handleMaxUpload")
+
+        val res = handler.handleBadRequest(missingPart, MockHttpServletRequest("POST", "/files/image"))
+        assertThat(res.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(res.body?.message).isEqualTo("요청 값이 올바르지 않습니다.")
     }
 }

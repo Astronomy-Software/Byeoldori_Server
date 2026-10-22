@@ -1,7 +1,18 @@
 #!/bin/bash
 set -euo pipefail
-cd ~/byeoldori-server
-ACTIVE=$(cat /etc/nginx/byeoldori_active 2>/dev/null || echo none)
+cd "${DEPLOY_DIR:-$HOME/byeoldori-server}"
+# 경로는 테스트(scripts/tests/bluegreen_test.sh)에서만 바꾼다.
+UPSTREAM_CONF="${BG_UPSTREAM_CONF:-/etc/nginx/conf.d/byeoldori-upstream.conf}"
+ACTIVE_FILE="${BG_ACTIVE_FILE:-/etc/nginx/byeoldori_active}"
+# 서비스 중인 색은 nginx 가 실제로 읽는 upstream 파일의 포트로 정한다. active 파일은 전환 중 실패·중단으로
+# upstream 과 어긋날 수 있고, 어긋난 채 다음 배포가 돌면 트래픽을 받는 색을 지운다. 포트를 못 읽을 때만 active 파일을 쓴다.
+case "$(grep -oE '127\.0\.0\.1:808[01]' "$UPSTREAM_CONF" 2>/dev/null | head -1)" in
+  *:8080) ACTIVE=blue ;;
+  *:8081) ACTIVE=green ;;
+  *) ACTIVE=$(cat "$ACTIVE_FILE" 2>/dev/null || echo none) ;;
+esac
+RECORDED=$(cat "$ACTIVE_FILE" 2>/dev/null || echo none)
+[ "$RECORDED" = "$ACTIVE" ] || echo "[BG] 경고: active 파일($RECORDED)이 upstream($ACTIVE)과 달라 upstream 을 따른다"
 if [ "$ACTIVE" = "blue" ]; then NEW=green; PORT=8081; else NEW=blue; PORT=8080; fi
 OLD=$ACTIVE
 echo "[BG] active=$ACTIVE → deploy=$NEW(:$PORT)"
@@ -10,6 +21,9 @@ echo "[BG] active=$ACTIVE → deploy=$NEW(:$PORT)"
 # restart 정책 때문에 그냥 두면 크래시 루프를 돌거나, nginx 가 안 가리키는 채로 살아서
 # @Scheduled 예보 수집을 서비스 중인 색과 중복 실행한다. 컨테이너는 지우지 않고 정지만 해
 # VM 에서 `docker logs app-$NEW` 로 원인을 볼 수 있게 남긴다(다음 배포 때 rm -f 로 정리됨).
+# upstream 파일을 바꾼 뒤 reload 성공 전에 실패·중단되면(SWITCHING=1) 백업해 둔 upstream 을 되돌리고 reload 한다.
+# 새 파일을 남겨 두면 운영자가 nginx 를 고쳐 reload 하거나 재부팅할 때 nginx 가 새 색으로 넘어간다.
+# 이때 두 색은 모두 살아 있으므로 새 색은 내리지 않는다.
 SWITCHING=0
 cleanup_new() {
   local rc=$?
@@ -17,6 +31,14 @@ cleanup_new() {
     echo "[BG] 실패(rc=$rc) — app-$NEW 정지(기존 $OLD 유지). 원인: docker logs app-$NEW"
     docker update --restart=no app-$NEW >/dev/null 2>&1 || true
     docker stop app-$NEW >/dev/null 2>&1 || true
+  elif [ "$rc" -ne 0 ] && [ "$SWITCHING" = "1" ]; then
+    if [ -f "$UPSTREAM_CONF.bak" ]; then
+      echo "[BG] 전환 실패(rc=$rc) — upstream 을 $OLD 로 되돌림"
+      sudo cp -p "$UPSTREAM_CONF.bak" "$UPSTREAM_CONF" || true
+      if sudo nginx -t; then sudo systemctl reload nginx || true; fi
+    else
+      echo "[BG] 전환 실패(rc=$rc) — 되돌릴 upstream 백업 없음. nginx 설정 확인 필요"
+    fi
   fi
 }
 trap cleanup_new EXIT
@@ -36,13 +58,16 @@ for i in $(seq 1 72); do
 done
 [ "${OK:-}" = "1" ] || { echo "[BG] health FAIL — 전환 안 함(기존 유지)"; exit 1; }
 # 여기부터는 nginx 설정을 건드리므로 새 색을 자동으로 내리지 않는다(내리면 upstream 이 죽은 포트를 가리킬 수 있음).
+sudo rm -f "$UPSTREAM_CONF.bak"
+[ -f "$UPSTREAM_CONF" ] && sudo cp -p "$UPSTREAM_CONF" "$UPSTREAM_CONF.bak"
 SWITCHING=1
-echo "upstream byeoldori_backend { server 127.0.0.1:$PORT; }" | sudo tee /etc/nginx/conf.d/byeoldori-upstream.conf >/dev/null
+echo "upstream byeoldori_backend { server 127.0.0.1:$PORT; }" | sudo tee "$UPSTREAM_CONF" >/dev/null
 # `a && b` 는 a 가 실패해도 set -e 로 멈추지 않아 reload 없이 구 색을 정지하던 문제 → 각각 실패 시 중단.
-# 중단되면 두 색이 모두 살아 있으므로 nginx 가 어느 쪽을 가리켜도 서비스는 유지된다.
+# 중단되면 trap 이 upstream 을 되돌리고, 두 색이 모두 살아 있으므로 서비스는 유지된다.
 sudo nginx -t
 sudo systemctl reload nginx
-echo $NEW | sudo tee /etc/nginx/byeoldori_active >/dev/null
+SWITCHING=2
+echo $NEW | sudo tee "$ACTIVE_FILE" >/dev/null
 # 이전 배포(restart: always 시절)에 만들어진 구 색은 정책을 먼저 바꿔야 재부팅 후 되살아나지 않는다.
 if [ "$OLD" != "none" ]; then
   docker update --restart=unless-stopped app-$OLD >/dev/null 2>&1 || true

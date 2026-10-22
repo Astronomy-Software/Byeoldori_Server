@@ -81,7 +81,7 @@ class CalendarService(
     fun listByDate(user: User, date: LocalDate): List<EventResponse> {
         val from = date.atStartOfDay()
         val to = date.plusDays(1).atStartOfDay()
-        val eventList = events.findAllByUserIdAndStartAtBetweenOrderByStartAtAsc(user.id, from, to)
+        val eventList = events.findAllByUserIdAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(user.id, from, to)
         return assemble(eventList)
     }
 
@@ -214,11 +214,15 @@ class CalendarService(
 
     @Transactional(readOnly = true)
     fun monthlySummary(user: User, year: Int, month: Int): List<DaySummary> {
+        // 범위 밖 값은 YearMonth.of 가 DateTimeException 을 던져 500 이 되므로 먼저 400 으로 막는다
+        if (year !in 1900..2100 || month !in 1..12) {
+            throw InvalidInputException("year 는 1900~2100, month 는 1~12 사이여야 합니다.")
+        }
         val ym = YearMonth.of(year, month)
         val from = ym.atDay(1).atStartOfDay()
         val to = ym.plusMonths(1).atDay(1).atStartOfDay()
 
-        val rows = events.findStartStatusByUserIdAndStartAtBetween(user.id, from, to)
+        val rows = events.findStartStatusByUserIdAndStartAtGreaterThanEqualAndStartAtLessThan(user.id, from, to)
 
         val map = linkedMapOf<LocalDate, DaySummary>()
         rows.forEach { r ->

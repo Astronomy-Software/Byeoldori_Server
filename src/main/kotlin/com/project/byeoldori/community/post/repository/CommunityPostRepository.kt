@@ -6,9 +6,11 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import jakarta.persistence.LockModeType
 
 interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     // 목록 렌더링 시 author 접근으로 인한 N+1 제거 (author를 함께 로드)
@@ -78,6 +80,13 @@ interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     @Modifying(flushAutomatically = true)
     @Query("update CommunityPost p set p.likeCount = p.likeCount + :delta where p.id = :postId and p.likeCount + :delta >= 0")
     fun addLikeCount(@Param("postId") postId: Long, @Param("delta") delta: Long): Int
+
+    // 좋아요·댓글 INSERT 는 FK 검사로 부모 게시글 행에 S 락을 잡고, 이어지는 카운터 UPDATE 는 X 락이 필요하다.
+    // 서로 다른 사용자 두 명이 동시에 누르면 S 락을 쥔 채 서로의 X 락을 기다려 데드락(500)이 났다.
+    // 트랜잭션 맨 앞에서 부모 행을 X 락(SELECT ... FOR UPDATE)으로 먼저 잡아 순서를 고정한다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from CommunityPost p where p.id = :postId")
+    fun findByIdForUpdate(@Param("postId") postId: Long): CommunityPost?
 
     // 영속성 컨텍스트의 엔티티가 아닌 DB 의 현재 값(방금 원자적으로 바꾼 값 포함)을 읽는다
     @Query("select p.likeCount from CommunityPost p where p.id = :postId")
