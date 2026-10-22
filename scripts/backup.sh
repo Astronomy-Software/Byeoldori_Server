@@ -7,7 +7,7 @@
 #
 # 설정(선택): ~/.byeoldori-backup.env 에 아래 값을 두면 읽는다.
 #   BACKUP_ROOT=~/byeoldori-backups   로컬 보관 위치
-#   BACKUP_KEEP_DAYS=7                로컬 보관 일수(지난 백업 폴더는 성공한 실행 뒤 자동 삭제)
+#   BACKUP_KEEP_DAYS=7                로컬 보관 일수(지난 백업 폴더는 로컬 백업이 끝난 실행 뒤 자동 삭제)
 #   BACKUP_MAX_DISK_PCT=90            디스크 사용률이 이 값 이상이면 백업하지 않고 실패 알림
 #   BACKUP_OCI_BUCKET=                OCI Object Storage 버킷 이름. 지정하면 oci CLI 로 VM 밖에 올린다.
 #                                     (로컬 백업은 같은 부트볼륨이라 VM 자체를 잃으면 함께 사라진다)
@@ -41,12 +41,18 @@ notify_fail() {
 }
 
 STEP="시작"
+LOCAL_DONE=0   # 체크섬까지 끝난 로컬 백업이 있으면 1. 이후 단계(OCI 업로드 등)가 실패해도 지우지 않는다.
 on_exit() {
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     log "실패(rc=$rc, 단계: $STEP)"
-    rm -rf "$DEST"   # 반쪽짜리 백업은 남기지 않는다
-    notify_fail "단계: $STEP, rc=$rc"
+    if [ "$LOCAL_DONE" = "1" ]; then
+      log "로컬 백업은 유지: $DEST"
+      notify_fail "단계: $STEP, rc=$rc. 로컬 백업은 남아 있음($DEST)"
+    else
+      rm -rf "$DEST"   # 반쪽짜리 백업은 남기지 않는다
+      notify_fail "단계: $STEP, rc=$rc"
+    fi
   fi
 }
 trap on_exit EXIT
@@ -96,17 +102,34 @@ mv "$DEST/uploads.tar.gz.part" "$DEST/uploads.tar.gz"
 
 STEP="체크섬"
 (cd "$DEST" && sha256sum mysql-byeoldori.sql.gz mongo.archive.gz uploads.tar.gz > SHA256SUMS)
+LOCAL_DONE=1
 log "로컬 백업 완료: $(du -sh "$DEST" | cut -f1)"
 
+# 업로드가 실패해도(키 만료·네트워크·CLI 없음) 로컬 백업과 오래된 백업 정리는 그대로 진행하고, 마지막에 실패로 끝내 알린다.
+# (여기서 바로 종료하면 정리가 매일 건너뛰어져 디스크가 차고, 결국 디스크 확인 단계에서 백업이 멈춘다)
+upload_oci() {
+  command -v oci >/dev/null || { log "oci CLI 를 찾을 수 없음"; return 1; }
+  local f
+  for f in mysql-byeoldori.sql.gz mongo.archive.gz uploads.tar.gz SHA256SUMS; do
+    oci os object put --bucket-name "$OCI_BUCKET" --file "$DEST/$f" --name "byeoldori/$STAMP/$f" --force >/dev/null || return 1
+  done
+}
+OCI_FAILED=0
 if [ -n "$OCI_BUCKET" ]; then
   STEP="OCI Object Storage 업로드"
-  command -v oci >/dev/null
-  for f in mysql-byeoldori.sql.gz mongo.archive.gz uploads.tar.gz SHA256SUMS; do
-    oci os object put --bucket-name "$OCI_BUCKET" --file "$DEST/$f" --name "byeoldori/$STAMP/$f" --force >/dev/null
-  done
-  log "OCI 업로드 완료: $OCI_BUCKET/byeoldori/$STAMP/"
+  if upload_oci; then
+    log "OCI 업로드 완료: $OCI_BUCKET/byeoldori/$STAMP/"
+  else
+    OCI_FAILED=1
+    log "OCI 업로드 실패 — 로컬 백업은 유지"
+  fi
 fi
 
 STEP="오래된 로컬 백업 정리"
 find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20[0-9][0-9][0-1][0-9][0-3][0-9]-[0-2][0-9][0-5][0-9][0-5][0-9]' -mtime +"$KEEP_DAYS" -exec rm -rf {} +
+
+if [ "$OCI_FAILED" = "1" ]; then
+  STEP="OCI Object Storage 업로드"
+  exit 1
+fi
 log "끝"
