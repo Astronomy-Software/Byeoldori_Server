@@ -17,6 +17,9 @@ import com.project.byeoldori.education.program.repository.EducationProgramReposi
 import com.project.byeoldori.education.program.repository.QuizAttemptRepository
 import com.project.byeoldori.community.post.repository.EducationPostRepository
 import com.project.byeoldori.user.entity.User
+import com.project.byeoldori.user.repository.UserRepository
+import com.project.byeoldori.user.utils.DeletedAccount
+import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
@@ -30,7 +33,8 @@ class EducationProgramService(
     private val systemConfigService: SystemConfigService,
     private val mongoTemplate: MongoTemplate,
     private val quizAttemptRepo: QuizAttemptRepository,
-    private val educationPostRepo: EducationPostRepository
+    private val educationPostRepo: EducationPostRepository,
+    private val userRepository: UserRepository
 ) {
     companion object {
         private const val MAX_STEPS_BYTES = 512 * 1024 // 512KB
@@ -40,6 +44,23 @@ class EducationProgramService(
 
     private fun findOrThrow(id: String): EducationProgram =
         repo.findById(id).orElseThrow { NotFoundException(ErrorCode.EDU_PROGRAM_NOT_FOUND) }
+
+    /**
+     * 작성자 표시 이름은 응답 시점의 users 에서 가져온다.
+     * 저장된 authorName 은 생성 시점 닉네임이라, 탈퇴하거나 닉네임을 바꿔도 공개 목록에 옛 닉네임이 계속 노출됐다.
+     * 탈퇴(또는 없는) 계정은 게시글처럼 "탈퇴한 사용자"로 보여준다.
+     */
+    private fun displayName(author: User?): String? =
+        if (author == null || author.deletedAt != null) DeletedAccount.ANONYMOUS_NAME else author.nickname
+
+    private fun detail(p: EducationProgram): ProgramDetailResponse =
+        ProgramDetailResponse.from(p, displayName(userRepository.findById(p.authorId).orElse(null)))
+
+    private fun summaries(page: Page<EducationProgram>): PageResponse<ProgramSummaryResponse> {
+        val authors = if (page.content.isEmpty()) emptyMap()
+        else userRepository.findAllById(page.content.map { it.authorId }.toSet()).associateBy { it.id }
+        return page.map { ProgramSummaryResponse.from(it, displayName(authors[it.authorId])) }.toPageResponse()
+    }
 
     /**
      * steps 를 org.bson.Document 로 변환하며 전체 직렬화 크기를 제한한다.
@@ -69,7 +90,7 @@ class EducationProgramService(
             status = ProgramStatus.DRAFT,
             steps = toSteps(req.steps)
         )
-        return ProgramDetailResponse.from(repo.save(program))
+        return ProgramDetailResponse.from(repo.save(program), displayName(user))
     }
 
     fun update(id: String, req: UpdateProgramRequest, user: User): ProgramDetailResponse {
@@ -92,7 +113,7 @@ class EducationProgramService(
             p.rejectReason = null
         }
 
-        return ProgramDetailResponse.from(repo.save(p))
+        return detail(repo.save(p))
     }
 
     /** DRAFT → PREVIEW (작성자 본인) */
@@ -104,7 +125,7 @@ class EducationProgramService(
         }
         p.status = ProgramStatus.PREVIEW
         p.rejectReason = null
-        return ProgramDetailResponse.from(repo.save(p))
+        return detail(repo.save(p))
     }
 
     /**
@@ -127,7 +148,7 @@ class EducationProgramService(
 
         p.status = ProgramStatus.PUBLISHED
         p.rejectReason = null
-        return ProgramDetailResponse.from(repo.save(p))
+        return detail(repo.save(p))
     }
 
     /** PREVIEW → DRAFT (ADMIN 반려) */
@@ -139,27 +160,21 @@ class EducationProgramService(
         }
         p.status = ProgramStatus.DRAFT
         p.rejectReason = reason?.trim()?.takeIf { it.isNotEmpty() }
-        return ProgramDetailResponse.from(repo.save(p))
+        return detail(repo.save(p))
     }
 
     /** PUBLISHED 전체 공개 목록 */
     fun listPublished(pageable: Pageable): PageResponse<ProgramSummaryResponse> =
-        repo.findByStatus(ProgramStatus.PUBLISHED, pageable)
-            .map { ProgramSummaryResponse.from(it) }
-            .toPageResponse()
+        summaries(repo.findSummariesByStatus(ProgramStatus.PUBLISHED, pageable))
 
     /** 작성자 본인의 전체 상태 목록 */
     fun listMine(user: User, pageable: Pageable): PageResponse<ProgramSummaryResponse> =
-        repo.findByAuthorId(user.id, pageable)
-            .map { ProgramSummaryResponse.from(it) }
-            .toPageResponse()
+        summaries(repo.findSummariesByAuthorId(user.id, pageable))
 
     /** ADMIN 검수 큐(PREVIEW) 목록 */
     fun listPending(user: User, pageable: Pageable): PageResponse<ProgramSummaryResponse> {
         if (!isAdmin(user)) throw ForbiddenException("관리자만 검수 큐를 조회할 수 있습니다.")
-        return repo.findByStatus(ProgramStatus.PREVIEW, pageable)
-            .map { ProgramSummaryResponse.from(it) }
-            .toPageResponse()
+        return summaries(repo.findSummariesByStatus(ProgramStatus.PREVIEW, pageable))
     }
 
     /** PUBLISHED 는 비로그인 포함 누구나. DRAFT/PREVIEW 는 작성자 또는 관리자만. */
@@ -169,7 +184,7 @@ class EducationProgramService(
             val allowed = user != null && (p.authorId == user.id || isAdmin(user))
             if (!allowed) throw ForbiddenException("해당 프로그램을 조회할 권한이 없습니다.")
         }
-        return ProgramDetailResponse.from(p)
+        return detail(p)
     }
 
     fun delete(id: String, user: User) {
