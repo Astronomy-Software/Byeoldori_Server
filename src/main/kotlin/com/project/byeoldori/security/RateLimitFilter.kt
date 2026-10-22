@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
@@ -46,10 +48,10 @@ class RateLimitFilter(
         val ip = resolveClientIp(request)
         val key = "rate:${request.requestURI}:$ip"
 
-        val count = redisTemplate.opsForValue().increment(key) ?: 1L
-        if (count == 1L) {
-            redisTemplate.expire(key, rule.window)
-        }
+        // INCR 와 EXPIRE 를 한 번의 Lua 스크립트로 원자 실행한다. 따로 호출하면 INCR 만 성공하고 EXPIRE 가
+        // 실패(일시 오류·종료)했을 때 TTL 없는 키가 남아 그 IP(웹은 Worker IP 공유)가 영구히 429 를 받았다.
+        // TTL 이 없으면(-1) 매번 다시 걸어, 예전에 남은 TTL 없는 키도 스스로 복구된다.
+        val count = redisTemplate.execute(INCR_WITH_TTL, listOf(key), rule.window.seconds.toString()) ?: 1L
 
         if (count > rule.limit) {
             log.warn("Rate limit 초과 - IP: $ip, URI: ${request.requestURI} ($count/${rule.limit})")
@@ -82,6 +84,17 @@ class RateLimitFilter(
         IPV4_REGEX.matches(ip) || IPV6_REGEX.matches(ip)
 
     companion object {
+        internal val INCR_WITH_TTL: RedisScript<Long> = DefaultRedisScript(
+            """
+            local c = redis.call('INCR', KEYS[1])
+            if redis.call('TTL', KEYS[1]) < 0 then
+                redis.call('EXPIRE', KEYS[1], ARGV[1])
+            end
+            return c
+            """.trimIndent(),
+            Long::class.javaObjectType
+        )
+
         // 형식 검증용(엄밀한 범위 검증이 아닌 스푸핑성 임의 문자열 차단 목적)
         private val IPV4_REGEX = Regex("^(\\d{1,3})(\\.\\d{1,3}){3}\$")
         private val IPV6_REGEX = Regex("^[0-9A-Fa-f:]+\$")

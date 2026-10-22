@@ -118,7 +118,12 @@ class MidCombinedForecastService(
     @Cacheable("midForecast", key = "#siRegId")
     @Transactional(readOnly = true)
     fun findBySiRegId(siRegId: String): List<MidCombinedForecastDTO> {
-        return combinedForecastRepository.findBySiRegId(siRegId).map { toDto(it) }
+        // 수집은 12시간마다, 정리는 24시간 지난 행만 하므로 06시·18시 발표분이 함께 남는다.
+        // 같은 tmEf 가 옛 발표와 새 발표로 두 번 나가지 않도록 tmEf 별로 최신 발표 하나만 남기고 tmEf 순으로 돌려준다.
+        // (최신 발표에 없는 날짜는 직전 발표 값을 그대로 쓴다)
+        return combinedForecastRepository.findBySiRegIdOrderByTmEfAscTmFcDesc(siRegId)
+            .distinctBy { it.tmEf }
+            .map { toDto(it) }
     }
 
     private fun toDto(forecast: MidCombinedForecast) = MidCombinedForecastDTO(
