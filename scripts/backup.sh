@@ -122,8 +122,19 @@ gzip -dc "$DEST/mysql-byeoldori.sql.gz.part" | tail -n 1 | grep -q "Dump complet
 mv "$DEST/mysql-byeoldori.sql.gz.part" "$DEST/mysql-byeoldori.sql.gz"
 
 STEP="MongoDB 덤프"
-docker exec mongodb sh -c 'exec mongodump --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --archive --gzip' \
-  > "$DEST/mongo.archive.gz.part"
+# 비밀번호를 --password 로 넘기면 mongodump 의 명령줄에 펼쳐져 덤프 동안 호스트 ps·/proc/<pid>/cmdline 에 보인다.
+# 컨테이너 안에서 소유자 전용 임시 설정 파일(--config)에 적어 넘기고 끝나면 지운다. printf 는 셸 내장이라 프로세스 목록에 나오지 않는다.
+# YAML 작은따옴표 문자열이므로 비밀번호 안의 ' 는 '' 로 바꾼다.
+MONGO_DUMP_SCRIPT=$(cat <<'EOF'
+set -e
+umask 077
+cfg=$(mktemp)
+trap 'rm -f "$cfg"' EXIT
+printf "password: '%s'\n" "$(printf '%s' "$MONGO_INITDB_ROOT_PASSWORD" | sed "s/'/''/g")" > "$cfg"
+mongodump --quiet --config="$cfg" --username "$MONGO_INITDB_ROOT_USERNAME" --authenticationDatabase admin --archive --gzip
+EOF
+)
+docker exec mongodb sh -c "$MONGO_DUMP_SCRIPT" > "$DEST/mongo.archive.gz.part"
 [ -s "$DEST/mongo.archive.gz.part" ]
 mv "$DEST/mongo.archive.gz.part" "$DEST/mongo.archive.gz"
 
