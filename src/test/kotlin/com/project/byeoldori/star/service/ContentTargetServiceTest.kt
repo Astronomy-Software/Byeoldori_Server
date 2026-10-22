@@ -68,4 +68,10 @@ class ContentTargetServiceTest {
         verify(repo).deleteAllByContent(ContentType.REVIEW, 3L)
         verify(repo, never()).saveAll(anyIterable<ContentTarget>())
     }
+
+    @Test
+    fun `대소문자·악센트만 다른 라벨은 DB 정렬(ai_ci)과 같게 중복으로 보고 먼저 나온 표기를 남긴다`() {
+        service.upsertTargets(ContentType.EDUCATION, 1L, listOf("Moon", "moon", "MOON", "Vega", "Véga", "달", "M31"))
+        assertThat(savedLabels()).containsExactly("Moon", "Vega", "달", "M31")
+    }
 }

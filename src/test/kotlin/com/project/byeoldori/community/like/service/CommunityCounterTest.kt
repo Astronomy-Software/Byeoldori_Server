@@ -14,14 +14,20 @@ import com.project.byeoldori.user.entity.User
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.ValueOperations
 import org.springframework.test.context.ActiveProfiles
+import java.time.Duration
 import java.time.LocalDateTime
 
 /**
@@ -40,7 +46,17 @@ class CommunityCounterTest @Autowired constructor(
     private val commentLikeRepo: CommentLikeRepository,
 ) {
     private val notificationService = mock(NotificationService::class.java)
-    private val likeService = LikeService(likeRepo, commentRepo, postRepo, commentLikeRepo, notificationService)
+
+    // Redis SET NX 를 메모리 집합으로 흉내 낸다
+    private val notifyKeys = mutableSetOf<String>()
+    @Suppress("UNCHECKED_CAST")
+    private val redis = mock(StringRedisTemplate::class.java).also { t ->
+        val ops = mock(ValueOperations::class.java) as ValueOperations<String, String>
+        `when`(ops.setIfAbsent(anyString(), anyString(), any(Duration::class.java)))
+            .thenAnswer { notifyKeys.add(it.arguments[0] as String) }
+        `when`(t.opsForValue()).thenReturn(ops)
+    }
+    private val likeService = LikeService(likeRepo, commentRepo, postRepo, commentLikeRepo, notificationService, redis)
     private val commentService = CommentService(postRepo, commentRepo, commentLikeRepo, notificationService)
 
     private fun user(n: Int) = em.persist(
@@ -179,5 +195,37 @@ class CommunityCounterTest @Autowired constructor(
         assertThatThrownBy { likeService.toggleAndCount(-1, u) }.isInstanceOf(NotFoundException::class.java)
         assertThatThrownBy { likeService.toggleCommentLike(p.id!!, -1, u) }.isInstanceOf(NotFoundException::class.java)
         assertThatThrownBy { commentService.write(-1, u, "댓글") }.isInstanceOf(NotFoundException::class.java)
+    }
+
+    @Test
+    fun `댓글 좋아요를 취소했다 다시 눌러도 알림은 한 번만 보낸다`() {
+        val author = user(11)
+        val liker = user(12)
+        val p = post(author)
+        val c = em.persist(Comment(post = p, author = author, content = "댓글"))
+        em.flush()
+
+        repeat(3) {
+            assertThat(likeService.toggleCommentLike(p.id!!, c.id!!, liker).liked).isTrue()
+            assertThat(likeService.toggleCommentLike(p.id!!, c.id!!, liker).liked).isFalse()
+        }
+
+        verify(notificationService, times(1)).notifyCommentLiked(author.id, "카운터12")
+        assertThat(notifyKeys).containsExactly(LikeService.commentLikeNotifyKey(c.id!!, liker.id))
+    }
+
+    @Test
+    fun `알림 중복 확인용 Redis 가 실패해도 좋아요는 되고 알림은 보낸다`() {
+        val broken = mock(StringRedisTemplate::class.java)
+        `when`(broken.opsForValue()).thenThrow(RuntimeException("redis down"))
+        val service = LikeService(likeRepo, commentRepo, postRepo, commentLikeRepo, notificationService, broken)
+        val author = user(13)
+        val liker = user(14)
+        val p = post(author)
+        val c = em.persist(Comment(post = p, author = author, content = "댓글"))
+        em.flush()
+
+        assertThat(service.toggleCommentLike(p.id!!, c.id!!, liker).liked).isTrue()
+        verify(notificationService, times(1)).notifyCommentLiked(author.id, "카운터14")
     }
 }

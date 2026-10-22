@@ -210,6 +210,20 @@ class EducationProgramServiceTest {
         verify(repo, never()).save(any(EducationProgram::class.java))
     }
 
+    @Test
+    fun `steps 에 Long 범위를 넘는 정수가 있으면 500 이 아니라 400`() {
+        val big = listOf(mapOf<String, Any?>("id" to "t1", "type" to "show-text", "n" to java.math.BigInteger("99999999999999999999")))
+        assertThatThrownBy { service.create(author, CreateProgramRequest(title = "t", steps = big)) }
+            .isInstanceOf(InvalidInputException::class.java)
+        verify(repo, never()).save(any(EducationProgram::class.java))
+    }
+
+    @Test
+    fun `steps 의 type 이 숫자여도 500 이 아니라 그대로 저장한다`() {
+        val steps = listOf(mapOf<String, Any?>("id" to "t1", "type" to 1))
+        assertThat(service.create(author, CreateProgramRequest(title = "t", steps = steps)).status).isEqualTo(ProgramStatus.DRAFT)
+    }
+
     // ── targets: 라벨 길이 상한·정리 ──
 
     @Test
@@ -234,6 +248,10 @@ class EducationProgramServiceTest {
         val p = program(ProgramStatus.DRAFT)
         service.update("prog-1", UpdateProgramRequest(targets = listOf(" 시리우스 ", "시리우스")), author)
         assertThat(p.targets).containsExactly("시리우스")
+
+        // 대상 천체 중복은 대소문자·악센트를 무시한다(게시글 targets 와 같은 규칙)
+        service.update("prog-1", UpdateProgramRequest(targets = listOf("Moon", "moon", "Vega", "Véga")), author)
+        assertThat(p.targets).containsExactly("Moon", "Vega")
     }
 
     @Test
