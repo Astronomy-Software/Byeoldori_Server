@@ -70,6 +70,22 @@ class OpsConfigFilesTest {
     }
 
     @Test
+    fun `구 색 정지는 앱 graceful shutdown(30초)보다 길게 기다린다`() {
+        val app = yaml("docker-compose.oci.yml").obj("services").obj("app")
+        assertThat(app["stop_grace_period"]).isEqualTo("35s")
+
+        val props = Properties().apply {
+            File("src/main/resources/application.properties").inputStream().use { load(it) }
+        }
+        assertThat(props.getProperty("server.shutdown")).isEqualTo("graceful")
+        assertThat(props.getProperty("spring.lifecycle.timeout-per-shutdown-phase")).isEqualTo("30s")
+
+        val script = File("deploy-bluegreen.sh").readText()
+        assertThat(script).contains("docker stop -t 35 app-\$OLD")
+        assertThat(script).doesNotContain("docker stop app-\$OLD")
+    }
+
+    @Test
     fun `모니터링 이미지는 latest 가 아니라 운영 검증 버전으로 고정한다`() {
         val services = yaml("docker-compose.monitoring.yml").obj("services")
         val images = services.keys.associateWith { services.obj(it)["image"] as String }
