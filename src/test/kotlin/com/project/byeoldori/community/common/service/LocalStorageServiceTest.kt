@@ -1,6 +1,9 @@
 package com.project.byeoldori.community.common.service
 
+import com.project.byeoldori.common.exception.InvalidInputException
+import com.project.byeoldori.community.common.util.ImageHeaderReader
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.mock.web.MockMultipartFile
@@ -8,6 +11,8 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.ByteBuffer
+import java.util.zip.CRC32
 import javax.imageio.ImageIO
 
 /**
@@ -88,5 +93,26 @@ class LocalStorageServiceTest {
         val storage = service()
         assertThat(storage.thumbnailUrlOf("$base/files/2026/01/01/123e4567-e89b-12d3-a456-426614174000.png")).isNull()
         assertThat(storage.thumbnailUrlOf("https://example.com/a.png")).isNull()
+    }
+
+    /** 작은 PNG 의 IHDR 가로·세로만 바꿔 "헤더상 거대한" 이미지를 만든다(실제 픽셀 데이터는 그대로 작다) */
+    private fun pngWithHeaderSize(width: Int, height: Int): MockMultipartFile {
+        val bytes = png().bytes.copyOf()
+        // 시그니처(8) + 길이(4) + "IHDR"(4) 다음이 width(4), height(4)
+        ByteBuffer.wrap(bytes, 16, 8).putInt(width).putInt(height)
+        val crc = CRC32().apply { update(bytes, 12, 4 + 13) }.value.toInt()
+        ByteBuffer.wrap(bytes, 12 + 4 + 13, 4).putInt(crc)
+        return MockMultipartFile("file", "bomb.png", "image/png", bytes)
+    }
+
+    @Test
+    fun `헤더 크기만 읽고, 픽셀 수 상한을 넘는 이미지는 디코딩 전에 거부한다`() {
+        assertThat(ImageHeaderReader.readSize(png())).isEqualTo(800 to 600)
+
+        val bomb = pngWithHeaderSize(20_000, 20_000)
+        assertThat(ImageHeaderReader.readSize(bomb)).isEqualTo(20_000 to 20_000)
+        assertThatThrownBy { service().storeImage(bomb) }.isInstanceOf(InvalidInputException::class.java)
+        // 거부된 업로드는 디스크에 아무것도 남기지 않는다
+        assertThat(Files.list(dir).use { it.count() }).isZero()
     }
 }
