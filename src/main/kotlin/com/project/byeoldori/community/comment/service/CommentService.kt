@@ -83,7 +83,9 @@ class CommentService(
 
     @Transactional
     fun delete(postId: Long, commentId: Long, requester: User) {
-        val c = commentRepo.findById(commentId).orElseThrow { NotFoundException(ErrorCode.COMMENT_NOT_FOUND) }
+        // 잠금 없이 읽으면 같은 댓글 DELETE 가 겹칠 때 둘 다 deleted=false 를 보고 comment_count 를 두 번 줄인다.
+        // 댓글 행을 X 락으로 읽어 두 번째 요청은 앞 요청 커밋 뒤의 deleted=true 를 보게 한다.
+        val c = commentRepo.findByIdForUpdate(commentId) ?: throw NotFoundException(ErrorCode.COMMENT_NOT_FOUND)
         validateCommentBelongsToPost(c, postId)
         if (c.author.id != requester.id) throw ForbiddenException("본인 댓글만 삭제할 수 있습니다.")
         if (!c.deleted) {

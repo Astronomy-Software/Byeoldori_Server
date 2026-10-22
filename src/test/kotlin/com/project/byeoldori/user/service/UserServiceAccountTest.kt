@@ -22,6 +22,7 @@ import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.web.reactive.function.client.WebClient
 import java.time.LocalDateTime
 import java.util.Optional
 
@@ -51,6 +52,7 @@ class UserServiceAccountTest {
         emailService = mock(EmailService::class.java),
         cachedUserLookupService = cachedUserLookupService,
         passwordResetTokenRepo = mock(PasswordResetTokenRepository::class.java),
+        oauthWebClient = mock(WebClient::class.java),
     )
 
     private fun user(id: Long = 7, email: String = "star@gmail.com", nickname: String? = "별지기") =

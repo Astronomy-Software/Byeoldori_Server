@@ -55,6 +55,27 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `글자를 퍼센트 인코딩하거나 끝 슬래시·대소문자를 바꿔도 같은 규칙과 같은 카운터 키로 센다`() {
+        var count = 0L
+        `when`(redis.execute(eq(RateLimitFilter.INCR_WITH_TTL), eq(listOf("rate:/auth/login:5.6.7.8")), eq("60")))
+            .thenAnswer { ++count }
+
+        val variants = listOf("/auth/login", "/auth/%6Cogin", "/auth/%6c%6f%67%69%6e", "/auth/login/", "/auth/login;x=1", "/Auth/Login")
+        repeat(10) { i ->
+            val req = MockHttpServletRequest("POST", variants[i % variants.size]).apply { remoteAddr = "5.6.7.8" }
+            val res = MockHttpServletResponse()
+            filter.doFilter(req, res, MockFilterChain())
+            assertThat(res.status).isEqualTo(200)
+        }
+
+        val req = MockHttpServletRequest("POST", "/auth/%6Cogin").apply { remoteAddr = "5.6.7.8" }
+        val res = MockHttpServletResponse()
+        filter.doFilter(req, res, MockFilterChain())
+        assertThat(res.status).isEqualTo(429)
+        assertThat(count).isEqualTo(11)
+    }
+
+    @Test
     fun `규칙이 없는 경로는 Redis 를 건드리지 않는다`() {
         val req = MockHttpServletRequest("GET", "/posts")
         val res = MockHttpServletResponse()
