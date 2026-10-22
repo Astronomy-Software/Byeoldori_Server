@@ -10,7 +10,8 @@ import java.time.LocalDateTime
 import java.util.*
 
 interface ObservationEventRepository : JpaRepository<ObservationEvent, Long> {
-    fun findAllByUserIdAndStartAtBetweenOrderByStartAtAsc(
+    // [from, to) 반열린 구간. Between 은 양 끝을 포함해 다음 날 00:00 일정이 전날 목록에도 나왔다.
+    fun findAllByUserIdAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(
         userId: Long,
         from: LocalDateTime,
         to: LocalDateTime
@@ -18,7 +19,7 @@ interface ObservationEventRepository : JpaRepository<ObservationEvent, Long> {
 
     fun findByIdAndUserId(id: Long, userId: Long): Optional<ObservationEvent>
 
-    fun findStartStatusByUserIdAndStartAtBetween(
+    fun findStartStatusByUserIdAndStartAtGreaterThanEqualAndStartAtLessThan(
         userId: Long,
         from: LocalDateTime,
         to: LocalDateTime
