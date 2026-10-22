@@ -101,6 +101,16 @@ class OpsConfigFilesTest {
     }
 
     @Test
+    fun `블루그린 스크립트는 예보 캐시 적재(warm 그룹)를 상한을 두고 기다리고 그 경로는 인증 없이 열려 있다`() {
+        val script = File("deploy-bluegreen.sh").readText()
+        assertThat(script).contains("127.0.0.1:\$PORT/actuator/health/warm")
+        assertThat(script).contains("seq 1 \"\${BG_WARM_TRIES:-60}\"")
+        // 경로가 인증 뒤에 있으면 매 배포가 401 로 상한(5분)까지 기다린 뒤에야 전환된다
+        val security = File("src/main/kotlin/com/project/byeoldori/config/SecurityConfig.kt").readText()
+        assertThat(security).contains("\"/actuator/health/warm\",")
+    }
+
+    @Test
     fun `구 색 정지는 앱 graceful shutdown(30초)보다 길게 기다린다`() {
         val app = yaml("docker-compose.oci.yml").obj("services").obj("app")
         assertThat(app["stop_grace_period"]).isEqualTo("35s")

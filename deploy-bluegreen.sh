@@ -57,6 +57,19 @@ for i in $(seq 1 72); do
   sleep 5
 done
 [ "${OK:-}" = "1" ] || { echo "[BG] health FAIL — 전환 안 함(기존 유지)"; exit 1; }
+# 초단기·단기 예보는 컨테이너 메모리에만 있어 새 색은 기동 직후 비어 있다. 바로 전환하고 구 색을 내리면
+# 첫 적재(기상청 호출 수백 번)가 끝날 때까지 예보가 빈 채로 서비스된다. warm 그룹이 UP(적재 완료)이
+# 될 때까지 기다리되, 기상청 장애로 적재가 안 끝나도 배포가 막히지 않게 상한(기본 5분=60×5s)이 지나면 경고만 남기고 전환한다.
+# 서비스 중인 색이 없으면(첫 배포) 기다릴 이유가 없다.
+if [ "$OLD" != "none" ]; then
+  WARM=0
+  for i in $(seq 1 "${BG_WARM_TRIES:-60}"); do
+    if curl -sf http://127.0.0.1:$PORT/actuator/health/warm | grep -q "\"status\":\"UP\""; then WARM=1; break; fi
+    sleep 5
+  done
+  [ "$WARM" = "1" ] && echo "[BG] 예보 캐시 적재 확인" \
+    || echo "[BG] 경고: 예보 캐시 적재를 상한 안에 확인 못 함 — 그대로 전환(적재되면 자동 복구). 원인: docker logs app-$NEW"
+fi
 # 여기부터는 nginx 설정을 건드리므로 새 색을 자동으로 내리지 않는다(내리면 upstream 이 죽은 포트를 가리킬 수 있음).
 sudo rm -f "$UPSTREAM_CONF.bak"
 [ -f "$UPSTREAM_CONF" ] && sudo cp -p "$UPSTREAM_CONF" "$UPSTREAM_CONF.bak"
