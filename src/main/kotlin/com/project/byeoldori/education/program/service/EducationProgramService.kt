@@ -16,6 +16,8 @@ import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.repository.EducationProgramRepository
 import com.project.byeoldori.education.program.repository.QuizAttemptRepository
 import com.project.byeoldori.community.post.repository.EducationPostRepository
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_COUNT
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_LENGTH
 import com.project.byeoldori.user.entity.User
 import com.project.byeoldori.user.repository.UserRepository
 import com.project.byeoldori.user.utils.DeletedAccount
@@ -86,12 +88,28 @@ class EducationProgramService(
         return docs
     }
 
+    /**
+     * 대상 천체 라벨을 정리한다(앞뒤 공백 제거·빈 값/중복 제거) — 게시글 targets 와 같은 규칙.
+     * @Size(max=30) 은 개수만 막아, 라벨 하나에 수 MB 문자열을 넣으면 512KB steps 상한을 우회해
+     * 문서를 키울 수 있었다(목록·검수 큐는 steps 만 빼고 읽으므로 매번 통째로 읽힌다).
+     */
+    private fun normalizeTargets(raw: List<String>): List<String> {
+        val uniq = LinkedHashSet(raw.map { it.trim() }.filter { it.isNotEmpty() })
+        if (uniq.size > CONTENT_TARGET_MAX_COUNT) {
+            throw InvalidInputException("대상 천체는 최대 ${CONTENT_TARGET_MAX_COUNT}개입니다.")
+        }
+        if (uniq.any { it.length > CONTENT_TARGET_MAX_LENGTH }) {
+            throw InvalidInputException("대상 천체 이름은 ${CONTENT_TARGET_MAX_LENGTH}자를 넘을 수 없습니다.")
+        }
+        return uniq.toList()
+    }
+
     fun create(user: User, req: CreateProgramRequest): ProgramDetailResponse {
         val program = EducationProgram(
             title = req.title,
             subtitle = req.subtitle,
             difficulty = req.difficulty,
-            targets = req.targets ?: emptyList(),
+            targets = normalizeTargets(req.targets ?: emptyList()),
             authorId = user.id,
             authorName = user.nickname,
             status = ProgramStatus.DRAFT,
@@ -111,7 +129,7 @@ class EducationProgramService(
         req.title?.let { p.title = it }
         req.subtitle?.let { p.subtitle = it }
         req.difficulty?.let { p.difficulty = it }
-        req.targets?.let { p.targets = it }
+        req.targets?.let { p.targets = normalizeTargets(it) }
         req.steps?.let { p.steps = toSteps(it) }
 
         // 검수 대기 중 내용을 고치면 관리자가 본 버전과 발행될 버전이 달라진다.

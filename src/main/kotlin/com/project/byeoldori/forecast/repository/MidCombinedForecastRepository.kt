@@ -11,7 +11,8 @@ interface MidCombinedForecastRepository : JpaRepository<MidCombinedForecast, Lon
 
     fun existsByTmFcAndTmEfAndSiRegId(tmFc: String, tmEf: String, siRegId: String): Boolean
     fun findByTmFcAndTmEfAndSiRegId(tmFc: String, tmEf: String, siRegId: String): MidCombinedForecast?
-    fun findBySiRegId(siRegId: String): List<MidCombinedForecast>
+    // 같은 tmEf 는 최신 발표(tmFc 내림차순)가 먼저 오도록 정렬해 읽는다 — 서비스에서 tmEf 별 첫 행만 남긴다
+    fun findBySiRegIdOrderByTmEfAscTmFcDesc(siRegId: String): List<MidCombinedForecast>
 
     @Transactional
     fun deleteByCreatedAtBefore(cutoffTime: LocalDateTime): Long
