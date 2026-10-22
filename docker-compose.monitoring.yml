@@ -75,7 +75,10 @@ services:
     environment:
       REFRESH_SECONDS: "60"
       SETTLE_SECONDS: "180" # 애널리틱스 수집 지연 보정
-      BACKFILL_MINUTES: "60" # 기동 시 과거 60분 1회 백필 → 즉시 데이터 표시
+      # 백필 안 함. 재시작마다 이미 센 60분을 다시 더해 rate/increase[10m] 급등·cf-edge-5xx 오탐이 났다(counter 리셋은 Prometheus 가 처리).
+      BACKFILL_MINUTES: "0"
+      # 이 존이 zone 목록에 없으면 up=0 → cf-exporter-down 알림(cf-edge-5xx 가 보는 존).
+      WATCH_ZONES: "byeoldori.com"
     volumes:
       - ./monitoring/cf-worker-exporter.py:/app/exporter.py:ro
     command: ["python", "/app/exporter.py"]
