@@ -10,7 +10,9 @@ import com.project.byeoldori.observationsites.service.ObservationSiteService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
 import org.springframework.data.web.PageableDefault
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -32,7 +34,20 @@ class ObservationSiteController(
     @Operation(summary = "모든 관측지 조회", description = "등록된 관측지를 페이지 단위로 반환합니다. (기본 20개, name 정렬)")
     @GetMapping
     fun getAll(@PageableDefault(size = 20, sort = ["name"]) pageable: Pageable): PageResponse<ObservationSiteResponseDto> =
-        siteService.getAllSites(pageable).toPageResponse()
+        siteService.getAllSites(sanitize(pageable)).toPageResponse()
+
+    companion object {
+        private val SORTABLE = setOf("name", "id")
+        private const val MAX_SIZE = 100
+
+        // 없는 속성으로 정렬(?sort=foo)하면 PropertyReferenceException 이 캐치올로 가 500 이었다.
+        // 허용한 정렬 키만 남기고(없으면 name), size 는 다른 목록 API 처럼 상한을 둔다.
+        internal fun sanitize(pageable: Pageable): Pageable {
+            val orders = pageable.sort.filter { it.property in SORTABLE }.toList()
+            val sort = if (orders.isEmpty()) Sort.by("name") else Sort.by(orders)
+            return PageRequest.of(pageable.pageNumber, pageable.pageSize.coerceIn(1, MAX_SIZE), sort)
+        }
+    }
 
     @Operation(summary = "관측지 단건 조회(ID)", description = "하나의 관측지를 조회합니다.")
     @GetMapping("/{id}")

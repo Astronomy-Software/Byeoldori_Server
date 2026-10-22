@@ -21,12 +21,8 @@ class ForeCastService(
     private val lightPollution: LightPollution
 ) {
     fun getForecastDataByLocation(latitude: Double, longitude: Double): ForecastResponseDTO {
-        if (!GeoBounds.isInKorea(latitude, longitude)) {
-            throw OutOfServiceAreaException()
-        }
-
         // 1) 위경도 -> 격자x 좌표 변환
-        val (x, y) = latLonToGrid(latitude, longitude)
+        val (x, y) = toGridInServiceArea(latitude, longitude)
 
         // 1-2) 위경도 -> 좌표로 변환 후 시 지역 코드로 매핑
         val siRegId = RegionMapper.getSiByLatLon(latitude, longitude) ?: "UNKNOWN"
@@ -56,8 +52,7 @@ class ForeCastService(
     }
 
     fun getLiveWeather(latitude: Double, longitude: Double): LiveForecastResponseDTO {
-        if (!GeoBounds.isInKorea(latitude, longitude)) throw OutOfServiceAreaException()
-        val (x, y) = latLonToGrid(latitude, longitude)
+        val (x, y) = toGridInServiceArea(latitude, longitude)
         val lightScore = lightPollution.getLightPollutionScore(latitude, longitude)
         val live = liveGridForecastService.getLiveDataForCell(x, y)
             ?: LiveForecastResponseDTO(null, null, null, null, null, null, null)
@@ -67,6 +62,17 @@ class ForeCastService(
         )
         val score = weatherScoreCalculator.suitabilityForUltra(ultraDto, lightScore)
         return live.copy(suitability = score.total)
+    }
+
+    // GeoBounds 박스 남동쪽 모서리(예: 33.0, 132.0)는 기상청 격자 x 범위(1~149) 밖이라 latLonToGrid 가
+    // IllegalArgumentException 을 던져 500 이 됐다. 격자 밖도 서비스 지역 밖(418)으로 응답한다.
+    private fun toGridInServiceArea(latitude: Double, longitude: Double): Pair<Int, Int> {
+        if (!GeoBounds.isInKorea(latitude, longitude)) throw OutOfServiceAreaException()
+        return try {
+            latLonToGrid(latitude, longitude)
+        } catch (e: IllegalArgumentException) {
+            throw OutOfServiceAreaException()
+        }
     }
 
     fun getWeatherSummary(latitude: Double, longitude: Double): WeatherSummaryDto {

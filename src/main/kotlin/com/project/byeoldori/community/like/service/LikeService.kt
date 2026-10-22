@@ -24,7 +24,8 @@ class LikeService(
 
     @Transactional
     fun toggleAndCount(postId: Long, user: User): LikeToggleResponse {
-        if (!postRepository.existsById(postId)) throw NotFoundException(ErrorCode.POST_NOT_FOUND)
+        // 부모 게시글 행을 먼저 X 락으로 잡아 다른 사용자와 동시에 눌러도 데드락이 나지 않게 한다
+        postRepository.findByIdForUpdate(postId) ?: throw NotFoundException(ErrorCode.POST_NOT_FOUND)
 
         // 같은 사용자의 요청이 동시에 와도(더블클릭) PK 중복 500 이 나지 않도록 INSERT IGNORE·벌크 삭제를 쓰고,
         // 실제로 바뀐 행 수만큼만 카운터를 원자적으로 움직인다(엔티티 필드 대입은 다른 카운터를 덮어쓴다).
@@ -46,8 +47,9 @@ class LikeService(
 
     @Transactional
     fun toggleCommentLike(postId: Long, commentId: Long, user: User): LikeToggleResponse {
-        val comment = commentRepository.findById(commentId)
-            .orElseThrow { NotFoundException(ErrorCode.COMMENT_NOT_FOUND) }
+        // 부모 댓글 행을 먼저 X 락으로 잡는다(게시글 좋아요와 같은 데드락 방지)
+        val comment = commentRepository.findByIdForUpdate(commentId)
+            ?: throw NotFoundException(ErrorCode.COMMENT_NOT_FOUND)
 
         if (comment.deleted) {
             throw InvalidInputException(ErrorCode.CANNOT_LIKE_DELETED_COMMENT.message)

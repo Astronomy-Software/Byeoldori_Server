@@ -1,5 +1,6 @@
 package com.project.byeoldori.community.like.service
 
+import com.project.byeoldori.common.exception.NotFoundException
 import com.project.byeoldori.community.comment.domain.Comment
 import com.project.byeoldori.community.comment.repository.CommentRepository
 import com.project.byeoldori.community.comment.service.CommentService
@@ -11,6 +12,7 @@ import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.notification.service.NotificationService
 import com.project.byeoldori.user.entity.User
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.times
@@ -177,5 +179,22 @@ class CommunityCounterTest @Autowired constructor(
 
         verify(notificationService).notifyNewComment(author.id, "익명 사용자", "안녕하세요")
         verify(notificationService).notifyCommentLiked(author.id, "익명 사용자")
+    }
+
+    @Test
+    fun `부모 행을 먼저 잠그는 조회(FOR UPDATE)로 바꿔도 없는 글·댓글은 404`() {
+        val u = user(10)
+        val p = post(u)
+        val c = em.persist(Comment(post = p, author = u, content = "댓글"))
+        em.flush(); em.clear()
+
+        // 잠금 조회 자체가 실제 SQL(H2 MySQL 모드)에서 동작하는지
+        assertThat(postRepo.findByIdForUpdate(p.id!!)?.id).isEqualTo(p.id)
+        assertThat(commentRepo.findByIdForUpdate(c.id!!)?.id).isEqualTo(c.id)
+        assertThat(postRepo.findByIdForUpdate(-1)).isNull()
+
+        assertThatThrownBy { likeService.toggleAndCount(-1, u) }.isInstanceOf(NotFoundException::class.java)
+        assertThatThrownBy { likeService.toggleCommentLike(p.id!!, -1, u) }.isInstanceOf(NotFoundException::class.java)
+        assertThatThrownBy { commentService.write(-1, u, "댓글") }.isInstanceOf(NotFoundException::class.java)
     }
 }

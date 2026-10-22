@@ -5,9 +5,11 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import jakarta.persistence.LockModeType
 
 interface CommentRepository : JpaRepository<Comment, Long> {
     fun countByPostIdAndDeletedFalse(postId: Long): Long
@@ -20,6 +22,11 @@ interface CommentRepository : JpaRepository<Comment, Long> {
     @Modifying(flushAutomatically = true)
     @Query("update Comment c set c.likeCount = c.likeCount + :delta where c.id = :commentId and c.likeCount + :delta >= 0")
     fun addLikeCount(@Param("commentId") commentId: Long, @Param("delta") delta: Long): Int
+
+    // 댓글 좋아요도 CommunityPostRepository.findByIdForUpdate 와 같은 이유로 부모 댓글 행을 먼저 X 락으로 잡는다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Comment c where c.id = :commentId")
+    fun findByIdForUpdate(@Param("commentId") commentId: Long): Comment?
 
     @Query("select c.likeCount from Comment c where c.id = :commentId")
     fun findLikeCountById(@Param("commentId") commentId: Long): Long?

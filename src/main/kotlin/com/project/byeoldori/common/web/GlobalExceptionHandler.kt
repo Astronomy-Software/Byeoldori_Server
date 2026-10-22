@@ -20,6 +20,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.multipart.MultipartException
+import org.springframework.web.multipart.support.MissingServletRequestPartException
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.NoHandlerFoundException
 import org.springframework.web.servlet.resource.NoResourceFoundException
@@ -49,13 +51,16 @@ class GlobalExceptionHandler {
     fun handleConstraintViolation(e: jakarta.validation.ConstraintViolationException): ResponseEntity<ApiResponse<Unit>> =
         ResponseEntity.badRequest().body(ApiResponse.fail(e.message ?: "요청 값이 올바르지 않습니다."))
 
-    // 400 계열 에러(파라미터/헤더 누락, 타임 불일치, JSON 파싱)
+    // 400 계열 에러(파라미터/헤더/multipart 파트 누락, 타임 불일치, JSON 파싱, 깨진 multipart)
+    // MaxUploadSizeExceededException 은 MultipartException 하위지만 더 구체적인 아래 핸들러(413)가 우선한다.
     @ExceptionHandler(
         MissingServletRequestParameterException::class,
         MissingRequestHeaderException::class,
         MissingRequestValueException::class,
         MethodArgumentTypeMismatchException::class,
-        HttpMessageNotReadableException::class
+        HttpMessageNotReadableException::class,
+        MissingServletRequestPartException::class,
+        MultipartException::class
     )
     fun handleBadRequest(e: Exception, req: HttpServletRequest): ResponseEntity<ApiResponse<Unit>> {
         // 예외 원본 메시지(내부 클래스명/필드 경로 등)는 로깅만 하고 클라이언트에는 고정 메시지 반환

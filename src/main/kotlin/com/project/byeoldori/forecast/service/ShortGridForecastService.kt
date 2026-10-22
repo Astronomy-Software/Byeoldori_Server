@@ -170,7 +170,8 @@ class ShortGridForecastService(
 
         return nearestCellData.map { (tmef, cell) ->
             ShortForecastResponseDTO(
-                tmef = tmef,
+                // 내부 키는 기상청 호출용 10자리(yyyyMMddHH). 응답은 초단기와 같은 12자리(yyyyMMddHHmm)로 맞춘다.
+                tmef = if (tmef.length == 10) "${tmef}00" else tmef,
                 tmp = cell.tmp,
                 tmx = cell.tmx,
                 tmn = cell.tmn,
