@@ -2,6 +2,8 @@
 # 저리소스 구성: 합계 상한 ~1GB, 보존 30일. 앱과 같은 backend 네트워크에서
 # app-blue/app-green의 /actuator/prometheus를 직접 스크레이프한다.
 # 기동: docker compose -f docker-compose.oci.yml -f docker-compose.monitoring.yml up -d prometheus grafana loki alloy
+# 이미지 태그는 운영에서 검증된 버전으로 고정한다(2026-10-20 VM 실행 버전). :latest 는 VM 재구축·수동 pull 때
+# 메이저가 바뀌어 되돌릴 수 없으므로, 업그레이드는 태그를 바꾸는 PR 로만 한다.
 
 # 컨테이너 stdout 로그 로테이션. 기본 json-file 은 무제한이라 loki 자체 로그가
 # 2.7GB까지 쌓였다. 로그 이력은 alloy→loki 로 30일 보존되므로 로컬은 짧게 둔다.
@@ -11,7 +13,7 @@ x-logging: &default-logging
 
 services:
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.13.1
     container_name: prometheus
     restart: always
     logging: *default-logging
@@ -26,7 +28,7 @@ services:
     networks: [backend]
 
   grafana:
-    image: grafana/grafana-oss:latest
+    image: grafana/grafana-oss:13.0.2 # grafana_data(SQLite) 는 새 버전으로 마이그레이션되면 되돌릴 수 없다
     container_name: grafana
     restart: always
     logging: *default-logging
@@ -47,7 +49,7 @@ services:
     networks: [backend]
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.7.3
     container_name: loki
     restart: always
     logging: *default-logging
@@ -80,7 +82,7 @@ services:
     networks: [backend]
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.17.1
     container_name: alloy
     restart: always
     logging: *default-logging
