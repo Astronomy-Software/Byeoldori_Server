@@ -120,6 +120,32 @@ class EducationProgramServiceTest {
         assertThat(service.update("prog-1", UpdateProgramRequest(title = "새 제목"), author).title).isEqualTo("새 제목")
     }
 
+    @Test
+    fun `검수 필수일 때 검수 대기 중 작성자가 고치면 DRAFT 로 돌아가 다시 검수를 받아야 한다`() {
+        moderation(true)
+        program(ProgramStatus.PREVIEW)
+        val res = service.update("prog-1", UpdateProgramRequest(title = "바뀐 제목"), author)
+        assertThat(res.title).isEqualTo("바뀐 제목")
+        assertThat(res.status).isEqualTo(ProgramStatus.DRAFT)
+        // 관리자가 바로 발행하려 해도 검수 요청 전이라 막힌다
+        assertThatThrownBy { service.publish("prog-1", admin) }.isInstanceOf(InvalidInputException::class.java)
+    }
+
+    @Test
+    fun `작성자가 직접 발행할 수 있으면 검수 대기 중 수정해도 PREVIEW 를 유지한다`() {
+        moderation(false)
+        program(ProgramStatus.PREVIEW)
+        assertThat(service.update("prog-1", UpdateProgramRequest(title = "새 제목"), author).status)
+            .isEqualTo(ProgramStatus.PREVIEW)
+
+        // 관리자 본인이 작성자면 검수 필수여도 그대로 발행할 수 있으므로 PREVIEW 유지
+        moderation(true)
+        val adminOwned = EducationProgram(id = "prog-2", title = "관리자 글", authorId = admin.id, status = ProgramStatus.PREVIEW)
+        `when`(repo.findById("prog-2")).thenReturn(Optional.of(adminOwned))
+        assertThat(service.update("prog-2", UpdateProgramRequest(title = "새 제목"), admin).status)
+            .isEqualTo(ProgramStatus.PREVIEW)
+    }
+
     // ── submit / reject ──
 
     @Test
