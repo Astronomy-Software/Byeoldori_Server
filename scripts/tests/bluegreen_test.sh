@@ -139,4 +139,13 @@ check "성공 코드" '[ "$RC" -eq 0 ]'
 check "warm 확인 안 함" '! grep -q "/actuator/health/warm" "$T/curl.log"'
 rm -rf "$T"
 
+echo "[10] 앱 포트는 루프백(127.0.0.1)에만 publish 한다(nginx 를 거치지 않은 외부 직접 접근 차단)"
+setup "" ""
+ROOT="$(cd "$(dirname "$SCRIPT")" && pwd)"
+APP_PORTS=$(grep -hoE '"([0-9.]+:)?808[01]:8080"' "$ROOT/docker-compose.oci.yml" "$ROOT/docker-compose.bluegreen.yml")
+echo "$APP_PORTS" > "$T/out.log"
+check "app·app-blue·app-green 포트 3개 확인" '[ "$(echo "$APP_PORTS" | wc -l | tr -d " ")" = "3" ]'
+check "모두 127.0.0.1 바인딩" '! echo "$APP_PORTS" | grep -vq "^\"127\.0\.0\.1:"'
+rm -rf "$T"
+
 [ "$FAILS" -eq 0 ] && echo "bluegreen_test: 모두 통과" || { echo "bluegreen_test: 실패 $FAILS 건"; exit 1; }
