@@ -17,6 +17,10 @@ interface EducationProgramRepository : MongoRepository<EducationProgram, String>
     @Query(value = "{ 'authorId': ?0 }", fields = "{ 'steps': 0 }")
     fun findSummariesByAuthorId(authorId: Long, pageable: Pageable): Page<EducationProgram>
 
+    // 내 응시 이력은 프로그램 제목만 쓴다 → steps 없이 제목(과 생성자 필수값 authorId)만 읽는다
+    @Query(value = "{ '_id': { '\$in': ?0 } }", fields = "{ 'title': 1, 'authorId': 1 }")
+    fun findTitlesByIdIn(ids: Collection<String>): List<EducationProgram>
+
     fun findByStatusAndTitleContaining(
         status: ProgramStatus,
         title: String,

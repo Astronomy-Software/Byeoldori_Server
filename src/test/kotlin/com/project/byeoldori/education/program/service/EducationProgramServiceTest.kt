@@ -10,6 +10,7 @@ import com.project.byeoldori.education.program.dto.CreateProgramRequest
 import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.repository.EducationProgramRepository
 import com.project.byeoldori.education.program.repository.QuizAttemptRepository
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_LENGTH
 import com.project.byeoldori.user.entity.User
 import com.project.byeoldori.user.repository.UserRepository
 import org.assertj.core.api.Assertions.assertThat
@@ -207,6 +208,32 @@ class EducationProgramServiceTest {
         assertThatThrownBy { service.create(author, CreateProgramRequest(title = "큰 프로그램", steps = huge)) }
             .isInstanceOf(InvalidInputException::class.java)
         verify(repo, never()).save(any(EducationProgram::class.java))
+    }
+
+    // ── targets: 라벨 길이 상한·정리 ──
+
+    @Test
+    fun `대상 천체 라벨이 길이 상한을 넘으면 생성·수정 모두 저장하지 않는다`() {
+        val long = listOf("a".repeat(CONTENT_TARGET_MAX_LENGTH + 1))
+        assertThatThrownBy { service.create(author, CreateProgramRequest(title = "t", targets = long)) }
+            .isInstanceOf(InvalidInputException::class.java)
+
+        program(ProgramStatus.DRAFT)
+        assertThatThrownBy { service.update("prog-1", UpdateProgramRequest(targets = long), author) }
+            .isInstanceOf(InvalidInputException::class.java)
+        verify(repo, never()).save(any(EducationProgram::class.java))
+    }
+
+    @Test
+    fun `대상 천체 라벨은 공백을 지우고 빈 값·중복을 뺀 뒤 저장한다`() {
+        val captured = mutableListOf<EducationProgram>()
+        `when`(repo.save(any(EducationProgram::class.java))).thenAnswer { (it.arguments[0] as EducationProgram).also { p -> captured += p } }
+        service.create(author, CreateProgramRequest(title = "t", targets = listOf(" Moon", "Moon ", "", "  ", "M42", "a".repeat(CONTENT_TARGET_MAX_LENGTH))))
+        assertThat(captured.single().targets).containsExactly("Moon", "M42", "a".repeat(CONTENT_TARGET_MAX_LENGTH))
+
+        val p = program(ProgramStatus.DRAFT)
+        service.update("prog-1", UpdateProgramRequest(targets = listOf(" 시리우스 ", "시리우스")), author)
+        assertThat(p.targets).containsExactly("시리우스")
     }
 
     @Test
