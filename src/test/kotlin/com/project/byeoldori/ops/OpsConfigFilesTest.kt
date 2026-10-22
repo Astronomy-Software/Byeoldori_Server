@@ -61,4 +61,24 @@ class OpsConfigFilesTest {
         assertThat(script).contains("docker update --restart=unless-stopped app-\$OLD")
         assertThat(script).doesNotContain("nginx -t &&")
     }
+
+    @Test
+    fun `블루그린 스크립트는 서비스 중인 색을 upstream 에서 읽고 전환 실패 시 upstream 을 되돌린다`() {
+        val script = File("deploy-bluegreen.sh").readText()
+        assertThat(script).contains("grep -oE '127\\.0\\.0\\.1:808[01]' \"\$UPSTREAM_CONF\"")
+        assertThat(script).contains("sudo cp -p \"\$UPSTREAM_CONF.bak\" \"\$UPSTREAM_CONF\"")
+    }
+
+    @Test
+    fun `모니터링 이미지는 latest 가 아니라 운영 검증 버전으로 고정한다`() {
+        val services = yaml("docker-compose.monitoring.yml").obj("services")
+        val images = services.keys.associateWith { services.obj(it)["image"] as String }
+        assertThat(images.values).allSatisfy { image ->
+            assertThat(image).doesNotEndWith(":latest").contains(":")
+        }
+        assertThat(images).containsEntry("grafana", "grafana/grafana-oss:13.0.2")
+            .containsEntry("loki", "grafana/loki:3.7.3")
+            .containsEntry("alloy", "grafana/alloy:v1.17.1")
+            .containsEntry("prometheus", "prom/prometheus:v3.13.1")
+    }
 }
