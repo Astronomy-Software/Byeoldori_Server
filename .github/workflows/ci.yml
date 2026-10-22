@@ -40,6 +40,7 @@ jobs:
         run: |
           bash scripts/tests/backup_test.sh
           bash scripts/tests/bluegreen_test.sh
+          bash scripts/tests/monitoring_reload_test.sh
           python3 scripts/tests/cf_exporter_test.py
 
       - name: Upload test results

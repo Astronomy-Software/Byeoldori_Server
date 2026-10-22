@@ -97,7 +97,8 @@ groups:
       # Cloudflare 엣지 응답 5xx 비율 5% 초과 5분 지속. 위 룰은 모두 앱(byeoldori-app) 메트릭이라
       # 웹(byeoldori.com, Workers) SSR 500·프록시 502 같은 장애를 못 본다. cf-worker-exporter 의
       # zone 누적 counter 를 쓴다(애널리틱스 지연 때문에 약 3분 늦게 반영). 트래픽이 적을 때 한두 건으로
-      # 울리지 않게 10분간 요청이 20건 이상일 때만 판정한다. exporter 가 죽거나 트래픽이 없으면 OK.
+      # 울리지 않게 10분간 요청이 20건 이상일 때만 판정한다. exporter 가 죽거나 트래픽이 없으면 OK
+      # (exporter 수집 중단은 아래 cf-exporter-down 룰이 따로 알린다).
       # exporter 는 Cloudflare 계정의 존을 모두 수집하므로(byeoltokki.com 등) 세 셀렉터 모두 byeoldori.com 존으로 한정한다.
       # 한정하지 않으면 다른 사이트의 5xx 로 울리거나, 다른 사이트 트래픽이 분모를 키워 별도리 장애를 놓친다.
       - uid: cf-edge-5xx
@@ -123,3 +124,29 @@ groups:
               expression: A
               conditions:
                 - evaluator: { type: gt, params: [0.05] }
+      # cf-worker-exporter 수집 중단 15분 지속. 위 cf-edge-5xx 는 exporter 가 죽거나 Cloudflare 조회가 계속
+      # 실패하면(토큰 만료·권한 변경·API 장애) 데이터가 없어 OK 로 남으므로, 웹 5xx 감시가 꺼진 것을 따로 알린다.
+      # exporter 는 마지막 수집이 실패하면 up=0 을 내보내고, 컨테이너가 죽으면 시계열이 사라진다(NoData → 알림).
+      - uid: cf-exporter-down
+        title: "Cloudflare exporter 수집 중단 (웹 5xx 감시 꺼짐)"
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: OK
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max(max_over_time(cloudflare_worker_exporter_up[15m]))
+              refId: A
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: C
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }

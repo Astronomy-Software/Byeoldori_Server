@@ -74,6 +74,55 @@ class OpsConfigFilesTest {
 
     @Test
     @Suppress("UNCHECKED_CAST")
+    fun `Cloudflare exporter 수집이 멈추면 알린다(엣지 5xx 룰은 데이터가 없으면 OK 라 감시가 꺼진 걸 모른다)`() {
+        val groups = yaml("monitoring/grafana/provisioning/alerting/alerting.yml")["groups"] as List<Map<String, Any?>>
+        val rule = groups.flatMap { it["rules"] as List<Map<String, Any?>> }.first { it["uid"] == "cf-exporter-down" }
+        // exporter 컨테이너가 죽으면 시계열이 사라지므로 NoData 도 알림이어야 한다
+        assertThat(rule["noDataState"]).isEqualTo("Alerting")
+        val data = rule["data"] as List<Map<String, Any?>>
+        val expr = data.first { it["refId"] == "A" }.obj("model")["expr"] as String
+        assertThat(expr).contains("max_over_time(cloudflare_worker_exporter_up[15m])")
+        val evaluator = (data.first { it["refId"] == "C" }.obj("model")["conditions"] as List<Map<String, Any?>>)
+            .first().obj("evaluator")
+        assertThat(evaluator["type"]).isEqualTo("lt")
+        assertThat((evaluator["params"] as List<Number>).first().toDouble()).isEqualTo(1.0)
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `모니터링 반영 스크립트는 단일 파일로 마운트한 설정을 모두 해시해 바뀐 서비스만 재생성한다`() {
+        val script = File("scripts/reload-monitoring.sh").readText()
+        assertThat(script).contains("--force-recreate", "timeout \"\$LIMIT\"")
+        val services = yaml("docker-compose.monitoring.yml").obj("services")
+        // ./monitoring/ 아래 파일·폴더 바인드 마운트(Grafana 대시보드 JSON 은 provider 가 주기적으로 다시 읽어 제외)
+        val mounts = services.values.flatMap { svc -> ((svc as Map<String, Any?>)["volumes"] as List<String>?).orEmpty() }
+            .map { it.substringBefore(":") }
+            .filter { it.startsWith("./monitoring/") && it != "./monitoring/grafana/dashboards" }
+            .map { it.removePrefix("./") }
+        assertThat(mounts).isNotEmpty.allSatisfy { assertThat(script).contains(it) }
+
+        val deploy = yaml(".github/workflows/deploy.yml").obj("jobs").obj("deploy")["steps"] as List<Map<String, Any?>>
+        val remote = deploy.mapNotNull { (it["with"] as Map<String, Any?>?)?.get("script") as String? }.joinToString("\n")
+        assertThat(remote).contains("bash scripts/reload-monitoring.sh || true")
+        assertThat(remote).doesNotContain("docker restart grafana")
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `진행 중인 배포는 취소하지 않고 VM 스크립트는 잠금으로 겹치지 않으며 블루그린은 SIGPIPE 로 trap 을 건너뛰지 않는다`() {
+        val workflow = yaml(".github/workflows/deploy.yml")
+        assertThat(workflow.obj("concurrency")["cancel-in-progress"]).isEqualTo(false)
+        val steps = workflow.obj("jobs").obj("deploy")["steps"] as List<Map<String, Any?>>
+        val remote = steps.mapNotNull { (it["with"] as Map<String, Any?>?)?.get("script") as String? }.joinToString("\n")
+        assertThat(remote).contains("flock -w 1200 9")
+        assertThat(remote.indexOf("flock -w")).isLessThan(remote.indexOf("tar -xzf"))
+
+        val script = File("deploy-bluegreen.sh").readText()
+        assertThat(script).contains("trap '' PIPE")
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
     fun `외부 업타임 체크는 API 와 웹(byeoldori_com)을 모두 보고 각각 Discord 로 알린다`() {
         val steps = yaml(".github/workflows/uptime.yml").obj("jobs").obj("check")["steps"] as List<Map<String, Any?>>
         val web = steps.first { it["id"] == "web" }
@@ -107,7 +156,7 @@ class OpsConfigFilesTest {
         assertThat(jobs.obj("deploy")["needs"]).isEqualTo("test")
         val runs = (jobs.obj("test")["steps"] as List<Map<String, Any?>>).mapNotNull { it["run"] as String? }.joinToString("\n")
         assertThat(runs).contains("./gradlew test --no-daemon", "scripts/tests/bluegreen_test.sh",
-            "scripts/tests/backup_test.sh", "scripts/tests/cf_exporter_test.py")
+            "scripts/tests/backup_test.sh", "scripts/tests/cf_exporter_test.py", "scripts/tests/monitoring_reload_test.sh")
     }
 
     @Test

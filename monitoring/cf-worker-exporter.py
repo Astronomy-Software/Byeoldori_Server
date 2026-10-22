@@ -41,6 +41,9 @@ REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "60"))
 SETTLE_SECONDS = int(os.environ.get("SETTLE_SECONDS", "180"))
 # 기동 시 과거 N분을 1회 백필해 대시보드/검증에 즉시 데이터가 뜨게 한다.
 BACKFILL_MINUTES = int(os.environ.get("BACKFILL_MINUTES", "60"))
+# 한 번에 조회하는 구간 상한(분). 수집이 오래 실패하면 [cursor, now] 가 계속 넓어져 GraphQL 조회 기간 한도를
+# 넘기고, 그러면 같은 구간만 매번 실패해 커서가 영영 전진하지 못한다. 상한씩 잘라 주기마다 따라잡는다.
+MAX_WINDOW_MINUTES = int(os.environ.get("MAX_WINDOW_MINUTES", "60"))
 HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT", "20"))
 
 if not TOKEN or not ACCOUNT_ID:
@@ -185,6 +188,11 @@ def refresh_quantiles(max_dt):
         worker_cpu.update(fresh)
 
 
+def next_window_end(cursor, end):
+    """이번 주기에 누적할 구간의 끝. [cursor, end] 가 상한보다 길면 cursor + 상한까지만 조회한다."""
+    return min(end, cursor + timedelta(minutes=MAX_WINDOW_MINUTES))
+
+
 def refresh_loop():
     while True:
         try:
@@ -196,8 +204,9 @@ def refresh_loop():
             if state["cursor"] is None:
                 state["cursor"] = end - timedelta(minutes=BACKFILL_MINUTES)
             if end > state["cursor"]:
-                accumulate_window(state["cursor"], end, state["zones"])
-                state["cursor"] = end
+                win_end = next_window_end(state["cursor"], end)
+                accumulate_window(state["cursor"], win_end, state["zones"])
+                state["cursor"] = win_end
             refresh_quantiles(end)
             state["up"] = 1
         except Exception as e:  # noqa: BLE001
