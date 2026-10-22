@@ -46,12 +46,7 @@ class AuthController(
         return ResponseEntity.ok(ApiResponse.ok("가입 완료"))
     }
 
-    @GetMapping("/verify-email")
-    @Operation(summary = "이메일 인증")
-    fun verifyEmail(@RequestParam token: String): String {
-        userService.verifyEmail(token)
-        return "verification-success"
-    }
+    // GET /auth/verify-email 은 메일 링크로 브라우저가 여는 HTML 페이지라 EmailVerificationPageController 가 맡는다
 
     @PostMapping("/find-email")
     @Operation(summary = "아이디(이메일) 찾기", description = "이름과 전화번호로 가입된 아이디 목록을 반환합니다.")

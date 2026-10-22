@@ -22,6 +22,8 @@ import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.multipart.MultipartFile
 import org.springframework.web.reactive.function.BodyInserters
@@ -61,24 +63,46 @@ class UserService(
         if (emailDomain == DeletedAccount.EMAIL_DOMAIN || emailDomain == NO_EMAIL_DOMAIN) {
             throw InvalidInputException("사용할 수 없는 이메일입니다.")
         }
-        if (userRepository.existsByEmail(req.email)) throw ConflictException(ErrorCode.EMAIL_ALREADY_EXISTS)
+        val existing = userRepository.findByEmail(req.email).orElse(null)
+        if (existing != null && !isAbandonedSignup(existing)) throw ConflictException(ErrorCode.EMAIL_ALREADY_EXISTS)
         val nickname = NicknameRules.normalize(req.nickname)
-        if (nickname != null) validateNewNickname(nickname)
+        if (nickname != null && nickname != existing?.nickname) validateNewNickname(nickname)
 
-        val user = userRepository.save(
-            User(
-                email = req.email,
-                passwordHash = passwordEncoder.encode(req.password),
-                name = req.name,
-                phone = req.phone,
-                nickname = nickname,
-                birthdate = req.birthdate
+        val user = if (existing != null) {
+            // 인증 링크가 모두 만료된 채 버려진 가입 → 새 가입 정보로 덮어쓰고 인증 메일을 다시 보낸다.
+            // (그대로 두면 이메일 주인이 영영 가입하지 못하고, 남의 이메일을 미인증 가입으로 영구 선점할 수 있다)
+            emailTokenRepo.deleteAllByUserId(existing.id)
+            existing.passwordHash = passwordEncoder.encode(req.password)
+            existing.name = req.name
+            existing.phone = req.phone
+            existing.nickname = nickname
+            existing.birthdate = req.birthdate
+            userRepository.save(existing)
+        } else {
+            userRepository.save(
+                User(
+                    email = req.email,
+                    passwordHash = passwordEncoder.encode(req.password),
+                    name = req.name,
+                    phone = req.phone,
+                    nickname = nickname,
+                    birthdate = req.birthdate
+                )
             )
-        )
+        }
 
         val token = emailTokenRepo.save(EmailVerificationToken(user = user))
         emailService.sendEmailVerification(user.email, token.id)
     }
+
+    // 이메일 인증을 끝내지 못했고 쓸 수 있는 인증 링크도 남지 않은 로컬 가입인지.
+    // 한 번도 로그인하지 않은(=글·댓글 등이 없을) 계정만 해당한다. 링크가 살아 있는 동안(24시간)은 덮어쓰지 않는다.
+    private fun isAbandonedSignup(user: User): Boolean =
+        user.provider == null &&
+            !user.emailVerified &&
+            user.deletedAt == null &&
+            user.lastLoginAt == null &&
+            !emailTokenRepo.existsUsableByUserId(user.id, LocalDateTime.now())
 
     @Transactional
     fun verifyEmail(tokenId: String) {
@@ -269,6 +293,7 @@ class UserService(
     fun deleteAccount() {
         val user = currentUserResolver.getUser()
         val originalEmail = user.email
+        val profileImageUrl = user.profileImageUrl
 
         refreshTokenRepo.deleteByUserId(user.id)
         emailTokenRepo.deleteAllByUserId(user.id)
@@ -290,6 +315,28 @@ class UserService(
         userRepository.save(user)
 
         cachedUserLookupService.evictByEmail(originalEmail)
+        deleteOwnProfileImageAfterCommit(profileImageUrl)
+    }
+
+    // 탈퇴한 사용자의 프로필 사진(얼굴일 수 있는 PII)이 /files 공개 URL 로 계속 열리지 않게 실제 파일도 지운다.
+    // 우리 저장소 파일(publicBaseUrl)만 대상(소셜 프로필 사진 같은 외부 URL 은 건드리지 않음),
+    // 롤백되면 파일만 사라지지 않도록 커밋이 성공한 뒤에 지운다.
+    private fun deleteOwnProfileImageAfterCommit(url: String?) {
+        if (url.isNullOrBlank() || !url.startsWith(publicBaseUrl.trimEnd('/'))) return
+        val delete = {
+            try {
+                storage.deleteImageByUrl(url)
+            } catch (e: Exception) {
+                log.warn("탈퇴 회원 프로필 이미지 삭제 실패: {}", e.message)
+            }
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+                override fun afterCommit() = delete()
+            })
+        } else {
+            delete()
+        }
     }
 
     // ─────────────────────────────────────────────────────
@@ -456,6 +503,14 @@ class UserService(
                             "이미 ${byEmail.provider} 계정으로 가입된 이메일입니다."
                         )
                     }
+                    // 같은 provider 의 "다른" 계정(providerId 다름)이 이메일만 같은 경우 → 연동 불가.
+                    // 같은 provider 계정은 providerId 로만 식별한다(이메일만 맞춰 남의 계정에 들어가는 것 방지).
+                    byEmail.provider == provider && byEmail.providerId != providerId -> {
+                        throw ConflictException(
+                            ErrorCode.ACCOUNT_ALREADY_EXISTS_WITH_DIFFERENT_PROVIDER,
+                            "이미 다른 $provider 계정으로 가입된 이메일입니다."
+                        )
+                    }
                     // 로컬(비밀번호) 계정에 소셜을 email 만으로 자동 연동하는 경로는 계정 탈취 벡터.
                     // provider 가 email_verified=true 로 이메일 소유를 확인해줄 때만 연동 허용.
                     // (플래그 미제공(null)/false 면 자동 연동 금지 → 명확한 예외)
@@ -465,7 +520,7 @@ class UserService(
                             "이미 해당 이메일로 가입된 계정이 있습니다. 기존 계정으로 로그인해주세요."
                         )
                     }
-                    // 로컬 계정(검증됨) 또는 동일 provider 계정 → 연동
+                    // 로컬 계정(검증됨) → 연동
                     else -> user = byEmail
                 }
             }
