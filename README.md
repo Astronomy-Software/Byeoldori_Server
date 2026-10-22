@@ -72,15 +72,23 @@
 - 실패하면 Discord(Grafana 알림과 같은 웹훅)로 알린다.
 - 로컬 백업은 같은 부트볼륨에 있어서 VM 을 통째로 잃으면 함께 사라진다. VM 밖 보관은 `~/.byeoldori-backup.env` 에 `BACKUP_OCI_BUCKET=<버킷>` 을 두고 VM 에 oci CLI 를 설정하면 켜진다(버킷 수명주기 규칙으로 보존 기간 관리). OCI 콘솔의 부트볼륨 백업 정책도 함께 켜 둔다.
 
-복원(VM 에서, 대상 폴더로 이동한 뒤):
+- 디스크 사용률(이번 백업 예상 크기 포함)이 `BACKUP_MAX_DISK_PCT`(기본 90%) 이상이면 보관 기간이 지난 백업부터 지우고 다시 잰다. 그래도 모자라면 실패로 알린다. 가장 최근 완성 백업 하나는 보관 기간이 지나도 남긴다.
+
+복원(VM 에서, 대상 폴더로 이동한 뒤). 복원 중에 앱이 쓰거나 Flyway 가 돌지 않도록 앱부터 내린다.
 
 ```bash
 sha256sum -c SHA256SUMS
-# MySQL — 덤프에 CREATE DATABASE/USE 가 들어 있어 byeoldori 를 통째로 다시 만든다
+docker stop -t 35 app-blue app-green 2>/dev/null || true
+# MySQL — 덤프에 DROP DATABASE/CREATE DATABASE/USE 가 들어 있어 byeoldori 를 통째로 지우고 다시 만든다
+# (백업 뒤에 생긴 테이블도 지워져 flyway_schema_history 와 어긋나지 않는다).
+# 2026-10-23 이전 백업에는 DROP DATABASE 가 없으므로 먼저 직접 지운다:
+#   docker exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "DROP DATABASE byeoldori"'
 gunzip -c mysql-byeoldori.sql.gz | docker exec -i mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot'
 # MongoDB — --drop 은 백업에 있는 컬렉션을 지우고 다시 넣는다
 docker exec -i mongodb sh -c 'exec mongorestore --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --archive --gzip --drop' < mongo.archive.gz
 # 업로드 파일
 VOL=$(docker volume ls -q --filter label=com.docker.compose.volume=uploads | head -1)
 docker run --rm -i --user 0 --entrypoint tar -v "$VOL":/data/uploads byeoldori-server:local -xzf - -C /data/uploads < uploads.tar.gz
+# 서비스 중이던 색을 다시 올린다(nginx upstream 이 가리키는 색)
+docker start app-$(cat /etc/nginx/byeoldori_active)
 ```

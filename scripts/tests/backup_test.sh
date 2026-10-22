@@ -9,15 +9,20 @@ FAILS=0
 setup() {
   T=$(mktemp -d)
   mkdir -p "$T/bin" "$T/backups" "$T/deploy"
+  # 전체 10000KB 디스크. FAKE_DF_USED(KB) 로 사용량을 정하고, FAKE_DF_FREED_BY 경로가 지워지면
+  # FAKE_DF_USED_AFTER 로 줄어든다(정리로 공간이 생긴 상황).
   cat > "$T/bin/df" <<'EOF'
 #!/bin/bash
+used=${FAKE_DF_USED:-1000}
+if [ -n "${FAKE_DF_FREED_BY:-}" ] && [ ! -e "$FAKE_DF_FREED_BY" ]; then used=${FAKE_DF_USED_AFTER:-1000}; fi
 echo "Filesystem 1024-blocks Used Available Capacity Mounted on"
-echo "/dev/sda1 100 10 90 10% /"
+echo "/dev/sda1 10000 $used $((10000 - used)) $((used / 100))% /"
 EOF
   cat > "$T/bin/docker" <<'EOF'
 #!/bin/bash
 case "$1 $2" in
   "exec mysql")
+    echo "$*" >> "$HOME/docker.log"
     [ -n "${FAKE_MYSQL_FAIL:-}" ] && exit 1
     printf 'CREATE TABLE t (id int);\n-- Dump completed on 2026-10-20\n' ;;
   "exec mongodb") printf 'mongo-archive' ;;
@@ -44,6 +49,16 @@ run_backup() {
   RC=$?
   set -e
 }
+
+# 보관 기간이 지난 '완성' 백업(SHA256SUMS 있음) 하나를 더 둔다. $1: 채울 크기(KB, 예상 크기 확인용)
+add_old_complete_backup() {
+  mkdir -p "$T/backups/20200102-000000"
+  : > "$T/backups/20200102-000000/SHA256SUMS"
+  [ -n "${1:-}" ] && head -c "$(( $1 * 1024 ))" /dev/zero > "$T/backups/20200102-000000/uploads.tar.gz"
+  touch -d '29 days ago' "$T/backups/20200102-000000"
+}
+
+backup_dirs() { find "$T/backups" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '; }
 
 new_backups() { find "$T/backups" -mindepth 1 -maxdepth 1 -type d ! -name 20200101-000000 | wc -l | tr -d ' '; }
 
@@ -75,6 +90,43 @@ check "성공 코드" '[ "$RC" -eq 0 ]'
 check "새 로컬 백업 1개" '[ "$(new_backups)" = "1" ]'
 check "파일 4개 업로드" '[ "$(wc -l < "$T/oci.log" | tr -d " ")" = "4" ]'
 check "보관 기간 지난 백업 삭제" '[ ! -d "$T/backups/20200101-000000" ]'
+check "덤프에 DROP DATABASE 포함(복원 시 백업 뒤 생긴 테이블까지 지움)" 'grep -q -- "--add-drop-database --databases byeoldori" "$T/docker.log"'
+rm -rf "$T"
+
+echo "[4] 디스크가 상한 이상이면 보관 기간 지난 백업부터 지우고, 공간이 나면 백업을 이어간다"
+setup
+add_old_complete_backup
+FAKE_DF_USED=9500 FAKE_DF_FREED_BY="$T/backups/20200101-000000" FAKE_DF_USED_AFTER=5000 run_backup
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "정리 후 진행 로그" 'grep -q "보관 기간 지난 백업부터 정리" "$T/out.log"'
+check "새 로컬 백업 1개만 남음(예전 백업 모두 정리)" '[ "$(backup_dirs)" = "1" ] && [ ! -d "$T/backups/20200101-000000" ]'
+rm -rf "$T"
+
+echo "[5] 정리해도 모자라면 실패로 알리되, 가장 최근 완성 백업은 보관 기간이 지났어도 남긴다"
+setup
+add_old_complete_backup
+FAKE_DF_USED=9500 run_backup
+check "실패 코드로 끝남" '[ "$RC" -ne 0 ]'
+check "백업 중단 로그" 'grep -q "백업 중단" "$T/out.log"'
+check "미완성 예전 백업은 삭제" '[ ! -d "$T/backups/20200101-000000" ]'
+check "최근 완성 백업 유지, 새 폴더 없음" '[ -d "$T/backups/20200102-000000" ] && [ "$(backup_dirs)" = "1" ]'
+rm -rf "$T"
+
+echo "[6] 지금은 상한 아래여도 이번 백업(직전 백업 크기)을 더하면 상한을 넘을 때는 시작하지 않는다"
+setup
+add_old_complete_backup 1500
+FAKE_DF_USED=8000 run_backup
+check "실패 코드로 끝남" '[ "$RC" -ne 0 ]'
+check "예상 사용률로 판단" 'grep -q "백업 후 예상 9[0-9]%" "$T/out.log"'
+check "새 폴더 없음" '[ -d "$T/backups/20200102-000000" ] && [ "$(backup_dirs)" = "1" ]'
+rm -rf "$T"
+
+echo "[7] 직전 백업 크기를 더해도 상한 아래면 그대로 백업한다"
+setup
+add_old_complete_backup 500
+FAKE_DF_USED=8000 run_backup
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "새 로컬 백업 1개" '[ "$(backup_dirs)" = "1" ]'
 rm -rf "$T"
 
 [ "$FAILS" -eq 0 ] && echo "backup_test: 모두 통과" || { echo "backup_test: 실패 $FAILS 건"; exit 1; }
