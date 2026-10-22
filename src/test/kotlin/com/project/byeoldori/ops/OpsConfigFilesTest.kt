@@ -60,7 +60,12 @@ class OpsConfigFilesTest {
         val rule = groups.flatMap { it["rules"] as List<Map<String, Any?>> }.first { it["uid"] == "cf-edge-5xx" }
         val data = rule["data"] as List<Map<String, Any?>>
         val expr = data.first { it["refId"] == "A" }.obj("model")["expr"] as String
-        assertThat(expr).contains("cloudflare_zone_requests_status{status=~\"5..\"}")
+        assertThat(expr).contains("cloudflare_zone_requests_status{zone=\"byeoldori.com\",status=~\"5..\"}")
+        // exporter 는 계정의 모든 존을 수집하므로 분자·분모·최소 요청 조건 모두 byeoldori.com 존으로 한정해야 한다
+        val selectors = Regex("cloudflare_zone_requests_status(\\{[^}]*\\})?").findAll(expr).map { it.value }.toList()
+        assertThat(selectors).hasSize(3).allSatisfy { assertThat(it).contains("zone=\"byeoldori.com\"") }
+        val dashboard = File("monitoring/grafana/dashboards/frontend-cf.json").readText()
+        assertThat(dashboard).doesNotContain("cloudflare_zone_requests_status[")
         val evaluator = (data.first { it["refId"] == "C" }.obj("model")["conditions"] as List<Map<String, Any?>>)
             .first().obj("evaluator")
         assertThat(evaluator["type"]).isEqualTo("gt")
