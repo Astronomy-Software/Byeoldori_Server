@@ -89,6 +89,9 @@ class GcsStorageService(
         return "${publicBaseUrl.trimEnd('/')}/$objectName"
     }
 
+    override fun isOwnUrl(url: String): Boolean =
+        StorageService.isUnderPrefix(url, "${publicBaseUrl.trimEnd('/')}/")
+
     override fun deleteImageByUrl(url: String) {
         val base = publicBaseUrl.trimEnd('/')
         if (!url.startsWith(base)) {

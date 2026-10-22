@@ -216,9 +216,15 @@ class PostService(
                 throw NotFoundException(ErrorCode.POST_NOT_FOUND)
             }
         }
-        val updated = postRepo.increaseViewCount(postId)
-        if (updated == 0) throw NotFoundException(ErrorCode.POST_NOT_FOUND)
+        val found = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
+        // 작성자 본인 조회는 조회수에 넣지 않는다 — 웹 수정 화면이 폼을 채우려고 이 API 를 부르고
+        // 저장 뒤 상세로 다시 오면서 수정 한 번에 +2 되어 인기글(viewCount 정렬) 순위가 올라갔다
+        if (found.author.id != user?.id) {
+            val updated = postRepo.increaseViewCount(postId)
+            if (updated == 0) throw NotFoundException(ErrorCode.POST_NOT_FOUND)
+        }
 
+        // 증가 쿼리가 영속성 컨텍스트를 비우므로 다시 읽어 최신 조회수를 돌려준다
         val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
         val images = imgRepo.findAllByPostIdOrderBySortOrderAsc(postId).map { it.url }
 
@@ -313,7 +319,8 @@ class PostService(
     @Transactional
     fun delete(postId: Long, user: User) {
         val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
-        if (p.author.id != user.id) throw ForbiddenException()
+        // 스팸·개인정보 노출 글을 운영자가 API 로 내릴 수 있도록 관리자(ADMIN)도 삭제를 허용한다
+        if (p.author.id != user.id && !user.roles.contains("ADMIN")) throw ForbiddenException()
 
         when (p.type) {
             PostType.REVIEW -> {
@@ -333,7 +340,8 @@ class PostService(
         if (images.isNotEmpty()) imgRepo.deleteAll(images)
         postRepo.delete(p)
 
-        uploadedFiles.deleteOwnedUnreferencedAfterCommit(urls, user.id)
+        // 파일 정리는 글 작성자 기준 — 관리자가 지워도 작성자가 올린 파일만 정리된다
+        uploadedFiles.deleteOwnedUnreferencedAfterCommit(urls, p.author.id)
     }
 
     private fun updateReviewPost(postId: Long, reviewDto: ReviewDto) {
@@ -390,20 +398,27 @@ class PostService(
         }
     }
 
-    /** 이미지 URL 은 post_image.url 컬럼(512자)에 맞아야 하고 비어 있으면 안 된다(넘으면 DB 저장 단계 500). */
-    private fun validateImageUrls(urls: List<String>) {
+    /**
+     * 이미지 URL 은 post_image.url 컬럼(512자)에 맞아야 하고 비어 있으면 안 된다(넘으면 DB 저장 단계 500).
+     * 새로 붙이는 URL 은 우리 스토리지가 발급한 것만 받는다(외부 URL 은 트래킹 픽셀·업로드 검사 우회).
+     * 이미 저장된 URL(alreadyAttached)은 예전 도메인일 수 있어 그대로 둔다 — 기존 글 수정이 깨지지 않게.
+     */
+    private fun validateImageUrls(urls: List<String>, alreadyAttached: Set<String> = emptySet()) {
         if (urls.size > POST_IMAGE_MAX_COUNT) {
             throw InvalidInputException("이미지는 최대 ${POST_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.")
         }
         if (urls.any { it.isBlank() || it.length > 512 }) {
             throw InvalidInputException("이미지 URL 형식이 올바르지 않습니다.")
         }
+        if (urls.any { it !in alreadyAttached && !storage.isOwnUrl(it) }) {
+            throw InvalidInputException("업로드한 이미지만 첨부할 수 있습니다.")
+        }
     }
 
     private fun updatePostImages(post: CommunityPost, requestedUrls: List<String>, actorId: Long) {
-        validateImageUrls(requestedUrls)
         val existingImages = imgRepo.findAllByPostIdOrderBySortOrderAsc(post.id!!)
         val existingImageMap = existingImages.associateBy { it.url }
+        validateImageUrls(requestedUrls, existingImageMap.keys)
 
         val requestedUrlSet = requestedUrls.toSet()
         val imagesToDelete = existingImages.filter { it.url !in requestedUrlSet }

@@ -129,6 +129,9 @@ class LocalStorageService(
         }
     }
 
+    override fun isOwnUrl(url: String): Boolean =
+        StorageService.isUnderPrefix(url, "${publicBaseUrl.trimEnd('/')}/files/")
+
     override fun thumbnailUrlOf(url: String): String? {
         val prefix = "${publicBaseUrl.trimEnd('/')}/files/"
         if (!url.startsWith(prefix)) return null
