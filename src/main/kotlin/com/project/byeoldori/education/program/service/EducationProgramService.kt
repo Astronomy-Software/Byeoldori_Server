@@ -18,9 +18,12 @@ import com.project.byeoldori.education.program.repository.QuizAttemptRepository
 import com.project.byeoldori.community.post.repository.EducationPostRepository
 import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_COUNT
 import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_LENGTH
+import com.project.byeoldori.star.service.normalizeTargetLabels
 import com.project.byeoldori.user.entity.User
 import com.project.byeoldori.user.repository.UserRepository
 import com.project.byeoldori.user.utils.DeletedAccount
+import org.bson.BsonInvalidOperationException
+import org.bson.codecs.configuration.CodecConfigurationException
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.mongodb.core.MongoTemplate
@@ -79,7 +82,14 @@ class EducationProgramService(
     private fun toSteps(raw: List<Map<String, Any?>>?): List<org.bson.Document> {
         if (raw.isNullOrEmpty()) return emptyList()
         val docs = raw.map { org.bson.Document(it) }
-        val bytes = org.bson.Document("s", docs).toJson().toByteArray(Charsets.UTF_8).size
+        // Long 범위를 넘는 정수(BigInteger) 등 BSON 으로 못 바꾸는 값은 코덱 예외(→500)라 400 으로 바꾼다
+        val bytes = try {
+            org.bson.Document("s", docs).toJson().toByteArray(Charsets.UTF_8).size
+        } catch (e: CodecConfigurationException) {
+            throw InvalidInputException("프로그램 형식이 올바르지 않습니다.")
+        } catch (e: BsonInvalidOperationException) {
+            throw InvalidInputException("프로그램 형식이 올바르지 않습니다.")
+        }
         if (bytes > MAX_STEPS_BYTES) {
             throw InvalidInputException("프로그램 내용이 너무 큽니다(최대 512KB). 이미지 URL 은 링크로 넣어주세요.")
         }
@@ -94,14 +104,14 @@ class EducationProgramService(
      * 문서를 키울 수 있었다(목록·검수 큐는 steps 만 빼고 읽으므로 매번 통째로 읽힌다).
      */
     private fun normalizeTargets(raw: List<String>): List<String> {
-        val uniq = LinkedHashSet(raw.map { it.trim() }.filter { it.isNotEmpty() })
+        val uniq = normalizeTargetLabels(raw)
         if (uniq.size > CONTENT_TARGET_MAX_COUNT) {
             throw InvalidInputException("대상 천체는 최대 ${CONTENT_TARGET_MAX_COUNT}개입니다.")
         }
         if (uniq.any { it.length > CONTENT_TARGET_MAX_LENGTH }) {
             throw InvalidInputException("대상 천체 이름은 ${CONTENT_TARGET_MAX_LENGTH}자를 넘을 수 없습니다.")
         }
-        return uniq.toList()
+        return uniq
     }
 
     fun create(user: User, req: CreateProgramRequest): ProgramDetailResponse {

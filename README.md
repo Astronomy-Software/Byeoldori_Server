@@ -82,7 +82,7 @@ docker stop -t 35 app-blue app-green 2>/dev/null || true
 # MySQL — 덤프에 DROP DATABASE/CREATE DATABASE/USE 가 들어 있어 byeoldori 를 통째로 지우고 다시 만든다
 # (백업 뒤에 생긴 테이블도 지워져 flyway_schema_history 와 어긋나지 않는다).
 # 예전 backup.sh 로 만든 덤프에는 DROP DATABASE 가 없다. 아래 확인에서 0 이 나오면 먼저 직접 지운다:
-#   gunzip -c mysql-byeoldori.sql.gz | grep -c '^DROP DATABASE'
+#   gunzip -c mysql-byeoldori.sql.gz | grep -c 'DROP DATABASE'   (mysqldump 는 /*!40000 DROP DATABASE ...*/ 형태로 쓴다)
 #   docker exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "DROP DATABASE byeoldori"'
 gunzip -c mysql-byeoldori.sql.gz | docker exec -i mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot'
 # MongoDB — --drop 은 백업에 있는 컬렉션을 지우고 다시 넣는다

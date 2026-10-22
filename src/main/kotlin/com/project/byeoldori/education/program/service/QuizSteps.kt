@@ -25,18 +25,21 @@ object QuizSteps {
     private const val MAX_QUESTION = 300
     private const val MAX_CHOICE = 120
 
+    // Document.getString 은 (String) 캐스트라 type 이 숫자 등이면 ClassCastException(→500)이 난다
+    private fun typeOf(step: Document): String? = step["type"] as? String
+
     /** 저장 시 호출 — 잘못된 quiz 스텝이 있으면 사용자에게 보여줄 메시지로 400. */
     fun validate(steps: List<Document>) {
         val seen = mutableSetOf<String>()
         steps.forEachIndexed { i, step ->
             val no = i + 1
-            if (step.getString("type") == "composite") {
+            if (typeOf(step) == "composite") {
                 val children = step["steps"] as? List<*> ?: emptyList<Any>()
                 if (children.any { (it as? Map<*, *>)?.get("type") == TYPE }) {
                     throw InvalidInputException("${no}번 스텝: 퀴즈는 복합 스텝 안에 넣을 수 없습니다.")
                 }
             }
-            if (step.getString("type") != TYPE) return@forEachIndexed
+            if (typeOf(step) != TYPE) return@forEachIndexed
             val spec = parse(step) ?: throw InvalidInputException(
                 "${no}번 퀴즈: 문제, 보기(${MIN_CHOICES}~${MAX_CHOICES}개), 정답을 모두 입력해주세요."
             )
@@ -54,7 +57,7 @@ object QuizSteps {
 
     /** 채점용 — 최상위 quiz 스텝만, 형식이 온전한 것만 순서대로 돌려준다. */
     fun extract(steps: List<Document>): List<QuizSpec> =
-        steps.filter { it.getString("type") == TYPE }.mapNotNull { parse(it) }
+        steps.filter { typeOf(it) == TYPE }.mapNotNull { parse(it) }
 
     private fun parse(step: Document): QuizSpec? {
         val id = (step["id"] as? String)?.takeIf { it.isNotBlank() } ?: return null

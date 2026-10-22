@@ -87,7 +87,10 @@ class CommentService(
         // 댓글 행을 X 락으로 읽어 두 번째 요청은 앞 요청 커밋 뒤의 deleted=true 를 보게 한다.
         val c = commentRepo.findByIdForUpdate(commentId) ?: throw NotFoundException(ErrorCode.COMMENT_NOT_FOUND)
         validateCommentBelongsToPost(c, postId)
-        if (c.author.id != requester.id) throw ForbiddenException("본인 댓글만 삭제할 수 있습니다.")
+        // 관리자(ADMIN)는 운영 목적으로 남의 댓글도 삭제할 수 있다
+        if (c.author.id != requester.id && !requester.roles.contains("ADMIN")) {
+            throw ForbiddenException("본인 댓글만 삭제할 수 있습니다.")
+        }
         if (!c.deleted) {
             c.deleted = true
             c.content = "삭제된 댓글입니다."

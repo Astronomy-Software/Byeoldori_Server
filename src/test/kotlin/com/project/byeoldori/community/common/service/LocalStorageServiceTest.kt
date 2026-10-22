@@ -91,6 +91,21 @@ class LocalStorageServiceTest {
     }
 
     @Test
+    fun `우리 스토리지 URL 만 자기 URL 로 보고 외부·경로 탈출 URL 은 거부한다`() {
+        val storage = service()
+        val own = storage.storeImage(png())
+        assertThat(storage.isOwnUrl(own)).isTrue()
+        assertThat(storage.isOwnUrl("$base/files/attach/2026/10/20/abc.pdf")).isTrue()
+
+        assertThat(storage.isOwnUrl("https://attacker.example/x.png")).isFalse()
+        assertThat(storage.isOwnUrl("$base/x.png")).isFalse() // /files/ 밖
+        assertThat(storage.isOwnUrl("$base/files/../../evil.png")).isFalse()
+        assertThat(storage.isOwnUrl("$base/files/%2e%2e/evil.png")).isFalse()
+        assertThat(storage.isOwnUrl("$base/files/2026/x.png?track=1")).isFalse()
+        assertThat(storage.isOwnUrl("$base/files/")).isFalse()
+    }
+
+    @Test
     fun `썸네일이 없는 예전 이미지·외부 URL 은 null`() {
         val storage = service()
         assertThat(storage.thumbnailUrlOf("$base/files/2026/01/01/123e4567-e89b-12d3-a456-426614174000.png")).isNull()

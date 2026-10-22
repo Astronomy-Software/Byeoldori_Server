@@ -1,5 +1,6 @@
 package com.project.byeoldori.community.comment.service
 
+import com.project.byeoldori.common.exception.ForbiddenException
 import com.project.byeoldori.common.exception.NotFoundException
 import com.project.byeoldori.community.comment.domain.Comment
 import com.project.byeoldori.community.comment.repository.CommentRepository
@@ -64,5 +65,21 @@ class CommentDeleteLockTest {
 
         assertThatThrownBy { service.delete(10, 999, author) }.isInstanceOf(NotFoundException::class.java)
         verify(postRepo, never()).addCommentCount(anyLong(), anyLong())
+    }
+
+    @Test
+    fun `관리자는 남의 댓글을 지울 수 있고 일반 사용자는 403`() {
+        val stranger = User(id = 2, email = "s@test.com", passwordHash = "x", name = "s", phone = "010", nickname = "타인")
+        val admin = User(id = 3, email = "m@test.com", passwordHash = "x", name = "m", phone = "010", nickname = "관리자")
+            .apply { roles = mutableSetOf("USER", "ADMIN") }
+        val c = Comment(id = 102, post = post, author = author, content = "스팸 댓글")
+        `when`(commentRepo.findByIdForUpdate(102)).thenReturn(c)
+
+        assertThatThrownBy { service.delete(10, 102, stranger) }.isInstanceOf(ForbiddenException::class.java)
+        assertThat(c.deleted).isFalse()
+
+        service.delete(10, 102, admin)
+        assertThat(c.deleted).isTrue()
+        verify(postRepo, times(1)).addCommentCount(10, -1)
     }
 }
