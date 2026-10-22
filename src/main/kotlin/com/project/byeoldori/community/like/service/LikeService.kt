@@ -8,6 +8,7 @@ import com.project.byeoldori.community.like.repository.LikeRepository
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.notification.service.NotificationService
 import com.project.byeoldori.user.entity.User
+import com.project.byeoldori.user.utils.NicknameRules
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -73,7 +74,7 @@ class LikeService(
         if (delta > 0 && comment.author.id != user.id) {
             notificationService.notifyCommentLiked(
                 commentAuthorId = comment.author.id,
-                likerName = user.nickname ?: user.name
+                likerName = user.nickname ?: NicknameRules.FALLBACK_DISPLAY_NAME
             )
         }
 
