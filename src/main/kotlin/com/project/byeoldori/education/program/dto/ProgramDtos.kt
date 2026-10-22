@@ -89,6 +89,9 @@ data class ProgramDetailResponse(
 
 data class IdStringResponse(val id: String?)
 
+// 작성 화면에서 "직접 발행" 버튼 노출 여부를 판단하기 위한 검수(moderation) 필요 여부
+data class ModerationStatusResponse(val required: Boolean)
+
 data class RejectProgramRequest(
     @field:Size(max = 500, message = "반려 사유는 500자를 넘을 수 없습니다.")
     val reason: String? = null
