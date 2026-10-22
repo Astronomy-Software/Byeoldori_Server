@@ -1,9 +1,13 @@
 name: Uptime check
 
-# VM 바깥(GitHub Actions)에서 실제 서비스 주소의 /actuator/health 를 확인한다.
-# Grafana 알림(backend-down)은 같은 VM 에서 돌아 VM·Docker·Grafana 가 죽으면 알림도 같이 죽고,
-# 메트릭 스크레이프 성공(up)만 봐서 DB 다운이나 nginx 가 가리키는 색의 장애를 놓친다.
-# 이 체크는 nginx 를 거쳐 실제 라우팅되는 색의 health(DB·Mongo·Redis 포함)를 본다.
+# VM 바깥(GitHub Actions)에서 실제 서비스 주소를 확인한다.
+# 1) API: /actuator/health
+#    Grafana 알림(backend-down)은 같은 VM 에서 돌아 VM·Docker·Grafana 가 죽으면 알림도 같이 죽고,
+#    메트릭 스크레이프 성공(up)만 봐서 DB 다운이나 nginx 가 가리키는 색의 장애를 놓친다.
+#    이 체크는 nginx 를 거쳐 실제 라우팅되는 색의 health(DB·Mongo·Redis 포함)를 본다.
+# 2) 웹(byeoldori.com, Cloudflare Workers): 랜딩과 SSR 페이지 하나
+#    빌드·업로드는 성공했는데 런타임에 SSR 이 전부 500 나던 회귀(open-next.config.ts 주석),
+#    커스텀 도메인 해제 등은 API health 로는 안 보인다. HTTP 200 과 HTML 응답인지 확인한다.
 # 실패하면 DISCORD_WEBHOOK_BACKEND_URL 로 알린다(장애가 이어지는 동안 실행마다 알림).
 # 참고: GitHub 의 schedule 은 수 분씩 늦게 돌 수 있고, 저장소에 60일간 활동이 없으면 자동 비활성화된다.
 on:
@@ -23,6 +27,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check /actuator/health
+        id: api
         env:
           HEALTH_URL: https://api.byeoldori.com/actuator/health
         run: |
@@ -38,8 +43,36 @@ jobs:
           done
           exit 1
 
-      - name: Notify Discord - Down
-        if: failure()
+      # API 가 실패해도 웹은 따로 확인한다(취소된 실행에서는 돌지 않음).
+      - name: Check web (byeoldori.com)
+        id: web
+        if: ${{ !cancelled() }}
+        env:
+          WEB_URLS: https://byeoldori.com/ https://byeoldori.com/community
+        run: |
+          FAILED=""
+          for URL in $WEB_URLS; do
+            OK=0
+            for i in 1 2 3; do
+              CODE=$(curl -s -L --max-time 15 -o body.html -w '%{http_code}' "$URL" || true)
+              if [ "$CODE" = "200" ] && grep -qi '<html' body.html; then
+                echo "$URL OK (attempt $i)"
+                OK=1
+                break
+              fi
+              echo "$URL attempt $i: HTTP ${CODE:-응답 없음}"
+              if [ "$i" -lt 3 ]; then sleep 20; fi
+            done
+            [ "$OK" = "1" ] || FAILED="$FAILED $URL"
+          done
+          rm -f body.html
+          if [ -n "$FAILED" ]; then
+            echo "실패:$FAILED"
+            exit 1
+          fi
+
+      - name: Notify Discord - API Down
+        if: ${{ !cancelled() && steps.api.outcome == 'failure' }}
         env:
           DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -47,4 +80,15 @@ jobs:
           [ -z "$DISCORD_URL" ] && exit 0
           curl -s -H "Content-Type: application/json" \
             -d "{\"embeds\":[{\"title\":\"🚨 별도리 API 헬스체크 실패 (외부 확인)\",\"description\":\"https://api.byeoldori.com/actuator/health 가 3회 연속 UP 이 아님\",\"color\":15158332,\"fields\":[{\"name\":\"로그\",\"value\":\"[확인](${RUN_URL})\",\"inline\":true}]}]}" \
+            "$DISCORD_URL" || true
+
+      - name: Notify Discord - Web Down
+        if: ${{ !cancelled() && steps.web.outcome == 'failure' }}
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$DISCORD_URL" ] && exit 0
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"🚨 별도리 웹 체크 실패 (외부 확인)\",\"description\":\"https://byeoldori.com 랜딩 또는 /community 가 3회 연속 200 + HTML 이 아님 (Worker 배포 회귀·도메인 해제 의심)\",\"color\":15158332,\"fields\":[{\"name\":\"로그\",\"value\":\"[확인](${RUN_URL})\",\"inline\":true}]}]}" \
             "$DISCORD_URL" || true
