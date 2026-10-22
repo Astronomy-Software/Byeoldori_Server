@@ -16,7 +16,60 @@ concurrency:
 # 소스 tarball을 scp로 전송 후 VM에서 build+up. GHCR pull(amd64) 방식 아님.
 # 필요한 secrets: SSH_HOST, SSH_USER, SSH_KEY(전용 배포키), DEPLOY_DIR(예 /home/ubuntu/byeoldori-server)
 jobs:
+  # 배포 전 테스트 게이트. ci.yml 은 pull_request 에서만 돌아, CI 가 빨간 PR 을 머지하거나 PR 여러 개가
+  # 합쳐진 뒤 main 에서 깨져도 그대로 운영에 나갔다(Dockerfile 도 -x test 로 빌드). CI 와 같은 명령을 돌리고,
+  # 실패하면 deploy 잡이 돌지 않아 VM 은 건드리지 않는다(서비스 중인 색 유지).
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and Test
+        run: |
+          chmod +x gradlew
+          ./gradlew test --no-daemon
+
+      - name: Ops script tests
+        run: |
+          bash scripts/tests/backup_test.sh
+          bash scripts/tests/bluegreen_test.sh
+          python3 scripts/tests/cf_exporter_test.py
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/reports/tests/
+          retention-days: 7
+
+      - name: Notify Discord - Test Failure
+        if: failure()
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          SHA: ${{ github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$DISCORD_URL" ] && exit 0
+          SHORT="${SHA:0:7}"
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"❌ 별도리 서버 배포 중단 (테스트 실패, 기존 버전 유지)\",\"color\":15158332,\"fields\":[{\"name\":\"커밋\",\"value\":\"[\`${SHORT}\`](${REPO_URL}/commit/${SHA})\",\"inline\":true},{\"name\":\"로그\",\"value\":\"[확인](${RUN_URL})\",\"inline\":true}]}]}" \
+            "$DISCORD_URL" || true
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +105,8 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          command_timeout: 20m
+          # 빌드 + 헬스 게이트(최대 6분) + 예보 캐시 적재 대기(최대 5분)가 들어가도록 여유를 둔다
+          command_timeout: 30m
           envs: DISCORD_WEBHOOK_BACKEND_URL,CLOUDFLARE_API_TOKEN,CLOUDFLARE_ACCOUNT_ID
           script: |
             set -e

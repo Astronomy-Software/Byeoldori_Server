@@ -101,6 +101,16 @@ class OpsConfigFilesTest {
     }
 
     @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `서버 배포는 CI 와 같은 테스트가 통과해야 진행된다`() {
+        val jobs = yaml(".github/workflows/deploy.yml").obj("jobs")
+        assertThat(jobs.obj("deploy")["needs"]).isEqualTo("test")
+        val runs = (jobs.obj("test")["steps"] as List<Map<String, Any?>>).mapNotNull { it["run"] as String? }.joinToString("\n")
+        assertThat(runs).contains("./gradlew test --no-daemon", "scripts/tests/bluegreen_test.sh",
+            "scripts/tests/backup_test.sh", "scripts/tests/cf_exporter_test.py")
+    }
+
+    @Test
     fun `블루그린 스크립트는 예보 캐시 적재(warm 그룹)를 상한을 두고 기다리고 그 경로는 인증 없이 열려 있다`() {
         val script = File("deploy-bluegreen.sh").readText()
         assertThat(script).contains("127.0.0.1:\$PORT/actuator/health/warm")
