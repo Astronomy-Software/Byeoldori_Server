@@ -3,6 +3,7 @@ package com.project.byeoldori.education.program.service
 import com.project.byeoldori.admin.service.SystemConfigService
 import com.project.byeoldori.common.exception.ForbiddenException
 import com.project.byeoldori.common.exception.InvalidInputException
+import com.project.byeoldori.common.exception.UnauthorizedException
 import com.project.byeoldori.community.post.repository.EducationPostRepository
 import com.project.byeoldori.education.program.domain.EducationProgram
 import com.project.byeoldori.education.program.domain.ProgramStatus
@@ -72,7 +73,8 @@ class EducationProgramServiceTest {
     fun `미발행 프로그램은 비로그인과 타인에게 막힌다`() {
         for (status in listOf(ProgramStatus.DRAFT, ProgramStatus.PREVIEW)) {
             program(status)
-            assertThatThrownBy { service.get("prog-1", null) }.isInstanceOf(ForbiddenException::class.java)
+            // 비로그인(만료 토큰 포함)은 401 이어야 웹이 토큰을 갱신하고 재시도한다. 로그인한 타인은 403.
+            assertThatThrownBy { service.get("prog-1", null) }.isInstanceOf(UnauthorizedException::class.java)
             assertThatThrownBy { service.get("prog-1", other) }.isInstanceOf(ForbiddenException::class.java)
             assertThat(service.get("prog-1", author).status).isEqualTo(status)
             assertThat(service.get("prog-1", admin).status).isEqualTo(status)
