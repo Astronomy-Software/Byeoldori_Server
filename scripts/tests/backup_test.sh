@@ -25,7 +25,10 @@ case "$1 $2" in
     echo "$*" >> "$HOME/docker.log"
     [ -n "${FAKE_MYSQL_FAIL:-}" ] && exit 1
     printf 'CREATE TABLE t (id int);\n-- Dump completed on 2026-10-20\n' ;;
-  "exec mongodb") printf 'mongo-archive' ;;
+  "exec mongodb")
+    # 컨테이너 안 셸 스크립트를 가짜 mongodump 로 실제 실행한다(비밀번호 전달 방식 확인)
+    [ "$3 $4" = "sh -c" ] || exit 1
+    MONGO_INITDB_ROOT_USERNAME=root MONGO_INITDB_ROOT_PASSWORD="${FAKE_MONGO_PW:-pw}" PATH="$HOME/mbin:$PATH" sh -c "$5" ;;
   "volume ls") echo "byeoldori-server_uploads" ;;
   run*) echo "uploads" | gzip ;;
   *) exit 1 ;;
@@ -36,7 +39,17 @@ EOF
 [ -n "${FAKE_OCI_FAIL:-}" ] && exit 1
 echo "$*" >> "$HOME/oci.log"
 EOF
-  chmod +x "$T/bin/"*
+  mkdir -p "$T/mbin"
+  # 가짜 mongodump: 명령줄과 --config 파일 경로·내용을 기록한다
+  cat > "$T/mbin/mongodump" <<'EOF'
+#!/bin/bash
+echo "$*" > "$HOME/mongodump.args"
+for a in "$@"; do
+  case "$a" in --config=*) echo "${a#--config=}" > "$HOME/mongodump.cfgpath"; cp "${a#--config=}" "$HOME/mongodump.cfg" ;; esac
+done
+printf 'mongo-archive'
+EOF
+  chmod +x "$T/bin/"* "$T/mbin/"*
   printf 'BACKUP_ROOT=%s\nBACKUP_OCI_BUCKET=%s\n' "$T/backups" "${1:-}" > "$T/.byeoldori-backup.env"
   # 보관 기간(7일)이 지난 예전 백업 하나
   mkdir -p "$T/backups/20200101-000000"
@@ -127,6 +140,17 @@ add_old_complete_backup 500
 FAKE_DF_USED=8000 run_backup
 check "성공 코드" '[ "$RC" -eq 0 ]'
 check "새 로컬 백업 1개" '[ "$(backup_dirs)" = "1" ]'
+rm -rf "$T"
+
+echo "[8] MongoDB 비밀번호는 명령줄(--password)이 아니라 임시 설정 파일로 넘기고, 파일은 덤프 뒤 지운다"
+setup
+FAKE_MONGO_PW="p'w d#1: x" run_backup
+EXPECTED_CFG="password: 'p''w d#1: x'"
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "mongodump 명령줄에 --password·비밀번호 없음" '! grep -q -- "--password" "$T/mongodump.args" && ! grep -q "d#1" "$T/mongodump.args"'
+check "--config 와 사용자·인증 DB 지정" 'grep -q -- "--config=" "$T/mongodump.args" && grep -q -- "--username root --authenticationDatabase admin" "$T/mongodump.args"'
+check "설정 파일은 YAML 작은따옴표 이스케이프" '[ "$(cat "$T/mongodump.cfg")" = "$EXPECTED_CFG" ]'
+check "임시 설정 파일 삭제" '[ ! -e "$(cat "$T/mongodump.cfgpath")" ]'
 rm -rf "$T"
 
 [ "$FAILS" -eq 0 ] && echo "backup_test: 모두 통과" || { echo "backup_test: 실패 $FAILS 건"; exit 1; }

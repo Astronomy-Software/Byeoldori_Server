@@ -8,9 +8,12 @@ on:
       - "docs/**"
   workflow_dispatch: {}
 
+# 진행 중인 배포는 취소하지 않고 끝까지 돌린 뒤 다음 배포를 한다(대기열에는 가장 최근 것 하나만 남는다).
+# 취소하면 ssh-action(PTY 없음)이 끊겨도 VM 쪽 스크립트는 계속 돌아 새 색이 nginx 밖에 남거나(@Scheduled 중복 실행)
+# 다음 배포와 겹쳤다. 수동 취소에 대비해 VM 스크립트도 잠금(flock)으로 한 번에 하나만 돈다.
 concurrency:
   group: deploy-backend-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 # VM(api.byeoldori.com, arm64)은 docker-compose.oci.yml로 소스에서 직접 빌드한다.
 # 소스 tarball을 scp로 전송 후 VM에서 build+up. GHCR pull(amd64) 방식 아님.
@@ -44,6 +47,7 @@ jobs:
         run: |
           bash scripts/tests/backup_test.sh
           bash scripts/tests/bluegreen_test.sh
+          bash scripts/tests/monitoring_reload_test.sh
           python3 scripts/tests/cf_exporter_test.py
 
       - name: Upload test results
@@ -110,6 +114,10 @@ jobs:
           envs: DISCORD_WEBHOOK_BACKEND_URL,CLOUDFLARE_API_TOKEN,CLOUDFLARE_ACCOUNT_ID
           script: |
             set -e
+            # 취소된 이전 배포의 VM 쪽 스크립트가 아직 돌고 있으면 끝날 때까지(최대 20분) 기다린다.
+            # 압축 해제·빌드·nginx 전환이 겹치면 서비스 중인 색을 지울 수 있다.
+            exec 9>/tmp/byeoldori-deploy.lock
+            flock -w 1200 9 || { echo "이전 배포가 아직 실행 중(잠금 대기 20분 초과) — 중단"; exit 1; }
             cd "${{ secrets.DEPLOY_DIR }}"
             # 압축 해제는 덮어쓰기만 하고 레포에서 지운 파일은 남긴다. 예전 마이그레이션(V2~V6)이
             # src 에 남아 새 V2 와 버전이 겹쳐 기동 실패했다(2026-09-27). src 는 전부 레포에 있으므로 비우고 푼다.
@@ -125,14 +133,9 @@ jobs:
             # 블루-그린 무중단 배포: 비활성 색을 빌드·기동→헬스 통과 시에만
             # nginx upstream 전환→구 색 정지. 실패하면 기존 컨테이너 유지.
             bash deploy-bluegreen.sh
-            # 모니터링 스택 반영 (설정 변경 시에만 재생성됨)
-            docker compose -f docker-compose.oci.yml -f docker-compose.monitoring.yml up -d prometheus grafana loki alloy cloudflare-exporter || true
-            # Grafana 는 알림 룰(provisioning)을 기동 때만 읽는다. 파일만 바뀌면 위 up -d 가 재생성하지 않으므로
-            # 알림 룰이 바뀐 배포에서만 재시작해 반영한다.
-            ALERT_SUM=$(sha256sum monitoring/grafana/provisioning/alerting/alerting.yml | cut -d' ' -f1)
-            if [ "$(cat monitoring/.alerting.sha256 2>/dev/null)" != "$ALERT_SUM" ]; then
-              docker restart grafana && echo "$ALERT_SUM" > monitoring/.alerting.sha256 || true
-            fi
+            # 모니터링 스택 반영. up -d 는 마운트한 설정 파일(prometheus.yml·알림 룰·exporter 코드 등) 내용이 바뀌어도
+            # 재생성하지 않으므로, 파일 sha256 이 달라진 서비스만 다시 만든다. 실패해도 배포는 계속한다.
+            bash scripts/reload-monitoring.sh || true
             # 운영 데이터(MySQL·MongoDB·업로드) 일일 백업 cron 설치/갱신(멱등). 실패해도 배포는 계속한다.
             bash scripts/install-backup-cron.sh || true
             docker image prune -f || true

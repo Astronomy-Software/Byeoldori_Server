@@ -5,6 +5,8 @@
 set -euo pipefail
 SCRIPT="$(cd "$(dirname "$0")/../.." && pwd)/deploy-bluegreen.sh"
 FAILS=0
+REAL_SLEEP=$(command -v sleep)
+export REAL_SLEEP
 
 setup() {   # $1: upstream 포트(없으면 파일 없음), $2: active 파일 내용(없으면 파일 없음)
   T=$(mktemp -d)
@@ -14,6 +16,9 @@ setup() {   # $1: upstream 포트(없으면 파일 없음), $2: active 파일 �
   cat > "$T/bin/docker" <<'EOF'
 #!/bin/bash
 echo "$*" >> "$FAKE_LOG/docker.log"
+# 빌드가 오래 걸리는 상황(그 사이 SSH 가 끊김). 가짜 sleep 이 PATH 앞에 있어 진짜 sleep 경로를 받는다.
+case "$*" in *" build "*) [ -n "${FAKE_BUILD_DELAY:-}" ] && "$REAL_SLEEP" "$FAKE_BUILD_DELAY" ;; esac
+exit 0
 EOF
   cat > "$T/bin/sudo" <<'EOF'
 #!/bin/bash
@@ -146,6 +151,20 @@ APP_PORTS=$(grep -hoE '"([0-9.]+:)?808[01]:8080"' "$ROOT/docker-compose.oci.yml"
 echo "$APP_PORTS" > "$T/out.log"
 check "app·app-blue·app-green 포트 3개 확인" '[ "$(echo "$APP_PORTS" | wc -l | tr -d " ")" = "3" ]'
 check "모두 127.0.0.1 바인딩" '! echo "$APP_PORTS" | grep -vq "^\"127\.0\.0\.1:"'
+rm -rf "$T"
+
+echo "[11] 출력 파이프가 닫히면(PTY 없는 SSH 가 Actions 취소로 끊김) SIGPIPE 로 즉사하지 않고 trap 으로 새 색을 내린다"
+setup 8080 blue
+set +e
+# 읽는 쪽이 첫 줄만 읽고 끝나 파이프가 닫힌다(빌드가 1초 걸리는 사이). 이후 echo 가 닫힌 파이프에 쓴다.
+PATH="$T/bin:$PATH" FAKE_LOG="$T" DEPLOY_DIR="$T/deploy" FAKE_BUILD_DELAY=1   BG_UPSTREAM_CONF="$T/nginx/conf.d/byeoldori-upstream.conf" BG_ACTIVE_FILE="$T/nginx/byeoldori_active"   bash "$SCRIPT" 2>&1 | { read -r _; }
+RC=${PIPESTATUS[0]}
+set -e
+: > "$T/out.log"
+check "실패 코드(전환하지 않음)" '[ "$RC" -ne 0 ]'
+check "새 색(green) 정지" 'grep -q "^stop app-green" "$T/docker.log"'
+check "upstream 이 8080 유지" '[ "$(upstream_port)" = "8080" ]'
+check "구 색(blue)은 정지하지 않음" '! grep -q "app-blue" "$T/docker.log"'
 rm -rf "$T"
 
 [ "$FAILS" -eq 0 ] && echo "bluegreen_test: 모두 통과" || { echo "bluegreen_test: 실패 $FAILS 건"; exit 1; }

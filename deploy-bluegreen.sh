@@ -1,5 +1,9 @@
 #!/bin/bash
 set -euo pipefail
+# ssh-action 은 PTY 없이 접속하므로 Actions 취소로 SSH 가 끊겨도 SIGHUP 이 오지 않는다. 대신 다음 출력이 닫힌 파이프에
+# 쓰이며 SIGPIPE 로 즉사해 아래 EXIT trap(새 색 정지)이 돌지 않았다. PIPE 를 무시하면 출력 명령이 실패해 set -e 로
+# trap 을 거쳐 끝난다(trap 안의 echo 는 출력 실패에도 정리를 마치도록 || true).
+trap '' PIPE
 cd "${DEPLOY_DIR:-$HOME/byeoldori-server}"
 # 경로는 테스트(scripts/tests/bluegreen_test.sh)에서만 바꾼다.
 UPSTREAM_CONF="${BG_UPSTREAM_CONF:-/etc/nginx/conf.d/byeoldori-upstream.conf}"
@@ -28,16 +32,16 @@ SWITCHING=0
 cleanup_new() {
   local rc=$?
   if [ "$rc" -ne 0 ] && [ "$SWITCHING" = "0" ]; then
-    echo "[BG] 실패(rc=$rc) — app-$NEW 정지(기존 $OLD 유지). 원인: docker logs app-$NEW"
+    echo "[BG] 실패(rc=$rc) — app-$NEW 정지(기존 $OLD 유지). 원인: docker logs app-$NEW" || true
     docker update --restart=no app-$NEW >/dev/null 2>&1 || true
     docker stop app-$NEW >/dev/null 2>&1 || true
   elif [ "$rc" -ne 0 ] && [ "$SWITCHING" = "1" ]; then
     if [ -f "$UPSTREAM_CONF.bak" ]; then
-      echo "[BG] 전환 실패(rc=$rc) — upstream 을 $OLD 로 되돌림"
+      echo "[BG] 전환 실패(rc=$rc) — upstream 을 $OLD 로 되돌림" || true
       sudo cp -p "$UPSTREAM_CONF.bak" "$UPSTREAM_CONF" || true
       if sudo nginx -t; then sudo systemctl reload nginx || true; fi
     else
-      echo "[BG] 전환 실패(rc=$rc) — 되돌릴 upstream 백업 없음. nginx 설정 확인 필요"
+      echo "[BG] 전환 실패(rc=$rc) — 되돌릴 upstream 백업 없음. nginx 설정 확인 필요" || true
     fi
   fi
 }

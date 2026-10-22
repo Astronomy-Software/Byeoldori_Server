@@ -85,6 +85,11 @@ ex.accumulate_window(START, END, ZONES)
 check("같은 구간 재조회 후 Worker 요청 수가 이중 집계되지 않음", ex.worker_requests[("byeoldori-web", "success")] == 10.0)
 check("같은 구간 재조회 후 존 counter 가 이중 집계되지 않음", ex.zone_status[("byeoldori.com", "200")] == 5.0)
 
+print("[3] 수집이 오래 실패해 커서가 밀리면 상한(기본 60분)씩 잘라 조회한다")
+check("짧은 구간은 그대로", ex.next_window_end(START, END) == END)
+LONG_START = END - timedelta(days=2)
+check("2일 밀린 구간은 60분만", ex.next_window_end(LONG_START, END) == LONG_START + timedelta(minutes=60))
+
 if FAILS:
     print("cf_exporter_test: 실패 %d 건" % FAILS)
     sys.exit(1)
