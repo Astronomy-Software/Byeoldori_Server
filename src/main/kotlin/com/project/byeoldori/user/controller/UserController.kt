@@ -41,9 +41,17 @@ class UserController(
     }
 
     @PostMapping("/logout")
-    @Operation(summary = "로그아웃 (리프레시 토큰 제거)")
-    fun logout(response: HttpServletResponse): ResponseEntity<ApiResponse<Unit>> {
-        userService.logout()
+    @Operation(summary = "로그아웃 (현재 기기의 리프레시 토큰 제거)")
+    fun logout(
+        @CookieValue(name = "refreshToken", required = false) cookieRefresh: String?,
+        // 기존 클라이언트가 어떤 body 를 보내도 400 이 나지 않도록 Map 으로 느슨하게 받는다
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        response: HttpServletResponse
+    ): ResponseEntity<ApiResponse<Unit>> {
+        // 웹: httpOnly 쿠키, 안드로이드: body. 둘 다 없으면 서비스가 모든 기기의 세션을 끝낸다(기존 동작).
+        val refreshToken = cookieRefresh?.takeIf { it.isNotBlank() }
+            ?: (body?.get("refreshToken") as? String)?.takeIf { it.isNotBlank() }
+        userService.logout(refreshToken)
         // 웹: httpOnly refreshToken 쿠키를 즉시 만료(Max-Age=0). Domain 미지정(host-only), 발급 시 속성과 동일하게.
         val expired = ResponseCookie.from("refreshToken", "")
             .httpOnly(true)

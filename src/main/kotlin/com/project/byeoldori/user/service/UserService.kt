@@ -128,12 +128,12 @@ class UserService(
             .orElseThrow { NotFoundException(ErrorCode.USER_NOT_FOUND) }
         if (user.deletedAt != null) throw UnauthorizedException("탈퇴한 계정입니다.")
 
-        val stored = refreshTokenRepo.findByUserIdForUpdate(user.id)
-            .orElseThrow { NotFoundException(ErrorCode.REFRESH_TOKEN_NOT_FOUND) }
-
-        if (stored.tokenHash != TokenHasher.sha256Hex(refreshToken)) {
-            throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
-        }
+        // 기기(세션)마다 행이 따로 있으므로 제시된 토큰의 해시로 그 행만 찾는다.
+        // 이미 회전된 옛 토큰·로그아웃된 토큰은 행이 없어 거부된다.
+        val stored = refreshTokenRepo.findByTokenHashForUpdate(TokenHasher.sha256Hex(refreshToken))
+            .orElse(null)
+            ?.takeIf { it.user.id == user.id }
+            ?: throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
 
         if (!stored.isActive()) throw UnauthorizedException("리프레시 토큰이 만료되었거나 폐기되었습니다.")
 
@@ -151,10 +151,15 @@ class UserService(
         )
     }
 
+    // refreshToken 이 있으면 그 기기의 세션만 끝내고, 없으면(토큰을 보내지 않는 클라이언트) 모든 세션을 끝낸다
     @Transactional
-    fun logout() {
+    fun logout(refreshToken: String? = null) {
         val user = currentUserResolver.getUser()
-        refreshTokenRepo.deleteByUserId(user.id)
+        if (refreshToken.isNullOrBlank()) {
+            refreshTokenRepo.deleteByUserId(user.id)
+        } else {
+            refreshTokenRepo.deleteByUserIdAndTokenHash(user.id, TokenHasher.sha256Hex(refreshToken))
+        }
         cachedUserLookupService.evictByEmail(user.email)
     }
 
@@ -508,16 +513,14 @@ class UserService(
         val hash = TokenHasher.sha256Hex(refresh)
         val exp = jwt.extractExpiration(refresh)
 
-        val existing = refreshTokenRepo.findByUserIdForUpdate(user.id)
-        if (existing.isPresent) {
-            val t = existing.get()
-            t.tokenHash = hash
-            t.expiresAt = exp
-            t.revokedAt = null
-            t.rotatedAt = null
-        } else {
-            refreshTokenRepo.save(RefreshToken(user = user, tokenHash = hash, expiresAt = exp))
+        // 로그인마다 새 세션 행을 만든다(다른 기기의 세션은 그대로 유지).
+        // 만료·폐기된 행은 지우고, 세션이 상한을 넘으면 가장 오래된 것부터 끝낸다.
+        refreshTokenRepo.deleteInactiveByUserId(user.id, LocalDateTime.now())
+        val sessions = refreshTokenRepo.findAllByUserIdNewestFirst(user.id)
+        if (sessions.size >= MAX_SESSIONS_PER_USER) {
+            refreshTokenRepo.deleteAll(sessions.drop(MAX_SESSIONS_PER_USER - 1))
         }
+        refreshTokenRepo.save(RefreshToken(user = user, tokenHash = hash, expiresAt = exp))
 
         user.lastLoginAt = LocalDateTime.now()
         return AuthResponseDto.of(
@@ -531,5 +534,7 @@ class UserService(
         const val LOGIN_FAILED_MESSAGE = "이메일 또는 비밀번호가 올바르지 않습니다."
         // 이메일을 주지 않는 소셜 계정의 자리표시자 도메인
         const val NO_EMAIL_DOMAIN = "noemail.byeoldori"
+        // 사용자당 동시에 유지하는 로그인 세션(refresh 토큰) 수 상한
+        const val MAX_SESSIONS_PER_USER = 10
     }
 }
