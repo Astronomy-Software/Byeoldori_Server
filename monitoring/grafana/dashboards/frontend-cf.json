@@ -81,7 +81,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status) (rate(cloudflare_zone_requests_status[10m]) * 60)",
+          "expr": "sum by (status) (rate(cloudflare_zone_requests_status{zone=\"byeoldori.com\"}[10m]) * 60)",
           "legendFormat": "{{status}}"
         }
       ]

@@ -31,12 +31,17 @@ echo "$*" >> "$FAKE_LOG/systemctl.log"
 EOF
   cat > "$T/bin/curl" <<'EOF'
 #!/bin/bash
+url="${@: -1}"
+echo "$url" >> "$FAKE_LOG/curl.log"
 [ -n "${FAKE_HEALTH_FAIL:-}" ] && exit 22
+# warm 그룹: 예보 캐시 적재 전에는 503(curl -f 는 22 로 실패)
+case "$url" in */actuator/health/warm) [ -n "${FAKE_WARM_FAIL:-}" ] && exit 22 ;; esac
 echo '{"status":"UP"}'
 EOF
   printf '#!/bin/bash\nexit 0\n' > "$T/bin/sleep"
   chmod +x "$T/bin/"*
   : > "$T/docker.log"
+  : > "$T/curl.log"
 }
 
 run_bg() {
@@ -108,6 +113,30 @@ setup "" ""
 run_bg
 check "성공 코드" '[ "$RC" -eq 0 ]'
 check "upstream 이 8080, active 가 blue" '[ "$(upstream_port)" = "8080" ] && [ "$(active)" = "blue" ]'
+rm -rf "$T"
+
+echo "[7] 예보 캐시 적재 대기: 적재되면 경고 없이 전환"
+setup 8080 blue
+run_bg
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "새 색의 warm 그룹을 확인" 'grep -q "127.0.0.1:8081/actuator/health/warm" "$T/curl.log"'
+check "경고 없음" '! grep -q "경고: 예보 캐시" "$T/out.log"'
+rm -rf "$T"
+
+echo "[8] 예보 캐시가 상한 안에 적재되지 않아도 경고만 남기고 전환한다(배포가 막히지 않음)"
+setup 8080 blue
+FAKE_WARM_FAIL=1 BG_WARM_TRIES=3 run_bg
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "warm 을 상한(3회)까지만 확인" '[ "$(grep -c "/actuator/health/warm" "$T/curl.log")" = "3" ]'
+check "경고 출력" 'grep -q "경고: 예보 캐시" "$T/out.log"'
+check "upstream 이 8081, 구 색 정지" '[ "$(upstream_port)" = "8081" ] && grep -q "^stop -t 35 app-blue" "$T/docker.log"'
+rm -rf "$T"
+
+echo "[9] 첫 배포는 예보 캐시 적재를 기다리지 않는다"
+setup "" ""
+FAKE_WARM_FAIL=1 run_bg
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "warm 확인 안 함" '! grep -q "/actuator/health/warm" "$T/curl.log"'
 rm -rf "$T"
 
 [ "$FAILS" -eq 0 ] && echo "bluegreen_test: 모두 통과" || { echo "bluegreen_test: 실패 $FAILS 건"; exit 1; }

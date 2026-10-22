@@ -124,29 +124,45 @@ query ($z: String!, $min: Time!, $max: Time!) {
 }"""
 
 
-def accumulate_worker(min_dt, max_dt):
+def fetch_worker(min_dt, max_dt):
+    """구간의 Worker 요청·에러 합계 {(script, status): (requests, errors)}. counter 에는 더하지 않는다."""
     data = _post_graphql(WORKER_SUM_Q, {"a": ACCOUNT_ID, "min": _iso(min_dt), "max": _iso(max_dt)})
     accts = data["viewer"]["accounts"]
     rows = accts[0]["workersInvocationsAdaptive"] if accts else []
-    with _lock:
-        for row in rows:
-            script = row["dimensions"]["scriptName"] or "unknown"
-            status = row["dimensions"]["status"] or "unknown"
-            reqs = float(row["sum"]["requests"])
-            errs = float(row["sum"]["errors"])
-            worker_requests[(script, status)] = worker_requests.get((script, status), 0.0) + reqs
-            worker_errors[(script, status)] = worker_errors.get((script, status), 0.0) + errs
+    result = {}
+    for row in rows:
+        script = row["dimensions"]["scriptName"] or "unknown"
+        status = row["dimensions"]["status"] or "unknown"
+        reqs, errs = result.get((script, status), (0.0, 0.0))
+        result[(script, status)] = (reqs + float(row["sum"]["requests"]), errs + float(row["sum"]["errors"]))
+    return result
 
 
-def accumulate_zones(min_dt, max_dt, zones):
+def fetch_zones(min_dt, max_dt, zones):
+    """구간의 존별 edge 상태코드 요청 수 {(zone_name, status): count}. counter 에는 더하지 않는다."""
+    result = {}
     for zid, zname in zones.items():
         data = _post_graphql(ZONE_STATUS_Q, {"z": zid, "min": _iso(min_dt), "max": _iso(max_dt)})
         znodes = data["viewer"]["zones"]
         groups = znodes[0]["httpRequestsAdaptiveGroups"] if znodes else []
-        with _lock:
-            for g in groups:
-                status = str(g["dimensions"]["edgeResponseStatus"])
-                zone_status[(zname, status)] = zone_status.get((zname, status), 0.0) + float(g["count"])
+        for g in groups:
+            status = str(g["dimensions"]["edgeResponseStatus"])
+            result[(zname, status)] = result.get((zname, status), 0.0) + float(g["count"])
+    return result
+
+
+def accumulate_window(min_dt, max_dt, zones):
+    """[min_dt, max_dt) 구간을 Worker·모든 존에 대해 조회한 뒤, 전부 성공했을 때만 counter 에 한 번에 더한다.
+    하나라도 실패하면 예외로 끝나 counter 는 그대로다. 호출자는 커서를 전진시키지 않고 다음 주기에 같은 구간을
+    다시 조회하는데, 앞서 성공한 조회분을 미리 더해 두면 그 구간이 두 번 집계된다(요청·에러 수 스파이크, 5xx 비율 왜곡)."""
+    worker = fetch_worker(min_dt, max_dt)
+    zone = fetch_zones(min_dt, max_dt, zones)
+    with _lock:
+        for key, (reqs, errs) in worker.items():
+            worker_requests[key] = worker_requests.get(key, 0.0) + reqs
+            worker_errors[key] = worker_errors.get(key, 0.0) + errs
+        for key, count in zone.items():
+            zone_status[key] = zone_status.get(key, 0.0) + count
 
 
 def refresh_quantiles(max_dt):
@@ -180,8 +196,7 @@ def refresh_loop():
             if state["cursor"] is None:
                 state["cursor"] = end - timedelta(minutes=BACKFILL_MINUTES)
             if end > state["cursor"]:
-                accumulate_worker(state["cursor"], end)
-                accumulate_zones(state["cursor"], end, state["zones"])
+                accumulate_window(state["cursor"], end, state["zones"])
                 state["cursor"] = end
             refresh_quantiles(end)
             state["up"] = 1

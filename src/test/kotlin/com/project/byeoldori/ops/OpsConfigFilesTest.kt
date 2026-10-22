@@ -60,7 +60,12 @@ class OpsConfigFilesTest {
         val rule = groups.flatMap { it["rules"] as List<Map<String, Any?>> }.first { it["uid"] == "cf-edge-5xx" }
         val data = rule["data"] as List<Map<String, Any?>>
         val expr = data.first { it["refId"] == "A" }.obj("model")["expr"] as String
-        assertThat(expr).contains("cloudflare_zone_requests_status{status=~\"5..\"}")
+        assertThat(expr).contains("cloudflare_zone_requests_status{zone=\"byeoldori.com\",status=~\"5..\"}")
+        // exporter 는 계정의 모든 존을 수집하므로 분자·분모·최소 요청 조건 모두 byeoldori.com 존으로 한정해야 한다
+        val selectors = Regex("cloudflare_zone_requests_status(\\{[^}]*\\})?").findAll(expr).map { it.value }.toList()
+        assertThat(selectors).hasSize(3).allSatisfy { assertThat(it).contains("zone=\"byeoldori.com\"") }
+        val dashboard = File("monitoring/grafana/dashboards/frontend-cf.json").readText()
+        assertThat(dashboard).doesNotContain("cloudflare_zone_requests_status[")
         val evaluator = (data.first { it["refId"] == "C" }.obj("model")["conditions"] as List<Map<String, Any?>>)
             .first().obj("evaluator")
         assertThat(evaluator["type"]).isEqualTo("gt")
@@ -93,6 +98,26 @@ class OpsConfigFilesTest {
         val script = File("deploy-bluegreen.sh").readText()
         assertThat(script).contains("grep -oE '127\\.0\\.0\\.1:808[01]' \"\$UPSTREAM_CONF\"")
         assertThat(script).contains("sudo cp -p \"\$UPSTREAM_CONF.bak\" \"\$UPSTREAM_CONF\"")
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `서버 배포는 CI 와 같은 테스트가 통과해야 진행된다`() {
+        val jobs = yaml(".github/workflows/deploy.yml").obj("jobs")
+        assertThat(jobs.obj("deploy")["needs"]).isEqualTo("test")
+        val runs = (jobs.obj("test")["steps"] as List<Map<String, Any?>>).mapNotNull { it["run"] as String? }.joinToString("\n")
+        assertThat(runs).contains("./gradlew test --no-daemon", "scripts/tests/bluegreen_test.sh",
+            "scripts/tests/backup_test.sh", "scripts/tests/cf_exporter_test.py")
+    }
+
+    @Test
+    fun `블루그린 스크립트는 예보 캐시 적재(warm 그룹)를 상한을 두고 기다리고 그 경로는 인증 없이 열려 있다`() {
+        val script = File("deploy-bluegreen.sh").readText()
+        assertThat(script).contains("127.0.0.1:\$PORT/actuator/health/warm")
+        assertThat(script).contains("seq 1 \"\${BG_WARM_TRIES:-60}\"")
+        // 경로가 인증 뒤에 있으면 매 배포가 401 로 상한(5분)까지 기다린 뒤에야 전환된다
+        val security = File("src/main/kotlin/com/project/byeoldori/config/SecurityConfig.kt").readText()
+        assertThat(security).contains("\"/actuator/health/warm\",")
     }
 
     @Test
