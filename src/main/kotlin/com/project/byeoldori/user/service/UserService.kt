@@ -4,6 +4,7 @@ import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.community.common.service.StorageService
 import com.project.byeoldori.security.CurrentUserResolver
 import com.project.byeoldori.security.JwtUtil
+import com.project.byeoldori.user.config.blockForOAuth
 import com.project.byeoldori.user.dto.*
 import com.project.byeoldori.user.entity.EmailVerificationToken
 import com.project.byeoldori.user.entity.PasswordResetToken
@@ -17,6 +18,7 @@ import com.project.byeoldori.user.utils.PasswordValidator
 import com.project.byeoldori.user.utils.PhoneNormalizer
 import com.project.byeoldori.user.utils.TokenHasher
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -46,7 +48,8 @@ class UserService(
     private val jwt: JwtUtil,
     private val emailService: EmailService,
     private val cachedUserLookupService: CachedUserLookupService,
-    private val passwordResetTokenRepo: PasswordResetTokenRepository
+    private val passwordResetTokenRepo: PasswordResetTokenRepository,
+    @Qualifier("oauthWebClient") private val oauthWebClient: WebClient
 ) {
 
     private val log = LoggerFactory.getLogger(UserService::class.java)
@@ -399,7 +402,7 @@ class UserService(
             add("code", code)
         }
 
-        return WebClient.create()
+        return oauthWebClient
             .post()
             .uri(tokenUrl)
             .contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -411,11 +414,11 @@ class UserService(
                 }
             }
             .bodyToMono(Map::class.java)
-            .block() ?: throw UnauthorizedException("OAuth 토큰 교환 응답 없음")
+            .blockForOAuth() ?: throw UnauthorizedException("OAuth 토큰 교환 응답 없음")
     }
 
     private fun fetchUserInfo(userInfoUrl: String, accessToken: String): Map<*, *> {
-        return WebClient.create()
+        return oauthWebClient
             .get()
             .uri(userInfoUrl)
             .header("Authorization", "Bearer $accessToken")
@@ -426,7 +429,7 @@ class UserService(
                 }
             }
             .bodyToMono(Map::class.java)
-            .block() ?: throw UnauthorizedException("OAuth 사용자 정보 응답 없음")
+            .blockForOAuth() ?: throw UnauthorizedException("OAuth 사용자 정보 응답 없음")
     }
 
     private fun findOrCreateOAuthUser(

@@ -7,3 +7,4 @@ class NotFoundException(errorCode: ErrorCode, message: String = errorCode.messag
 class ConflictException(errorCode: ErrorCode, message: String = errorCode.message) : ByeoldoriException(errorCode, message)
 class UploadQuotaExceededException(message: String = ErrorCode.UPLOAD_QUOTA_EXCEEDED.message) : ByeoldoriException(ErrorCode.UPLOAD_QUOTA_EXCEEDED, message)
 class InternalServerException(message: String = ErrorCode.INTERNAL_SERVER_ERROR.message) : ByeoldoriException(ErrorCode.INTERNAL_SERVER_ERROR, message)
+class ExternalServiceException(message: String = ErrorCode.EXTERNAL_SERVICE_UNAVAILABLE.message) : ByeoldoriException(ErrorCode.EXTERNAL_SERVICE_UNAVAILABLE, message)
