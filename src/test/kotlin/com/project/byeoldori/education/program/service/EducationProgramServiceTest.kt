@@ -252,6 +252,21 @@ class EducationProgramServiceTest {
     }
 
     @Test
+    fun `authorId 0 인 기본 제공 프로그램은 탈퇴자가 아니라 저장된 작성자 이름을 보여준다`() {
+        val pageable = PageRequest.of(0, 20)
+        val system = EducationProgram(id = "orion-101", title = "오리온", authorId = 0, authorName = "별도리", status = ProgramStatus.PUBLISHED)
+        val rows = listOf(system, EducationProgram(id = "a", title = "A", authorId = author.id, status = ProgramStatus.PUBLISHED))
+        `when`(repo.findSummariesByStatus(ProgramStatus.PUBLISHED, pageable)).thenReturn(PageImpl(rows, pageable, 2))
+        `when`(userRepo.findAllById(setOf(author.id))).thenReturn(listOf(author))
+
+        assertThat(service.listPublished(pageable).content.map { it.authorName }).containsExactly("별도리", "작성자")
+
+        `when`(repo.findById("orion-101")).thenReturn(Optional.of(system))
+        assertThat(service.get("orion-101", null).authorName).isEqualTo("별도리")
+        verify(userRepo, never()).findById(0L)
+    }
+
+    @Test
     fun `목록 조회 쿼리는 steps 를 제외하고 status·authorId 인덱스를 둔다`() {
         for (name in listOf("findSummariesByStatus", "findSummariesByAuthorId")) {
             val q = EducationProgramRepository::class.java.methods.first { it.name == name }.getAnnotation(Query::class.java)
