@@ -14,6 +14,13 @@ class ObservationSiteSeeder(
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     override fun run(vararg args: String?) {
+        // 빈 DB 에서만 시드한다. 예전엔 기동할 때마다 (이름, 좌표)가 같은 행이 없으면 다시 넣어서,
+        // 관리자가 지운 관측지는 다음 배포 때 되살아나고 이름·좌표를 고친 관측지는 원래 값으로 하나 더 생겼다.
+        if (siteRepository.count() > 0) {
+            logger.info("관측지 데이터가 이미 있어 시드를 건너뜁니다.")
+            return
+        }
+
         val sampleSites = listOf(
             ObservationSite(name = "우암산 전망대", latitude = 36.65003430206848, longitude = 127.50494706148991),
             ObservationSite(name = "매봉산", latitude = 36.62337885771579, longitude = 127.4753990979296),

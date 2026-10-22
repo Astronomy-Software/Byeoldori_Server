@@ -76,7 +76,7 @@ class EducationProgramService(
         val p = findOrThrow(id)
         if (p.authorId != user.id) throw ForbiddenException()
         if (p.status != ProgramStatus.DRAFT && p.status != ProgramStatus.PREVIEW) {
-            throw InvalidInputException("발행되었거나 검수 중이 아닌 상태에서만 수정할 수 있습니다.")
+            throw InvalidInputException("작성 중(DRAFT)이거나 검수 대기(PREVIEW) 상태에서만 수정할 수 있습니다.")
         }
 
         req.title?.let { p.title = it }
@@ -84,6 +84,13 @@ class EducationProgramService(
         req.difficulty?.let { p.difficulty = it }
         req.targets?.let { p.targets = it }
         req.steps?.let { p.steps = toSteps(it) }
+
+        // 검수 대기 중 내용을 고치면 관리자가 본 버전과 발행될 버전이 달라진다.
+        // 검수가 필요한 상황(작성자가 직접 발행할 수 없는 경우)이면 DRAFT 로 되돌려 다시 검수 요청을 받는다.
+        if (p.status == ProgramStatus.PREVIEW && !isAdmin(user) && systemConfigService.moderationRequired()) {
+            p.status = ProgramStatus.DRAFT
+            p.rejectReason = null
+        }
 
         return ProgramDetailResponse.from(repo.save(p))
     }

@@ -5,6 +5,7 @@ import com.project.byeoldori.community.common.domain.*
 import com.project.byeoldori.community.common.dto.*
 import com.project.byeoldori.community.common.service.StorageService
 import com.project.byeoldori.community.common.service.UploadedFileService
+import com.project.byeoldori.community.common.util.LexicalPlainText
 import com.project.byeoldori.community.post.domain.*
 import com.project.byeoldori.community.post.dto.*
 import com.project.byeoldori.community.post.repository.*
@@ -118,6 +119,7 @@ class PostService(
             }
         }
 
+        validateImageUrls(req.imageUrls.orEmpty())
         req.imageUrls.orEmpty().forEachIndexed { idx, url ->
             imgRepo.save(PostImage(post = post, url = url, sortOrder = idx))
         }
@@ -265,8 +267,15 @@ class PostService(
         val p = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
         if (p.author.id != user.id) throw ForbiddenException()
 
-        req.title?.let { p.title = it }
-        req.content?.let { p.content = it }
+        // 생성 때의 @NotBlank 와 같은 규칙: 보낸 값이 공백뿐이면 거부한다(null 은 "바꾸지 않음")
+        req.title?.let {
+            if (it.isBlank()) throw InvalidInputException("제목은 비워둘 수 없습니다.")
+            p.title = it
+        }
+        req.content?.let {
+            if (it.isBlank()) throw InvalidInputException("본문은 비워둘 수 없습니다.")
+            p.content = it
+        }
 
         when (p.type) {
             PostType.REVIEW    -> req.review?.let { updateReviewPost(postId, it) }
@@ -381,7 +390,18 @@ class PostService(
         }
     }
 
+    /** 이미지 URL 은 post_image.url 컬럼(512자)에 맞아야 하고 비어 있으면 안 된다(넘으면 DB 저장 단계 500). */
+    private fun validateImageUrls(urls: List<String>) {
+        if (urls.size > POST_IMAGE_MAX_COUNT) {
+            throw InvalidInputException("이미지는 최대 ${POST_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.")
+        }
+        if (urls.any { it.isBlank() || it.length > 512 }) {
+            throw InvalidInputException("이미지 URL 형식이 올바르지 않습니다.")
+        }
+    }
+
     private fun updatePostImages(post: CommunityPost, requestedUrls: List<String>, actorId: Long) {
+        validateImageUrls(requestedUrls)
         val existingImages = imgRepo.findAllByPostIdOrderBySortOrderAsc(post.id!!)
         val existingImageMap = existingImages.associateBy { it.url }
 
@@ -420,7 +440,8 @@ class PostService(
         score: Double? = 0.0,
         thumbnailUrl: String? = null
     ): PostSummaryResponse {
-        val summary = if (this.type == PostType.FREE) this.content.take(30) else null
+        // 웹 본문은 Lexical JSON 이라 텍스트 노드만 모아 평문 요약을 만든다(실패하면 원문 앞부분)
+        val summary = if (this.type == PostType.FREE) LexicalPlainText.summarize(this.content, 30) else null
 
         return PostSummaryResponse(
             id = this.id!!, type = this.type, title = this.title, authorId = this.author.id, authorNickname = this.author.nickname,
@@ -432,8 +453,9 @@ class PostService(
 
     @Transactional
     fun evaluateEducationPost(postId: Long, user: User, req: EvaluateEducationRequest) {
-        val eduPost = eduRepo.findById(postId)
-            .orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND, "평가할 교육 게시글을 찾을 수 없습니다.") }
+        // 행 잠금으로 같은 글의 평가를 한 줄로 세운다
+        val eduPost = eduRepo.findByIdForUpdate(postId)
+            ?: throw NotFoundException(ErrorCode.POST_NOT_FOUND, "평가할 교육 게시글을 찾을 수 없습니다.")
 
         if (eduPost.post.author.id == user.id) {
             throw ForbiddenException("자신이 작성한 글에는 평점을 매길 수 없습니다.")
@@ -458,10 +480,10 @@ class PostService(
                     cons = clean(req.cons)
                 )
             )
-            eduPost.ratingCount++
         }
 
-        eduPost.averageScore = educationRatingRepo.findAverageScoreByPostId(postId)
+        // 엔티티 필드를 바꾸지 않고(옛 값으로 행 전체를 다시 쓰는 것 방지) 원자적 UPDATE 로 다시 계산한다
+        eduRepo.recalculateRating(postId)
     }
 
     private fun mapToSummaryResponse(posts: List<CommunityPost>, user: User?): List<PostSummaryResponse> {

@@ -4,6 +4,7 @@ import com.google.cloud.storage.BlobInfo
 import com.google.cloud.storage.StorageOptions
 import com.project.byeoldori.common.exception.ErrorCode
 import com.project.byeoldori.common.exception.InvalidInputException
+import com.project.byeoldori.community.common.util.ImageHeaderReader
 import com.project.byeoldori.community.common.util.ImageMagicDetector
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -15,7 +16,6 @@ import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.*
-import javax.imageio.ImageIO
 
 @Service
 @ConditionalOnProperty(name = ["storage.type"], havingValue = "gcs")
@@ -43,8 +43,10 @@ class GcsStorageService(
             throw InvalidInputException("유효한 이미지 파일이 아닙니다.")
         }
 
-        val img = ImageIO.read(file.inputStream) ?: throw InvalidInputException("이미지를 읽을 수 없습니다.")
-        val mega = (img.width.toLong() * img.height.toLong()) / 1_000_000
+        // 픽셀 폭탄 방어: 디코딩 전에 헤더의 크기만 읽어 검사한다
+        val (width, height) = ImageHeaderReader.readSize(file)
+            ?: throw InvalidInputException("이미지를 읽을 수 없습니다.")
+        val mega = (width.toLong() * height.toLong()) / 1_000_000
         if (mega > maxMegaPixels) throw InvalidInputException(ErrorCode.FILE_TOO_LARGE.message)
 
         val datePath = LocalDate.now(ZoneId.of("Asia/Seoul")).toString().replace("-", "/")

@@ -1,7 +1,9 @@
 package com.project.byeoldori.user.controller
 
 import com.project.byeoldori.common.web.ApiResponse
+import com.project.byeoldori.community.common.service.UploadedFileService
 import com.project.byeoldori.user.dto.*
+import com.project.byeoldori.user.entity.User
 import com.project.byeoldori.user.service.UserService
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.servlet.http.HttpServletResponse
@@ -16,7 +18,8 @@ import org.springframework.web.multipart.MultipartFile
 @RestController
 @RequestMapping("/users")
 class UserController(
-    private val userService: UserService
+    private val userService: UserService,
+    private val uploadedFiles: UploadedFileService,
 ) {
 
     @GetMapping("/me")
@@ -35,8 +38,14 @@ class UserController(
 
     @PostMapping("/me/profile-image", consumes = ["multipart/form-data"])
     @Operation(summary = "프로필 이미지 업로드/교체")
-    fun uploadProfileImage(@RequestPart("image") image: MultipartFile): ApiResponse<ProfileImageUploadResponse> {
+    fun uploadProfileImage(
+        @RequestPart("image") image: MultipartFile,
+        @RequestAttribute("currentUser") user: User
+    ): ApiResponse<ProfileImageUploadResponse> {
+        // /files/image 와 같은 사용자별 업로드 쿼터를 적용하고 기록한다(프로필 교체를 반복하는 남용 방지)
+        uploadedFiles.checkQuota(user.id, image.size)
         val url = userService.updateProfileImage(image)
+        uploadedFiles.record(url, user.id, image.size)
         return ApiResponse.ok(ProfileImageUploadResponse(url))
     }
 
