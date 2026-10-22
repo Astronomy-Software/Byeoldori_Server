@@ -2,6 +2,7 @@ package com.project.byeoldori.education.program.controller
 
 import com.project.byeoldori.admin.service.SystemConfigService
 import com.project.byeoldori.common.web.ApiResponseWrapperAdvice
+import com.project.byeoldori.common.web.GlobalExceptionHandler
 import com.project.byeoldori.education.program.domain.ProgramStatus
 import com.project.byeoldori.education.program.dto.ProgramDetailResponse
 import com.project.byeoldori.education.program.service.EducationProgramService
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -25,7 +27,7 @@ class EducationProgramControllerTest {
     private val systemConfig = mock(SystemConfigService::class.java)
     private val mockMvc: MockMvc = MockMvcBuilders
         .standaloneSetup(EducationProgramController(service, systemConfig))
-        .setControllerAdvice(ApiResponseWrapperAdvice())
+        .setControllerAdvice(ApiResponseWrapperAdvice(), GlobalExceptionHandler())
         .build()
 
     @Test
@@ -54,5 +56,17 @@ class EducationProgramControllerTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.id").value("prog-1"))
             .andExpect(jsonPath("$.data.title").value("여름철 별자리"))
+    }
+
+    @Test
+    fun `비로그인으로 내 목록·검수 큐를 요청하면 401 을 돌려준다`() {
+        // 만료된 access 토큰도 permitAll 경로에선 익명으로 들어온다. 403 이면 웹이 토큰을 갱신하지 않는다.
+        for (param in listOf("mine", "pending")) {
+            mockMvc.perform(get("/education/programs").param(param, "true"))
+                .andExpect(status().isUnauthorized)
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+        }
+        verifyNoInteractions(service)
     }
 }

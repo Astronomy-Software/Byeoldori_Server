@@ -5,6 +5,7 @@ import com.project.byeoldori.common.exception.ErrorCode
 import com.project.byeoldori.common.exception.ForbiddenException
 import com.project.byeoldori.common.exception.InvalidInputException
 import com.project.byeoldori.common.exception.NotFoundException
+import com.project.byeoldori.common.exception.UnauthorizedException
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.community.common.dto.toPageResponse
 import com.project.byeoldori.education.program.domain.EducationProgram
@@ -217,7 +218,9 @@ class EducationProgramService(
     fun get(id: String, user: User?): ProgramDetailResponse {
         val p = findOrThrow(id)
         if (p.status != ProgramStatus.PUBLISHED) {
-            val allowed = user != null && (p.authorId == user.id || isAdmin(user))
+            // 익명(만료 토큰 포함)은 401 → 웹이 토큰 갱신 후 재시도. 로그인한 타인만 403.
+            if (user == null) throw UnauthorizedException(ErrorCode.LOGIN_REQUIRED.message)
+            val allowed = p.authorId == user.id || isAdmin(user)
             if (!allowed) throw ForbiddenException("해당 프로그램을 조회할 권한이 없습니다.")
         }
         return detail(p)

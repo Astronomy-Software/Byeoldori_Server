@@ -1,7 +1,8 @@
 package com.project.byeoldori.education.program.controller
 
 import com.project.byeoldori.admin.service.SystemConfigService
-import com.project.byeoldori.common.exception.ForbiddenException
+import com.project.byeoldori.common.exception.ErrorCode
+import com.project.byeoldori.common.exception.UnauthorizedException
 import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.education.program.dto.CreateProgramRequest
@@ -59,8 +60,10 @@ class EducationProgramController(
         }
     }
 
+    // permitAll 경로라 만료된 access 토큰도 익명(user==null)으로 들어온다.
+    // 403 이 아니라 401 을 돌려줘야 웹이 토큰을 갱신하고 재시도한다.
     private fun requireLogin(user: User?): User =
-        user ?: throw ForbiddenException("로그인이 필요합니다.")
+        user ?: throw UnauthorizedException(ErrorCode.LOGIN_REQUIRED.message)
 
     // 리터럴 경로라 GET /{id} 보다 우선 매칭된다. 값은 관리자 설정(moderation.required)만 읽는다.
     @GetMapping("/moderation")
