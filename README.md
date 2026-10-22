@@ -70,6 +70,7 @@
 - 대상: MySQL `byeoldori` 전체 덤프, MongoDB 전체(`mongodump --archive --gzip`), 업로드 파일(`uploads` 볼륨)
 - 위치: `~/byeoldori-backups/<YYYYMMDD-HHMMSS>/` (기본 7일 보관), 실행 로그는 `~/byeoldori-backups/backup.log`
 - 실패하면 Discord(Grafana 알림과 같은 웹훅)로 알린다.
+- 백업이 아예 돌지 않는 경우(cron 항목 누락·cron 데몬 정지)는 `scripts/check-backup-freshness.sh` 가 잡는다. 매일 10:00(KST) `backup-check.yml` 이 VM 에 접속해 돌리고, 배포 때도 돌려 26시간 안에 완성 백업이 없으면 Discord 로 알린다(배포는 실패로 만들지 않고 경고만).
 - 로컬 백업은 같은 부트볼륨에 있어서 VM 을 통째로 잃으면 함께 사라진다. VM 밖 보관은 `~/.byeoldori-backup.env` 에 `BACKUP_OCI_BUCKET=<버킷>` 을 두고 VM 에 oci CLI 를 설정하면 켜진다(버킷 수명주기 규칙으로 보존 기간 관리). OCI 콘솔의 부트볼륨 백업 정책도 함께 켜 둔다.
 
 - 디스크 사용률(이번 백업 예상 크기 포함)이 `BACKUP_MAX_DISK_PCT`(기본 90%) 이상이면 보관 기간이 지난 백업부터 지우고 다시 잰다. 그래도 모자라면 실패로 알린다. 가장 최근 완성 백업 하나는 보관 기간이 지나도 남긴다.

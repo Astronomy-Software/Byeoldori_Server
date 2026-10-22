@@ -103,8 +103,38 @@ class OpsConfigFilesTest {
 
         val deploy = yaml(".github/workflows/deploy.yml").obj("jobs").obj("deploy")["steps"] as List<Map<String, Any?>>
         val remote = deploy.mapNotNull { (it["with"] as Map<String, Any?>?)?.get("script") as String? }.joinToString("\n")
-        assertThat(remote).contains("bash scripts/reload-monitoring.sh || true")
+        // 실패를 삼키지 않고 배포 경고로 남긴다(배포 자체는 계속)
+        assertThat(remote).contains("bash scripts/reload-monitoring.sh || DEPLOY_WARN=")
         assertThat(remote).doesNotContain("docker restart grafana")
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `배포는 백업 cron 설치 실패와 백업 신선도 문제를 경고로 알리고 매일 외부에서도 백업을 확인한다`() {
+        val deploy = yaml(".github/workflows/deploy.yml").obj("jobs").obj("deploy")["steps"] as List<Map<String, Any?>>
+        val remote = deploy.mapNotNull { (it["with"] as Map<String, Any?>?)?.get("script") as String? }.joinToString("\n")
+        assertThat(remote).doesNotContain("install-backup-cron.sh || true", "reload-monitoring.sh || true")
+        assertThat(remote).contains(
+            "bash scripts/install-backup-cron.sh || DEPLOY_WARN=",
+            "bash scripts/check-backup-freshness.sh",
+            "if [ -n \"\$DEPLOY_WARN\" ]",
+        )
+
+        val check = yaml(".github/workflows/backup-check.yml")
+        // YAML 1.1(SnakeYAML)은 on: 키를 Boolean true 로 읽는다
+        val on = ((check as Map<Any?, Any?>)[true] ?: check["on"]) as Map<String, Any?>
+        assertThat(on).containsKey("schedule")
+        val steps = check.obj("jobs").obj("check")["steps"] as List<Map<String, Any?>>
+        assertThat(steps.mapNotNull { (it["with"] as Map<String, Any?>?)?.get("script") as String? })
+            .anySatisfy { assertThat(it).contains("scripts/check-backup-freshness.sh") }
+        assertThat(steps.mapNotNull { it["if"] as String? }).anySatisfy { assertThat(it).contains("failure()") }
+    }
+
+    @Test
+    fun `Cloudflare exporter 는 재시작 시 과거 구간을 다시 더하지 않고 감시 존이 없으면 실패로 본다`() {
+        val env = yaml("docker-compose.monitoring.yml").obj("services").obj("cloudflare-exporter").obj("environment")
+        assertThat(env["BACKFILL_MINUTES"]).isEqualTo("0")
+        assertThat(env["WATCH_ZONES"] as String).contains("byeoldori.com")
     }
 
     @Test

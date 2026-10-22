@@ -46,6 +46,7 @@ jobs:
       - name: Ops script tests
         run: |
           bash scripts/tests/backup_test.sh
+          bash scripts/tests/backup_freshness_test.sh
           bash scripts/tests/bluegreen_test.sh
           bash scripts/tests/monitoring_reload_test.sh
           python3 scripts/tests/cf_exporter_test.py
@@ -134,14 +135,28 @@ jobs:
             # nginx upstream 전환→구 색 정지. 실패하면 기존 컨테이너 유지.
             bash deploy-bluegreen.sh
             # 모니터링 스택 반영. up -d 는 마운트한 설정 파일(prometheus.yml·알림 룰·exporter 코드 등) 내용이 바뀌어도
-            # 재생성하지 않으므로, 파일 sha256 이 달라진 서비스만 다시 만든다. 실패해도 배포는 계속한다.
-            bash scripts/reload-monitoring.sh || true
-            # 운영 데이터(MySQL·MongoDB·업로드) 일일 백업 cron 설치/갱신(멱등). 실패해도 배포는 계속한다.
-            bash scripts/install-backup-cron.sh || true
+            # 재생성하지 않으므로, 파일 sha256 이 달라진 서비스만 다시 만든다.
+            # 아래 세 단계는 실패해도 배포(이미 전환된 새 버전)는 성공으로 두되, 예전처럼 삼키지 않고 Discord 로 경고한다.
+            # (모니터링 반영 실패 → 알림 룰·exporter 가 옛 상태, 백업 cron 설치 실패 → 백업 0건인데 아무 알림 없음)
+            DEPLOY_WARN=""
+            bash scripts/reload-monitoring.sh || DEPLOY_WARN="${DEPLOY_WARN}모니터링 반영 실패(reload-monitoring.sh). "
+            # 운영 데이터(MySQL·MongoDB·업로드) 일일 백업 cron 설치/갱신(멱등).
+            bash scripts/install-backup-cron.sh || DEPLOY_WARN="${DEPLOY_WARN}백업 cron 설치 실패(install-backup-cron.sh). "
+            # 백업 신선도(cron 항목·데몬, 26시간 안 완성 백업). backup.sh 의 실패 알림은 스크립트가 돌아야만 나간다.
+            BACKUP_STATE=$(bash scripts/check-backup-freshness.sh 2>&1) || DEPLOY_WARN="${DEPLOY_WARN}백업 확인: ${BACKUP_STATE}. "
+            echo "[backup-check] $BACKUP_STATE"
             docker image prune -f || true
             # VM 소스 빌드마다 캐시가 누적돼 24GB(디스크 89%)까지 찼던 것 방지.
             # 최근 사용분 3GB만 남겨 다음 빌드 속도는 유지한다.
             docker builder prune -f --max-used-space 3GB || true
+            if [ -n "$DEPLOY_WARN" ]; then
+              echo "배포 경고: $DEPLOY_WARN"
+              # JSON 문자열에 넣으므로 따옴표·역슬래시는 빼고 줄바꿈은 공백으로 바꾼다.
+              WARN_MSG=$(printf '%s' "$DEPLOY_WARN" | tr -d '"\\' | tr '\r\n\t' '   ')
+              [ -n "$DISCORD_WEBHOOK_BACKEND_URL" ] && curl -s --max-time 10 -H "Content-Type: application/json" \
+                -d "{\"embeds\":[{\"title\":\"⚠️ 별도리 서버 배포 경고 (새 버전은 배포됨)\",\"description\":\"${WARN_MSG}\",\"color\":15105570}]}" \
+                "$DISCORD_WEBHOOK_BACKEND_URL" >/dev/null || true
+            fi
         env:
           DISCORD_WEBHOOK_BACKEND_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -90,6 +90,57 @@ check("짧은 구간은 그대로", ex.next_window_end(START, END) == END)
 LONG_START = END - timedelta(days=2)
 check("2일 밀린 구간은 60분만", ex.next_window_end(LONG_START, END) == LONG_START + timedelta(minutes=60))
 
+
+def fake_graphql_all(query, variables):
+    if query is ex.WORKER_SUM_Q:
+        return WORKER
+    if query is ex.WORKER_QUANTILE_Q:
+        return {"viewer": {"accounts": [{"workersInvocationsAdaptive": []}]}}
+    return zone_payload(5)
+
+
+def fresh_state(zones=None):
+    reset()
+    ex.state.update({"up": 1, "scrape_errors": 0.0, "cursor": None, "zones": zones or {}})
+
+
+def fake_rest(result=None, fail=False):
+    def get(path):
+        if fail:
+            raise RuntimeError("HTTP 403")
+        return {"result": result or []}
+    return get
+
+
+NOW = datetime(2026, 10, 23, 1, 0, 30, tzinfo=timezone.utc)
+
+print("[4] 존 목록 조회가 실패하거나 비거나 감시 존이 없으면 그 주기는 실패(up=0)")
+ex._post_graphql = fake_graphql_all
+ex.WATCH_ZONES = ["byeoldori.com"]
+for name, rest in (("조회 예외", fake_rest(fail=True)),
+                   ("빈 목록(Zone Read 권한 없음)", fake_rest(result=[])),
+                   ("감시 존 누락", fake_rest(result=[{"id": "z2", "name": "byeoltokki.com"}]))):
+    fresh_state()
+    ex._get_rest = rest
+    ex.refresh_once(NOW)
+    check("%s → up=0, 수집 오류 +1" % name, ex.state["up"] == 0 and ex.state["scrape_errors"] == 1.0)
+    check("%s → 다음 주기에 다시 조회(존 캐시 안 함)" % name, ex.state["zones"] == {})
+fresh_state()
+ex._get_rest = fake_rest(result=[{"id": "z1", "name": "byeoldori.com"}, {"id": "z2", "name": "byeoltokki.com"}])
+ex.refresh_once(NOW)
+check("감시 존이 있으면 up=1", ex.state["up"] == 1 and ex.state["zones"] == ZONES)
+
+print("[5] 기동(재시작) 첫 주기는 과거 구간을 다시 더하지 않는다(BACKFILL_MINUTES 기본 0)")
+check("기본값 0", ex.BACKFILL_MINUTES == 0)
+fresh_state(dict(ZONES))
+ex.refresh_once(NOW)
+SETTLED = datetime(2026, 10, 23, 0, 57, tzinfo=timezone.utc)  # 01:00 - 180초
+check("커서는 현재 확정 시점에서 시작", ex.state["cursor"] == SETTLED)
+check("첫 주기 counter 는 비어 있음", not ex.worker_requests and not ex.zone_status and ex.state["up"] == 1)
+ex.refresh_once(NOW + timedelta(minutes=1))
+check("다음 주기부터 새 1분 구간만 누적", ex.state["cursor"] == SETTLED + timedelta(minutes=1)
+      and ex.worker_requests[("byeoldori-web", "success")] == 10.0)
+
 if FAILS:
     print("cf_exporter_test: 실패 %d 건" % FAILS)
     sys.exit(1)
