@@ -24,7 +24,8 @@ class CommentService(
 
     @Transactional
     fun write(postId: Long, author: User, content: String, parentId: Long? = null): CommentResponse {
-        val post = postRepo.findById(postId).orElseThrow { NotFoundException(ErrorCode.POST_NOT_FOUND) }
+        // 댓글 INSERT(FK S 락) 뒤 카운터 UPDATE(X 락) 순서라 동시 작성·좋아요와 데드락이 날 수 있어 게시글 행을 먼저 X 락으로 잡는다
+        val post = postRepo.findByIdForUpdate(postId) ?: throw NotFoundException(ErrorCode.POST_NOT_FOUND)
 
         val parent = parentId?.takeIf { it > 0 }?.let { validParentId ->
             val p = commentRepo.findById(validParentId)
