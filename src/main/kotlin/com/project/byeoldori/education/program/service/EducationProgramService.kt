@@ -49,17 +49,24 @@ class EducationProgramService(
      * 작성자 표시 이름은 응답 시점의 users 에서 가져온다.
      * 저장된 authorName 은 생성 시점 닉네임이라, 탈퇴하거나 닉네임을 바꿔도 공개 목록에 옛 닉네임이 계속 노출됐다.
      * 탈퇴(또는 없는) 계정은 게시글처럼 "탈퇴한 사용자"로 보여준다.
+     * 단 authorId 가 0 이하인 기본 제공 프로그램(예: orion-101, 작성자 "별도리")은 사용자 계정이 아니므로 저장된 이름을 쓴다.
      */
-    private fun displayName(author: User?): String? =
-        if (author == null || author.deletedAt != null) DeletedAccount.ANONYMOUS_NAME else author.nickname
+    private fun displayName(p: EducationProgram, author: User?): String? = when {
+        p.authorId <= 0 -> p.authorName
+        author == null || author.deletedAt != null -> DeletedAccount.ANONYMOUS_NAME
+        else -> author.nickname
+    }
 
     private fun detail(p: EducationProgram): ProgramDetailResponse =
-        ProgramDetailResponse.from(p, displayName(userRepository.findById(p.authorId).orElse(null)))
+        ProgramDetailResponse.from(
+            p,
+            displayName(p, if (p.authorId <= 0) null else userRepository.findById(p.authorId).orElse(null)),
+        )
 
     private fun summaries(page: Page<EducationProgram>): PageResponse<ProgramSummaryResponse> {
-        val authors = if (page.content.isEmpty()) emptyMap()
-        else userRepository.findAllById(page.content.map { it.authorId }.toSet()).associateBy { it.id }
-        return page.map { ProgramSummaryResponse.from(it, displayName(authors[it.authorId])) }.toPageResponse()
+        val ids = page.content.map { it.authorId }.filter { it > 0 }.toSet()
+        val authors = if (ids.isEmpty()) emptyMap() else userRepository.findAllById(ids).associateBy { it.id }
+        return page.map { ProgramSummaryResponse.from(it, displayName(it, authors[it.authorId])) }.toPageResponse()
     }
 
     /**
@@ -90,7 +97,8 @@ class EducationProgramService(
             status = ProgramStatus.DRAFT,
             steps = toSteps(req.steps)
         )
-        return ProgramDetailResponse.from(repo.save(program), displayName(user))
+        val saved = repo.save(program)
+        return ProgramDetailResponse.from(saved, displayName(saved, user))
     }
 
     fun update(id: String, req: UpdateProgramRequest, user: User): ProgramDetailResponse {
