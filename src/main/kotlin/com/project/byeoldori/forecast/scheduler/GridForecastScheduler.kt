@@ -13,6 +13,7 @@ import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -40,13 +41,23 @@ class GridForecastScheduler(
 
     // 서버 시작 시 실황/초단기/단기 데이터 즉시 로드 (메모리 초기화)
     // 배포마다 기상청에서 전부 다시 받지 않도록, Redis 스냅샷이 같은 발표(tmfc)면 그것을 올리고 기상청 호출을 건너뛴다.
+    // Redis GET·gzip 해제는 boundedElastic 에서 해, Redis 가 죽어 있어도 기동 이벤트 스레드를 Lettuce 시간 초과만큼 붙잡지 않는다.
+    // 복원·적재가 끝나기 전에는 메모리가 비어 있어 warm 헬스가 WARMING 이므로 블루그린 전환은 그대로 적재를 기다린다.
     @EventListener(ApplicationReadyEvent::class)
     fun initOnStartup() {
         logger.info("[시작] 서버 기동 후 실황/초단기/단기 예보 즉시 로드 시작")
-        restoreOrFetch("실황", { liveGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableLiveTmfc()) }) { clockForLiveForecast() }
-        restoreOrFetch("초단기예보", { ultraGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableUltraTmfc()) }) { clockForUltraForecast() }
-        restoreOrFetch("단기예보", { shortGridForecastService.restoreSnapshot(getTMFCTimeForShort()) }) { clockForShortForecast() }
+        startupLoad()
+            .doOnError { e -> logger.error("[시작] 예보 초기 로드 실패", e) }
+            .onErrorResume { Mono.empty() }
+            .subscribe()
     }
+
+    fun startupLoad(): Mono<Void> =
+        Mono.fromRunnable<Void> {
+            restoreOrFetch("실황", { liveGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableLiveTmfc()) }) { clockForLiveForecast() }
+            restoreOrFetch("초단기예보", { ultraGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableUltraTmfc()) }) { clockForUltraForecast() }
+            restoreOrFetch("단기예보", { shortGridForecastService.restoreSnapshot(getTMFCTimeForShort()) }) { clockForShortForecast() }
+        }.subscribeOn(Schedulers.boundedElastic())
 
     private fun restoreOrFetch(tag: String, restore: () -> SnapshotRestore, fetch: () -> Unit) {
         val result = try {

@@ -67,6 +67,10 @@ class ForecastSnapshotTest {
         assertThat(decoded.tmfc).isEqualTo("2026102320")
         assertThat(decoded.slots.keys).containsExactly("2026102321", "2026102322")
         assertThat(decoded.slots).isEqualTo(slots)
+        assertThat(decoded.complete).isTrue()
+
+        val partial = ForecastSnapshotCodec.encode(ForecastSnapshotKind.SHORT, "2026102320", Instant.EPOCH, slots, ShortGridCellCodec, complete = false)
+        assertThat(ForecastSnapshotCodec.decode(partial, ForecastSnapshotKind.SHORT, ShortGridCellCodec)!!.complete).isFalse()
     }
 
     @Test
@@ -74,13 +78,15 @@ class ForecastSnapshotTest {
         val blobs = MemoryBlobStore()
         val store = ForecastSnapshotStore(blobs)
 
-        // 다른 SCHEMA_VERSION 으로 쓰인 스냅샷
-        val other = ByteArrayOutputStream()
-        DataOutputStream(GZIPOutputStream(other)).use {
-            it.writeInt(ForecastSnapshotCodec.MAGIC); it.writeInt(ForecastSnapshotCodec.SCHEMA_VERSION + 1)
+        // 다른 SCHEMA_VERSION 으로 쓰인 스냅샷(complete 가 없던 1 포함)
+        for (version in listOf(1, ForecastSnapshotCodec.SCHEMA_VERSION + 1)) {
+            val other = ByteArrayOutputStream()
+            DataOutputStream(GZIPOutputStream(other)).use {
+                it.writeInt(ForecastSnapshotCodec.MAGIC); it.writeInt(version)
+            }
+            blobs.data[ForecastSnapshotKind.SHORT.redisKey] = other.toByteArray()
+            assertThat(store.load(ForecastSnapshotKind.SHORT, ShortGridCellCodec)).isNull()
         }
-        blobs.data[ForecastSnapshotKind.SHORT.redisKey] = other.toByteArray()
-        assertThat(store.load(ForecastSnapshotKind.SHORT, ShortGridCellCodec)).isNull()
 
         // 다른 종류(초단기 키에 단기 형식)
         blobs.data[ForecastSnapshotKind.ULTRA.redisKey] = ForecastSnapshotCodec.encode(
@@ -146,6 +152,40 @@ class ForecastSnapshotTest {
 
         // 이미 메모리에 있으면 그대로 둔다
         assertThat(svc.restoreSnapshot("2026102317")).isEqualTo(SnapshotRestore.NONE)
+    }
+
+    @Test
+    fun `같은 발표라도 일부 tmef 만 담긴 스냅샷은 STALE 로 올리고 기상청에서 다시 받게 한다`() {
+        val blobs = MemoryBlobStore()
+        val store = ForecastSnapshotStore(blobs)
+        // 이전 컨테이너: 3개 중 1개 tmef 는 HTTP 오류로 빠진 채 적재
+        val partialWd = mock(WeatherData::class.java).also {
+            `when`(it.fetchShortForecast(anyString(), anyString(), anyString())).thenAnswer { inv ->
+                if (inv.getArgument<String>(1) == "2026102323") Mono.error<String>(IllegalStateException("500"))
+                else Mono.just(kmaGridBody)
+            }
+            `when`(it.fetchUltraShortForecast(anyString(), anyString(), anyString())).thenAnswer { inv ->
+                if (inv.getArgument<String>(1) == "202610232300") Mono.error<String>(IllegalStateException("500"))
+                else Mono.just(kmaGridBody)
+            }
+        }
+        ShortGridForecastService(partialWd, store)
+            .updateAllShortTMEFData("2026102320", listOf("2026102321", "2026102322", "2026102323")).block()
+        UltraGridForecastService(partialWd, store)
+            .updateAllUltraTMEFData("202610232030", listOf("202610232200", "202610232300")).block()
+
+        val short = ShortGridForecastService(mock(WeatherData::class.java), store)
+        assertThat(short.restoreSnapshot("2026102320")).isEqualTo(SnapshotRestore.STALE)
+        assertThat(short.getDataCount()).isEqualTo(2)  // 대체값으로는 올라온다
+        val ultra = UltraGridForecastService(mock(WeatherData::class.java), store)
+        assertThat(ultra.restoreSnapshot("202610232030")).isEqualTo(SnapshotRestore.STALE)
+        assertThat(ultra.getDataCount()).isEqualTo(1)
+
+        // 다음 주기에 전부 받으면 complete 스냅샷으로 덮여 FRESH 가 된다
+        ShortGridForecastService(weatherDataOk(), store)
+            .updateAllShortTMEFData("2026102320", listOf("2026102321", "2026102322", "2026102323")).block()
+        assertThat(ShortGridForecastService(mock(WeatherData::class.java), store).restoreSnapshot("2026102320"))
+            .isEqualTo(SnapshotRestore.FRESH)
     }
 
     @Test

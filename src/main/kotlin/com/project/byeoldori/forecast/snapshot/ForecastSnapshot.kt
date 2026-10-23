@@ -33,6 +33,7 @@ data class ForecastSnapshot<C>(
     val tmfc: String,
     val savedAt: Instant,
     val slots: LinkedHashMap<String, MutableList<MutableList<C>>>,
+    val complete: Boolean = true,  // 요청한 tmef 를 모두 받았는지(일부 실패한 적재면 false)
 )
 
 /** 격자 셀 ↔ 숫자 필드 변환. 모든 값은 Float 로 저장하고 null 은 NaN 으로 둔다(정수 필드도 Float 로 손실 없이 담긴다). */
@@ -53,7 +54,7 @@ interface GridCellCodec<C> {
  */
 object ForecastSnapshotCodec {
     const val MAGIC = 0x42445346          // "BDFS"
-    const val SCHEMA_VERSION = 1
+    const val SCHEMA_VERSION = 2          // 2: 헤더에 complete 추가
     private const val MAX_SLOTS = 200
     private const val MAX_DIM = 2_000
 
@@ -63,6 +64,7 @@ object ForecastSnapshotCodec {
         savedAt: Instant,
         slots: Map<String, List<List<C>>>,
         codec: GridCellCodec<C>,
+        complete: Boolean = true,
     ): ByteArray {
         val bytes = ByteArrayOutputStream()
         DataOutputStream(BufferedOutputStream(GZIPOutputStream(bytes), 64 * 1024)).use { out ->
@@ -71,6 +73,7 @@ object ForecastSnapshotCodec {
             out.writeUTF(kind.name)
             out.writeUTF(tmfc)
             out.writeLong(savedAt.toEpochMilli())
+            out.writeBoolean(complete)
             out.writeInt(codec.fieldCount)
             out.writeInt(slots.size)
             for ((slot, grid) in slots) {
@@ -94,6 +97,7 @@ object ForecastSnapshotCodec {
             if (inp.readUTF() != kind.name) return null
             val tmfc = inp.readUTF()
             val savedAt = Instant.ofEpochMilli(inp.readLong())
+            val complete = inp.readBoolean()
             if (inp.readInt() != codec.fieldCount) return null
             val slotCount = inp.readInt()
             require(slotCount in 0..MAX_SLOTS) { "slot 수 이상: $slotCount" }
@@ -121,7 +125,7 @@ object ForecastSnapshotCodec {
                 }
                 slots[slot] = grid
             }
-            return ForecastSnapshot(tmfc, savedAt, slots)
+            return ForecastSnapshot(tmfc, savedAt, slots, complete)
         }
     }
 }

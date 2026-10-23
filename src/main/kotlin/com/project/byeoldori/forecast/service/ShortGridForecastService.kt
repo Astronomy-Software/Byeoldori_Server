@@ -147,7 +147,8 @@ class ShortGridForecastService(
         tmfc: String,
         tmefList: List<String>
     ): Mono<List<Pair<String, MutableList<MutableList<ShortGridCell>>>>> {
-        // 연결 단계 실패가 이어지면 남은 tmef 는 호출하지 않고 이번 주기를 중단한다(재시도는 스케줄러가 간격을 늘려서)
+        // 아직 성공한 tmef 가 없는데 연결 단계 실패가 이어지면 남은 tmef 는 호출하지 않고 이번 주기를 중단한다(재시도는 스케줄러가 간격을 늘려서).
+        // 하나라도 성공했으면 실패한 tmef 만 건너뛰고 부분 결과를 반영한다.
         val circuit = KmaCallCircuit()
         return Flux.fromIterable(tmefList)
             .flatMap({ tmef ->
@@ -192,7 +193,9 @@ class ShortGridForecastService(
                 shortTMEFGridMap = newMap  // 원자적 참조 교체
                 logger.info("모든 short tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
                 // 다음 배포의 새 컨테이너가 기상청 재적재 없이 올릴 수 있게 Redis 에 남긴다
-                snapshotStore.saveAsync(ForecastSnapshotKind.SHORT, tmfc, newMap, ShortGridCellCodec)
+                // 일부 tmef 가 빠졌으면 complete=false 로 남겨, 다음 기동에서 같은 발표여도 기상청에서 다시 받게 한다
+                val complete = newMap.size >= tmefList.distinct().size
+                snapshotStore.saveAsync(ForecastSnapshotKind.SHORT, tmfc, newMap, ShortGridCellCodec, complete)
             }
             .doOnError { e -> logger.error("단기 전체 데이터 업데이트 실패", e) }
             .then()
@@ -200,16 +203,17 @@ class ShortGridForecastService(
 
     /**
      * 기동 시 Redis 스냅샷을 메모리에 올린다(메모리가 비어 있을 때만).
-     * 같은 발표(tmfc)면 FRESH(기상청 재적재 생략), 이전 발표면 STALE(대체값으로 두고 기상청에서 새로 받음).
+     * 같은 발표(tmfc)이고 모든 tmef 를 담았으면 FRESH(기상청 재적재 생략),
+     * 이전 발표이거나 일부 tmef 만 담긴 스냅샷이면 STALE(대체값으로 두고 기상청에서 새로 받음).
      */
     fun restoreSnapshot(expectedTmfc: String): SnapshotRestore {
         if (shortTMEFGridMap.isNotEmpty()) return SnapshotRestore.NONE
         val snapshot = snapshotStore.load(ForecastSnapshotKind.SHORT, ShortGridCellCodec) ?: return SnapshotRestore.NONE
         if (snapshot.slots.isEmpty()) return SnapshotRestore.NONE
         shortTMEFGridMap = snapshot.slots
-        val result = if (snapshot.tmfc == expectedTmfc) SnapshotRestore.FRESH else SnapshotRestore.STALE
-        logger.info("[스냅샷] 단기 복원 {} (tmfc={}, 기대 tmfc={}, slot={}, 저장 {})",
-            result, snapshot.tmfc, expectedTmfc, snapshot.slots.size, snapshot.savedAt)
+        val result = if (snapshot.tmfc == expectedTmfc && snapshot.complete) SnapshotRestore.FRESH else SnapshotRestore.STALE
+        logger.info("[스냅샷] 단기 복원 {} (tmfc={}, 기대 tmfc={}, slot={}, complete={}, 저장 {})",
+            result, snapshot.tmfc, expectedTmfc, snapshot.slots.size, snapshot.complete, snapshot.savedAt)
         return result
     }
 

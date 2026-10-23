@@ -40,19 +40,21 @@ class ForecastSnapshotStore(
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-    fun <C> save(kind: ForecastSnapshotKind, tmfc: String, slots: Map<String, List<List<C>>>, codec: GridCellCodec<C>) {
+    fun <C> save(kind: ForecastSnapshotKind, tmfc: String, slots: Map<String, List<List<C>>>, codec: GridCellCodec<C>, complete: Boolean = true) {
         try {
-            val bytes = ForecastSnapshotCodec.encode(kind, tmfc, Instant.now(), slots, codec)
+            val bytes = ForecastSnapshotCodec.encode(kind, tmfc, Instant.now(), slots, codec, complete)
             blobs.put(kind.redisKey, bytes, kind.ttl)
-            logger.info("[스냅샷] {} 저장 (tmfc={}, slot={}, {}KB)", kind, tmfc, slots.size, bytes.size / 1024)
+            logger.info("[스냅샷] {} 저장 (tmfc={}, slot={}, complete={}, {}KB)", kind, tmfc, slots.size, complete, bytes.size / 1024)
         } catch (e: Exception) {
             logger.warn("[스냅샷] {} 저장 실패, 메모리 캐시만 갱신합니다: {}", kind, e.message)
         }
     }
 
     /** 직렬화·Redis 쓰기를 이벤트 루프 밖(boundedElastic)에서 한다. 실패해도 오류를 내지 않는다. */
-    fun <C> saveAsync(kind: ForecastSnapshotKind, tmfc: String, slots: Map<String, List<List<C>>>, codec: GridCellCodec<C>): Mono<Void> =
-        Mono.fromRunnable<Void> { save(kind, tmfc, slots, codec) }
+    fun <C> saveAsync(
+        kind: ForecastSnapshotKind, tmfc: String, slots: Map<String, List<List<C>>>, codec: GridCellCodec<C>, complete: Boolean = true,
+    ): Mono<Void> =
+        Mono.fromRunnable<Void> { save(kind, tmfc, slots, codec, complete) }
             .subscribeOn(Schedulers.boundedElastic())
 
     fun <C> load(kind: ForecastSnapshotKind, codec: GridCellCodec<C>): ForecastSnapshot<C>? {
