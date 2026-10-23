@@ -1,6 +1,7 @@
 package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.forecast.api.KmaCallCircuit
+import com.project.byeoldori.forecast.api.KmaReachability
 import com.project.byeoldori.forecast.api.KmaUnreachableException
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.ShortForecastResponseDTO
@@ -60,7 +61,8 @@ object ShortGridCellCodec : GridCellCodec<ShortGridCell> {
 @Service
 class ShortGridForecastService(
     private val weatherData: WeatherData,
-    private val snapshotStore: ForecastSnapshotStore
+    private val snapshotStore: ForecastSnapshotStore,
+    private val reachability: KmaReachability = KmaReachability()
 ) {
 
     /**
@@ -155,7 +157,7 @@ class ShortGridForecastService(
                 if (circuit.isOpen) return@flatMap Mono.empty<Pair<String, MutableList<MutableList<ShortGridCell>>>>()
                 fetchShortGrid(tmfc, tmef)
                     .map { grid -> Pair(tmef, grid) }
-                    .doOnNext { circuit.onSuccess() }
+                    .doOnNext { circuit.onSuccess(); reachability.onSuccess() }
                     .onErrorResume { e ->
                         circuit.onFailure(e)
                         logger.error("단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
@@ -182,7 +184,12 @@ class ShortGridForecastService(
      * 갱신은 새 Map을 완성한 뒤 참조를 원자적으로 교체하며, 결과가 비면 기존 캐시를 보존한다.
      */
     fun updateAllShortTMEFData(tmfc: String, tmefList: List<String>): Mono<Void> {
-        return fetchShortGrids(tmfc, tmefList)
+        // 직전 주기가 기상청 연결 실패로 끝났으면 어차피 보낼 첫 요청(첫 tmef 의 TMP) 1건으로 먼저 떠본다
+        return reachability.probeThen(
+            "단기",
+            probe = { weatherData.fetchShortForecast(tmfc, tmefList.first(), ForecastElement.TMP) },
+            cycle = { fetchShortGrids(tmfc, tmefList) }
+        )
             .flatMap { listOfGrids ->
                 if (listOfGrids.isEmpty()) {
                     logger.warn("단기 전체 데이터가 비어 있어 기존 캐시를 유지합니다.")
@@ -197,7 +204,10 @@ class ShortGridForecastService(
                 val complete = newMap.size >= tmefList.distinct().size
                 snapshotStore.saveAsync(ForecastSnapshotKind.SHORT, tmfc, newMap, ShortGridCellCodec, complete)
             }
-            .doOnError { e -> logger.error("단기 전체 데이터 업데이트 실패", e) }
+            .doOnError { e ->
+                reachability.onCycleError(e)
+                logger.error("단기 전체 데이터 업데이트 실패", e)
+            }
             .then()
     }
 
