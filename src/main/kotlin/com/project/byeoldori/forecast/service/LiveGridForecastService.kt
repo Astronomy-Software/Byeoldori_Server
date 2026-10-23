@@ -2,6 +2,10 @@ package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.LiveForecastResponseDTO
+import com.project.byeoldori.forecast.snapshot.ForecastSnapshotKind
+import com.project.byeoldori.forecast.snapshot.ForecastSnapshotStore
+import com.project.byeoldori.forecast.snapshot.GridCellCodec
+import com.project.byeoldori.forecast.snapshot.SnapshotRestore
 import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.slf4j.LoggerFactory
@@ -22,9 +26,25 @@ data class LiveGridCell(
         t1h != null || vec != null || wsd != null || pty != null || rn1 != null || reh != null || sky != null
 }
 
+// Redis 스냅샷 직렬화용 필드 순서(바꾸면 ForecastSnapshotCodec.SCHEMA_VERSION 을 올린다)
+object LiveGridCellCodec : GridCellCodec<LiveGridCell> {
+    override val fieldCount = 7
+    override fun field(cell: LiveGridCell, index: Int): Float? = when (index) {
+        0 -> cell.t1h?.toFloat(); 1 -> cell.vec?.toFloat(); 2 -> cell.wsd; 3 -> cell.pty?.toFloat()
+        4 -> cell.rn1; 5 -> cell.reh?.toFloat(); 6 -> cell.sky?.toFloat()
+        else -> null
+    }
+    override fun cell(values: FloatArray) = LiveGridCell(
+        t1h = values[0].intOrNull(), vec = values[1].intOrNull(), wsd = values[2].orNull(),
+        pty = values[3].intOrNull(), rn1 = values[4].orNull(), reh = values[5].intOrNull(),
+        sky = values[6].intOrNull()
+    )
+}
+
 @Service
 class LiveGridForecastService(
-    private val weatherData: WeatherData
+    private val weatherData: WeatherData,
+    private val snapshotStore: ForecastSnapshotStore
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
     // 갱신 시 새 격자를 완성한 뒤 참조를 원자적으로 교체(@Volatile). 읽기는 현재 참조를 그대로 사용.
@@ -54,16 +74,33 @@ class LiveGridForecastService(
                 GridDataParser.parseGridData(t.t6),
                 GridDataParser.parseGridData(t.t7),
             )
-        }.doOnNext { grid ->
+        }.flatMap { grid ->
             if (grid.isEmpty() || grid[0].isEmpty()) {
                 logger.warn("실황 격자 데이터가 비어 있어 기존 캐시를 유지합니다. (tmfc=$tmfc)")
-                return@doOnNext
+                return@flatMap Mono.empty<Void>()
             }
             liveGrid = grid  // 원자적 참조 교체
             logger.info("실황 격자 데이터 업데이트 완료 (tmfc=$tmfc)")
+            // 다음 배포의 새 컨테이너가 기상청 재적재 없이 올릴 수 있게 Redis 에 남긴다
+            snapshotStore.saveAsync(ForecastSnapshotKind.LIVE, tmfc, mapOf(SNAPSHOT_SLOT to grid), LiveGridCellCodec)
         }.doOnError { e ->
             logger.error("실황 격자 데이터 업데이트 실패", e)
         }.then()
+    }
+
+    /**
+     * 기동 시 Redis 스냅샷을 메모리에 올린다(메모리가 비어 있을 때만).
+     * 같은 발표(tmfc)면 FRESH(기상청 재적재 생략), 이전 발표면 STALE(대체값으로 두고 기상청에서 새로 받음).
+     */
+    fun restoreSnapshot(expectedTmfc: String): SnapshotRestore {
+        if (liveGrid.isNotEmpty()) return SnapshotRestore.NONE
+        val snapshot = snapshotStore.load(ForecastSnapshotKind.LIVE, LiveGridCellCodec) ?: return SnapshotRestore.NONE
+        val grid = snapshot.slots[SNAPSHOT_SLOT]
+        if (grid.isNullOrEmpty() || grid[0].isEmpty()) return SnapshotRestore.NONE
+        liveGrid = grid
+        val result = if (snapshot.tmfc == expectedTmfc) SnapshotRestore.FRESH else SnapshotRestore.STALE
+        logger.info("[스냅샷] 실황 복원 {} (tmfc={}, 기대 tmfc={}, 저장 {})", result, snapshot.tmfc, expectedTmfc, snapshot.savedAt)
+        return result
     }
 
     fun getLiveDataForCell(x: Int, y: Int): LiveForecastResponseDTO? {
@@ -107,5 +144,9 @@ class LiveGridForecastService(
                 )
             }
         }
+    }
+
+    companion object {
+        private const val SNAPSHOT_SLOT = "live"
     }
 }

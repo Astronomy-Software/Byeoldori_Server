@@ -1,7 +1,13 @@
 package com.project.byeoldori.forecast.service
 
+import com.project.byeoldori.forecast.api.KmaCallCircuit
+import com.project.byeoldori.forecast.api.KmaUnreachableException
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.UltraForecastResponseDTO
+import com.project.byeoldori.forecast.snapshot.ForecastSnapshotKind
+import com.project.byeoldori.forecast.snapshot.ForecastSnapshotStore
+import com.project.byeoldori.forecast.snapshot.GridCellCodec
+import com.project.byeoldori.forecast.snapshot.SnapshotRestore
 import com.project.byeoldori.forecast.utils.forecasts.ForecastElement
 import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.slf4j.LoggerFactory
@@ -27,9 +33,26 @@ data class UltraGridCell(
         return t1h != null || vec != null || wsd != null || pty != null || rn1 != null || reh != null || sky != null
     }
 }
+
+// Redis 스냅샷 직렬화용 필드 순서(바꾸면 ForecastSnapshotCodec.SCHEMA_VERSION 을 올린다)
+object UltraGridCellCodec : GridCellCodec<UltraGridCell> {
+    override val fieldCount = 7
+    override fun field(cell: UltraGridCell, index: Int): Float? = when (index) {
+        0 -> cell.t1h?.toFloat(); 1 -> cell.vec?.toFloat(); 2 -> cell.wsd; 3 -> cell.pty?.toFloat()
+        4 -> cell.rn1; 5 -> cell.reh?.toFloat(); 6 -> cell.sky?.toFloat()
+        else -> null
+    }
+    override fun cell(values: FloatArray) = UltraGridCell(
+        t1h = values[0].intOrNull(), vec = values[1].intOrNull(), wsd = values[2].orNull(),
+        pty = values[3].intOrNull(), rn1 = values[4].orNull(), reh = values[5].intOrNull(),
+        sky = values[6].intOrNull()
+    )
+}
+
 @Service
 class UltraGridForecastService(
-    private val weatherData: WeatherData
+    private val weatherData: WeatherData,
+    private val snapshotStore: ForecastSnapshotStore
 ) {
 
     /**
@@ -99,16 +122,29 @@ class UltraGridForecastService(
         tmfc: String,
         tmefList: List<String>
     ): Mono<List<Pair<String, MutableList<MutableList<UltraGridCell>>>>> {
+        // 아직 성공한 tmef 가 없는데 연결 단계 실패가 이어지면 남은 tmef 는 호출하지 않고 이번 주기를 중단한다(재시도는 스케줄러가 간격을 늘려서).
+        // 하나라도 성공했으면 실패한 tmef 만 건너뛰고 부분 결과를 반영한다.
+        val circuit = KmaCallCircuit()
         return Flux.fromIterable(tmefList)
             .flatMap({ tmef ->
+                if (circuit.isOpen) return@flatMap Mono.empty<Pair<String, MutableList<MutableList<UltraGridCell>>>>()
                 fetchUltraShortGrid(tmfc, tmef)
                     .map { grid -> Pair(tmef, grid) }
+                    .doOnNext { circuit.onSuccess() }
                     .onErrorResume { e ->
+                        circuit.onFailure(e)
                         logger.error("초단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
                         Mono.empty()
                     }
             }, 3)  // KMA API 과부하 방지: 최대 3개 tmef 동시 처리
             .collectList()
+            .flatMap { list ->
+                if (circuit.isOpen) {
+                    Mono.error(KmaUnreachableException("초단기: 기상청 연결 실패가 이어져 이번 주기 중단 (성공 ${list.size}/${tmefList.size})"))
+                } else {
+                    Mono.just(list)
+                }
+            }
     }
 
     /**
@@ -122,18 +158,38 @@ class UltraGridForecastService(
      */
     fun updateAllUltraTMEFData(tmfc: String, tmefList: List<String>): Mono<Void> {
         return fetchUltraShortGrids(tmfc, tmefList)
-            .doOnNext { listOfGrids ->
+            .flatMap { listOfGrids ->
                 if (listOfGrids.isEmpty()) {
                     logger.warn("초단기 전체 데이터가 비어 있어 기존 캐시를 유지합니다.")
-                    return@doOnNext
+                    return@flatMap Mono.empty<Void>()
                 }
                 val newMap = LinkedHashMap<String, MutableList<MutableList<UltraGridCell>>>(listOfGrids.size)
                 listOfGrids.forEach { (tmef, grid) -> newMap[tmef] = grid }
                 ultraTMEFGridMap = newMap  // 원자적 참조 교체
                 logger.info("모든 tmef 데이터 업데이트 완료. 결과 개수: ${listOfGrids.size}")
+                // 다음 배포의 새 컨테이너가 기상청 재적재 없이 올릴 수 있게 Redis 에 남긴다
+                // 일부 tmef 가 빠졌으면 complete=false 로 남겨, 다음 기동에서 같은 발표여도 기상청에서 다시 받게 한다
+                val complete = newMap.size >= tmefList.distinct().size
+                snapshotStore.saveAsync(ForecastSnapshotKind.ULTRA, tmfc, newMap, UltraGridCellCodec, complete)
             }
             .doOnError { e -> logger.error("초단기 전체 데이터 업데이트 실패", e) }
             .then()
+    }
+
+    /**
+     * 기동 시 Redis 스냅샷을 메모리에 올린다(메모리가 비어 있을 때만).
+     * 같은 발표(tmfc)이고 모든 tmef 를 담았으면 FRESH(기상청 재적재 생략),
+     * 이전 발표이거나 일부 tmef 만 담긴 스냅샷이면 STALE(대체값으로 두고 기상청에서 새로 받음).
+     */
+    fun restoreSnapshot(expectedTmfc: String): SnapshotRestore {
+        if (ultraTMEFGridMap.isNotEmpty()) return SnapshotRestore.NONE
+        val snapshot = snapshotStore.load(ForecastSnapshotKind.ULTRA, UltraGridCellCodec) ?: return SnapshotRestore.NONE
+        if (snapshot.slots.isEmpty()) return SnapshotRestore.NONE
+        ultraTMEFGridMap = snapshot.slots
+        val result = if (snapshot.tmfc == expectedTmfc && snapshot.complete) SnapshotRestore.FRESH else SnapshotRestore.STALE
+        logger.info("[스냅샷] 초단기 복원 {} (tmfc={}, 기대 tmfc={}, slot={}, complete={}, 저장 {})",
+            result, snapshot.tmfc, expectedTmfc, snapshot.slots.size, snapshot.complete, snapshot.savedAt)
+        return result
     }
 
 
