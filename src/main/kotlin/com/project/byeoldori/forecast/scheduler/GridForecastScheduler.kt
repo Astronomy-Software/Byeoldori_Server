@@ -1,7 +1,9 @@
 package com.project.byeoldori.forecast.scheduler
 
+import com.project.byeoldori.forecast.api.KmaFailures
 import com.project.byeoldori.forecast.config.RetryProperties
 import com.project.byeoldori.forecast.service.*
+import com.project.byeoldori.forecast.snapshot.SnapshotRestore
 import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil
 import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil.getTMEFTimesForShortForecast
 import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil.getTMFCTimeForShort
@@ -12,6 +14,8 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Mono
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.schedule
 
 @Component
@@ -31,13 +35,34 @@ class GridForecastScheduler(
     private val maxRetryAttempts = retryProperties.attempts
     private val retryDelayMillis = retryProperties.delay * 1000L
 
-    // 서버 시작 시 초단기/단기 데이터 즉시 로드 (메모리 초기화)
+    // 태그별 적재 주기 번호. 새 주기가 시작되면 이전 주기의 남은 재시도는 버린다(지수 간격이 cron 간격보다 길어져도 겹치지 않게).
+    private val generations = ConcurrentHashMap<String, AtomicLong>()
+
+    // 서버 시작 시 실황/초단기/단기 데이터 즉시 로드 (메모리 초기화)
+    // 배포마다 기상청에서 전부 다시 받지 않도록, Redis 스냅샷이 같은 발표(tmfc)면 그것을 올리고 기상청 호출을 건너뛴다.
     @EventListener(ApplicationReadyEvent::class)
     fun initOnStartup() {
         logger.info("[시작] 서버 기동 후 실황/초단기/단기 예보 즉시 로드 시작")
-        clockForLiveForecast()
-        clockForUltraForecast()
-        clockForShortForecast()
+        restoreOrFetch("실황", { liveGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableLiveTmfc()) }) { clockForLiveForecast() }
+        restoreOrFetch("초단기예보", { ultraGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableUltraTmfc()) }) { clockForUltraForecast() }
+        restoreOrFetch("단기예보", { shortGridForecastService.restoreSnapshot(getTMFCTimeForShort()) }) { clockForShortForecast() }
+    }
+
+    private fun restoreOrFetch(tag: String, restore: () -> SnapshotRestore, fetch: () -> Unit) {
+        val result = try {
+            restore()
+        } catch (e: Exception) {
+            logger.warn("[$tag] 스냅샷 복원 실패, 기상청에서 받습니다: ${e.message}")
+            SnapshotRestore.NONE
+        }
+        when (result) {
+            SnapshotRestore.FRESH -> logger.info("[$tag] Redis 스냅샷이 현재 발표와 같아 기상청 재적재를 건너뜁니다 (다음 정기 갱신에서 새로 받음)")
+            SnapshotRestore.STALE -> {
+                logger.info("[$tag] 이전 발표 스냅샷을 대체값으로 올리고 기상청에서 새로 받습니다")
+                fetch()
+            }
+            SnapshotRestore.NONE -> fetch()
+        }
     }
 
     // 매 10분 + 1분 간격으로 실황 데이터 갱신
@@ -116,30 +141,66 @@ class GridForecastScheduler(
         midCombinedForecastService.deleteOldForecasts()
     }
 
-    // 공통 재시도 fetch 처리
-    fun fetchWithRetry(tag: String, attempt: Int = 1, fetchFunction: () -> Mono<Void>) {
+    // 공통 재시도 fetch 처리 (attempt=1 이면 새 주기를 시작한다)
+    fun fetchWithRetry(
+        tag: String,
+        attempt: Int = 1,
+        fetchFunction: () -> Mono<Void>,
+    ) {
+        val generation = if (attempt == 1) nextGeneration(tag) else currentGeneration(tag)
+        runAttempt(tag, attempt, generation, fetchFunction)
+    }
+
+    private fun runAttempt(tag: String, attempt: Int, generation: Long, fetchFunction: () -> Mono<Void>) {
         logger.info("[$tag][$attempt/$maxRetryAttempts] 실행 시도 중...")
         try {
             fetchFunction()
                 .doOnError {
                     logger.error("[$tag][$attempt] 오류 발생: ${it.message}", it)
-                    retry(tag, attempt, fetchFunction)
+                    retry(tag, attempt, generation, fetchFunction, it)
                 }
                 .subscribe()
         } catch (e: Exception) {
             logger.error("[$tag][$attempt] 예외 발생", e)
-            retry(tag, attempt, fetchFunction)
+            retry(tag, attempt, generation, fetchFunction, e)
         }
     }
 
-    fun retry(tag: String, currentAttempt: Int, fetchFunction: () -> Mono<Void>) {
-        if (currentAttempt < maxRetryAttempts) {
-            logger.info("[$tag][$currentAttempt] ${retryDelayMillis / 60000}분 후 재시도 예정")
-            Timer().schedule(retryDelayMillis) {
-                fetchWithRetry(tag, currentAttempt + 1, fetchFunction)
-            }
-        } else {
+    /** 재시도를 예약했으면 true. 최대 횟수를 넘었거나 같은 태그의 새 주기가 이미 시작됐으면 false. */
+    fun retry(tag: String, currentAttempt: Int, generation: Long, fetchFunction: () -> Mono<Void>, error: Throwable?): Boolean {
+        if (currentAttempt >= maxRetryAttempts) {
             logger.error("[$tag] 최대 재시도 횟수($maxRetryAttempts) 초과 → 중단")
+            return false
         }
+        if (generation != currentGeneration(tag)) {
+            logger.info("[$tag][$currentAttempt] 새 주기가 이미 시작돼 이전 주기 재시도를 중단합니다")
+            return false
+        }
+        val delay = retryDelayMillis(currentAttempt, error)
+        logger.info("[$tag][$currentAttempt] ${delay / 1000}초 후 재시도 예정")
+        Timer().schedule(delay) {
+            if (generation == currentGeneration(tag)) {
+                runAttempt(tag, currentAttempt + 1, generation, fetchFunction)
+            }
+        }
+        return true
+    }
+
+    /**
+     * 기상청에 연결조차 못 한 실패(연결 거부·시간 초과·회로 차단)는 간격을 지수적으로 늘린다(기본 60s → 120s → 240s …, 상한 30분).
+     * 그 밖의 실패는 기존처럼 고정 간격.
+     */
+    fun retryDelayMillis(currentAttempt: Int, error: Throwable?): Long {
+        if (!KmaFailures.isNetworkFailure(error)) return retryDelayMillis
+        val shift = (currentAttempt - 1).coerceIn(0, 10)
+        return (retryDelayMillis shl shift).coerceAtMost(MAX_RETRY_DELAY_MILLIS)
+    }
+
+    fun nextGeneration(tag: String): Long = generations.computeIfAbsent(tag) { AtomicLong() }.incrementAndGet()
+
+    fun currentGeneration(tag: String): Long = generations[tag]?.get() ?: 0L
+
+    companion object {
+        private const val MAX_RETRY_DELAY_MILLIS = 30 * 60 * 1000L
     }
 }
