@@ -1,5 +1,6 @@
 package com.project.byeoldori.forecast.service
 
+import com.project.byeoldori.forecast.api.KmaReachability
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.LiveForecastResponseDTO
 import com.project.byeoldori.forecast.snapshot.ForecastSnapshotKind
@@ -44,7 +45,8 @@ object LiveGridCellCodec : GridCellCodec<LiveGridCell> {
 @Service
 class LiveGridForecastService(
     private val weatherData: WeatherData,
-    private val snapshotStore: ForecastSnapshotStore
+    private val snapshotStore: ForecastSnapshotStore,
+    private val reachability: KmaReachability = KmaReachability()
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
     // 갱신 시 새 격자를 완성한 뒤 참조를 원자적으로 교체(@Volatile). 읽기는 현재 참조를 그대로 사용.
@@ -56,25 +58,12 @@ class LiveGridForecastService(
      * 결과가 비면 기존 캐시를 보존한다.
      */
     fun updateLiveData(tmfc: String): Mono<Void> {
-        return Mono.zip(
-            weatherData.fetchLiveWeather(tmfc, ForecastElement.T1H),
-            weatherData.fetchLiveWeather(tmfc, ForecastElement.VEC),
-            weatherData.fetchLiveWeather(tmfc, ForecastElement.WSD),
-            weatherData.fetchLiveWeather(tmfc, ForecastElement.PTY),
-            weatherData.fetchLiveWeather(tmfc, ForecastElement.RN1),
-            weatherData.fetchLiveWeather(tmfc, ForecastElement.REH),
-            weatherData.fetchLiveWeather(tmfc, ForecastElement.SKY),
-        ).map { t ->
-            combineGrids(
-                GridDataParser.parseGridData(t.t1),
-                GridDataParser.parseGridData(t.t2),
-                GridDataParser.parseGridData(t.t3),
-                GridDataParser.parseGridData(t.t4),
-                GridDataParser.parseGridData(t.t5),
-                GridDataParser.parseGridData(t.t6),
-                GridDataParser.parseGridData(t.t7),
-            )
-        }.flatMap { grid ->
+        // 직전 주기가 기상청 연결 실패로 끝났으면 어차피 보낼 첫 요청(T1H) 1건으로 먼저 떠본다
+        return reachability.probeThen(
+            "실황",
+            probe = { weatherData.fetchLiveWeather(tmfc, ForecastElement.T1H) },
+            cycle = { fetchLiveGrid(tmfc) }
+        ).flatMap { grid ->
             if (grid.isEmpty() || grid[0].isEmpty()) {
                 logger.warn("실황 격자 데이터가 비어 있어 기존 캐시를 유지합니다. (tmfc=$tmfc)")
                 return@flatMap Mono.empty<Void>()
@@ -84,8 +73,32 @@ class LiveGridForecastService(
             // 다음 배포의 새 컨테이너가 기상청 재적재 없이 올릴 수 있게 Redis 에 남긴다
             snapshotStore.saveAsync(ForecastSnapshotKind.LIVE, tmfc, mapOf(SNAPSHOT_SLOT to grid), LiveGridCellCodec)
         }.doOnError { e ->
+            reachability.onCycleError(e)
             logger.error("실황 격자 데이터 업데이트 실패", e)
         }.then()
+    }
+
+    private fun fetchLiveGrid(tmfc: String): Mono<MutableList<MutableList<LiveGridCell>>> {
+        return Mono.zip(
+            weatherData.fetchLiveWeather(tmfc, ForecastElement.T1H),
+            weatherData.fetchLiveWeather(tmfc, ForecastElement.VEC),
+            weatherData.fetchLiveWeather(tmfc, ForecastElement.WSD),
+            weatherData.fetchLiveWeather(tmfc, ForecastElement.PTY),
+            weatherData.fetchLiveWeather(tmfc, ForecastElement.RN1),
+            weatherData.fetchLiveWeather(tmfc, ForecastElement.REH),
+            weatherData.fetchLiveWeather(tmfc, ForecastElement.SKY),
+        ).map { t ->
+            reachability.onSuccess()
+            combineGrids(
+                GridDataParser.parseGridData(t.t1),
+                GridDataParser.parseGridData(t.t2),
+                GridDataParser.parseGridData(t.t3),
+                GridDataParser.parseGridData(t.t4),
+                GridDataParser.parseGridData(t.t5),
+                GridDataParser.parseGridData(t.t6),
+                GridDataParser.parseGridData(t.t7),
+            )
+        }
     }
 
     /**
