@@ -23,7 +23,9 @@ class EmailService(
     @Value("\${app.host-url}")
     private lateinit var hostUrl: String
 
-    @Value("\${spring.mail.username}")
+    // 보내는 주소(From). SMTP 로그인 계정과 분리한다 — Gmail 계정에 '다른 주소로 보내기' 별칭으로
+    // 등록된 주소만 그대로 나가고, 등록되지 않은 주소면 Gmail 이 로그인 계정 주소로 바꿔 보낸다.
+    @Value("\${app.mail.from}")
     private lateinit var fromAddress: String
 
     fun sendEmailVerification(toEmail: String, token: String) {
