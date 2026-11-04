@@ -1,9 +1,12 @@
 package com.project.byeoldori.education.program.controller
 
-import com.project.byeoldori.common.exception.ForbiddenException
+import com.project.byeoldori.admin.service.SystemConfigService
+import com.project.byeoldori.common.exception.ErrorCode
+import com.project.byeoldori.common.exception.UnauthorizedException
 import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.education.program.dto.CreateProgramRequest
+import com.project.byeoldori.education.program.dto.ModerationStatusResponse
 import com.project.byeoldori.education.program.dto.ProgramDetailResponse
 import com.project.byeoldori.education.program.dto.ProgramSummaryResponse
 import com.project.byeoldori.education.program.dto.RejectProgramRequest
@@ -22,7 +25,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/education/programs")
 @Tag(name = "EducationProgram", description = "교육 프로그램(인터랙티브 씬) API")
 class EducationProgramController(
-    private val service: EducationProgramService
+    private val service: EducationProgramService,
+    private val systemConfigService: SystemConfigService
 ) {
     @PostMapping
     @Operation(summary = "교육 프로그램 생성", description = "DRAFT 상태로 생성합니다. 작성자=현재 사용자.")
@@ -56,8 +60,19 @@ class EducationProgramController(
         }
     }
 
+    // permitAll 경로라 만료된 access 토큰도 익명(user==null)으로 들어온다.
+    // 403 이 아니라 401 을 돌려줘야 웹이 토큰을 갱신하고 재시도한다.
     private fun requireLogin(user: User?): User =
-        user ?: throw ForbiddenException("로그인이 필요합니다.")
+        user ?: throw UnauthorizedException(ErrorCode.LOGIN_REQUIRED.message)
+
+    // 리터럴 경로라 GET /{id} 보다 우선 매칭된다. 값은 관리자 설정(moderation.required)만 읽는다.
+    @GetMapping("/moderation")
+    @Operation(
+        summary = "검수 필요 여부",
+        description = "moderation.required 값. false 면 작성자가 PREVIEW 프로그램을 직접 발행할 수 있다."
+    )
+    fun moderation(): ModerationStatusResponse =
+        ModerationStatusResponse(required = systemConfigService.moderationRequired())
 
     @GetMapping("/{id}")
     @Operation(summary = "교육 프로그램 상세", description = "PUBLISHED 는 누구나, DRAFT/PREVIEW 는 작성자 또는 관리자만.")

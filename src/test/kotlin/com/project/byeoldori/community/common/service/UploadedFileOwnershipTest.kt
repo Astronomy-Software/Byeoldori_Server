@@ -60,6 +60,7 @@ class UploadedFileOwnershipTest @Autowired constructor(
 
     @BeforeEach
     fun setUp() {
+        `when`(storage.isOwnUrl(anyString())).thenAnswer { (it.arguments[0] as String).startsWith("$base/") }
         uploadedFiles = UploadedFileService(
             uploadedRepo, imgRepo, calendarImageRepo, userRepo, storage,
             maxFilesPerHour = 3, maxBytesPerDay = 1_000,

@@ -108,7 +108,9 @@ class QuizService(
     /** 내 응시 이력(최신순). */
     fun myAttempts(user: User, pageable: Pageable): PageResponse<MyQuizAttemptResponse> {
         val page = attemptRepo.findByUserId(user.id, pageable)
-        val titles = programRepo.findAllById(page.content.map { it.programId }.distinct())
+        // 문서 전체(steps 최대 512KB)를 읽지 않도록 제목만 프로젝션해 읽는다
+        val ids = page.content.map { it.programId }.distinct()
+        val titles = (if (ids.isEmpty()) emptyList() else programRepo.findTitlesByIdIn(ids))
             .associate { it.id to it.title }
         return page.map {
             MyQuizAttemptResponse(

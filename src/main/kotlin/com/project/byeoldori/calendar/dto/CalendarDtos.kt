@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonFormat
 import com.project.byeoldori.calendar.entity.CalendarImage
 import com.project.byeoldori.calendar.entity.EventStatus
 import com.project.byeoldori.calendar.entity.ObservationEvent
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_COUNT
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -21,6 +22,7 @@ data class CreateEventRequest(
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     val endAt: LocalDateTime? = null,
     val observationSiteId: Long? = null,
+    @field:Size(max = CONTENT_TARGET_MAX_COUNT, message = "대상 천체는 최대 ${CONTENT_TARGET_MAX_COUNT}개입니다.")
     val targets: List<String>? = null,
     val lat: Double? = null,
     val lon: Double? = null,
@@ -38,6 +40,7 @@ data class UpdateEventRequest(
     val startAt: LocalDateTime? = null,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     val endAt: LocalDateTime? = null,
+    @field:Size(max = CONTENT_TARGET_MAX_COUNT, message = "대상 천체는 최대 ${CONTENT_TARGET_MAX_COUNT}개입니다.")
     val targets: List<String>? = null,
     val observationSiteId: Long? = null,
     val lat: Double? = null,

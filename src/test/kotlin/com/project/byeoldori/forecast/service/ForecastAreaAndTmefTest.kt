@@ -2,6 +2,7 @@ package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.common.web.OutOfServiceAreaException
 import com.project.byeoldori.forecast.api.WeatherData
+import com.project.byeoldori.forecast.snapshot.ForecastSnapshotStore
 import com.project.byeoldori.forecast.utils.score.LightPollution
 import com.project.byeoldori.forecast.utils.score.WeatherScoreCalculator
 import org.assertj.core.api.Assertions.assertThat
@@ -49,7 +50,7 @@ class ForecastAreaAndTmefTest {
 
     @Test
     fun `단기예보 tmef 는 12자리(yyyyMMddHHmm)로 응답한다`() {
-        val svc = ShortGridForecastService(mock(WeatherData::class.java))
+        val svc = ShortGridForecastService(mock(WeatherData::class.java), mock(ForecastSnapshotStore::class.java))
         val cell = ShortGridCell(tmp = 12, tmx = null, tmn = null, vec = null, wsd = null, sky = 1,
             pty = 0, pop = 0, pcp = null, sno = null, reh = 50)
         val grid = mutableListOf(mutableListOf(cell))

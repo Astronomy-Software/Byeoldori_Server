@@ -51,6 +51,7 @@ class UserServiceOAuthLinkTest {
         emailService = mock(EmailService::class.java),
         cachedUserLookupService = mock(CachedUserLookupService::class.java),
         passwordResetTokenRepo = mock(PasswordResetTokenRepository::class.java),
+        oauthWebClient = mock(org.springframework.web.reactive.function.client.WebClient::class.java),
     )
 
     private val findOrCreate = UserService::class.declaredFunctions

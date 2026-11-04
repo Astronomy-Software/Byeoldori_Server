@@ -1,6 +1,9 @@
 package com.project.byeoldori.community.common.service
 
+import com.project.byeoldori.common.exception.InvalidInputException
+import com.project.byeoldori.community.common.util.ImageHeaderReader
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.mock.web.MockMultipartFile
@@ -8,6 +11,10 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.Base64
+import java.util.zip.CRC32
 import javax.imageio.ImageIO
 
 /**
@@ -84,9 +91,72 @@ class LocalStorageServiceTest {
     }
 
     @Test
+    fun `우리 스토리지 URL 만 자기 URL 로 보고 외부·경로 탈출 URL 은 거부한다`() {
+        val storage = service()
+        val own = storage.storeImage(png())
+        assertThat(storage.isOwnUrl(own)).isTrue()
+        assertThat(storage.isOwnUrl("$base/files/attach/2026/10/20/abc.pdf")).isTrue()
+
+        assertThat(storage.isOwnUrl("https://attacker.example/x.png")).isFalse()
+        assertThat(storage.isOwnUrl("$base/x.png")).isFalse() // /files/ 밖
+        assertThat(storage.isOwnUrl("$base/files/../../evil.png")).isFalse()
+        assertThat(storage.isOwnUrl("$base/files/%2e%2e/evil.png")).isFalse()
+        assertThat(storage.isOwnUrl("$base/files/2026/x.png?track=1")).isFalse()
+        assertThat(storage.isOwnUrl("$base/files/")).isFalse()
+    }
+
+    @Test
     fun `썸네일이 없는 예전 이미지·외부 URL 은 null`() {
         val storage = service()
         assertThat(storage.thumbnailUrlOf("$base/files/2026/01/01/123e4567-e89b-12d3-a456-426614174000.png")).isNull()
         assertThat(storage.thumbnailUrlOf("https://example.com/a.png")).isNull()
+    }
+
+    /** 작은 PNG 의 IHDR 가로·세로만 바꿔 "헤더상 거대한" 이미지를 만든다(실제 픽셀 데이터는 그대로 작다) */
+    private fun pngWithHeaderSize(width: Int, height: Int): MockMultipartFile {
+        val bytes = png().bytes.copyOf()
+        // 시그니처(8) + 길이(4) + "IHDR"(4) 다음이 width(4), height(4)
+        ByteBuffer.wrap(bytes, 16, 8).putInt(width).putInt(height)
+        val crc = CRC32().apply { update(bytes, 12, 4 + 13) }.value.toInt()
+        ByteBuffer.wrap(bytes, 12 + 4 + 13, 4).putInt(crc)
+        return MockMultipartFile("file", "bomb.png", "image/png", bytes)
+    }
+
+    @Test
+    fun `헤더 크기만 읽고, 픽셀 수 상한을 넘는 이미지는 디코딩 전에 거부한다`() {
+        assertThat(ImageHeaderReader.readSize(png())).isEqualTo(800 to 600)
+
+        val bomb = pngWithHeaderSize(20_000, 20_000)
+        assertThat(ImageHeaderReader.readSize(bomb)).isEqualTo(20_000 to 20_000)
+        assertThatThrownBy { service().storeImage(bomb) }.isInstanceOf(InvalidInputException::class.java)
+        // 거부된 업로드는 디스크에 아무것도 남기지 않는다
+        assertThat(Files.list(dir).use { it.count() }).isZero()
+    }
+
+    // 1x1 무손실(VP8L) WebP. JDK ImageIO 만으로는 리더가 없어 항상 "이미지를 읽을 수 없습니다"가 났다
+    private val webp1x1 = Base64.getDecoder().decode("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")
+
+    @Test
+    fun `WebP 는 헤더로 크기를 읽고 원본과 썸네일을 저장한다`() {
+        val file = MockMultipartFile("file", "a.webp", "image/webp", webp1x1)
+        assertThat(ImageHeaderReader.readSize(file)).isEqualTo(1 to 1)
+
+        val storage = LocalStorageService(dir.toString(), base, listOf("image/webp"), 50)
+        val url = storage.storeImage(file)
+        assertThat(url).endsWith(".webp")
+        assertThat(Files.exists(dir.resolve(url.removePrefix("$base/files/")))).isTrue()
+        assertThat(storage.thumbnailUrlOf(url)).isNotNull()
+    }
+
+    @Test
+    fun `헤더상 픽셀 수 상한을 넘는 WebP 도 디코딩 전에 거부한다`() {
+        // VP8L 헤더(시그니처 0x2F 다음 4바이트, 리틀엔디언)의 가로·세로를 각각 16384 로 바꾼다
+        val bytes = webp1x1.copyOf()
+        ByteBuffer.wrap(bytes, 21, 4).order(ByteOrder.LITTLE_ENDIAN).putInt(0x3FFF or (0x3FFF shl 14) or (1 shl 28))
+        val bomb = MockMultipartFile("file", "bomb.webp", "image/webp", bytes)
+        assertThat(ImageHeaderReader.readSize(bomb)).isEqualTo(16_384 to 16_384)
+        assertThatThrownBy { LocalStorageService(dir.toString(), base, listOf("image/webp"), 50).storeImage(bomb) }
+            .isInstanceOf(InvalidInputException::class.java)
+        assertThat(Files.list(dir).use { it.count() }).isZero()
     }
 }

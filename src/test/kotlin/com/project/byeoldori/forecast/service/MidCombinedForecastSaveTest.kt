@@ -50,4 +50,29 @@ class MidCombinedForecastSaveTest @Autowired constructor(
         assertThat(rows.map { it.sky }).containsExactly("WB03", "WB04")
         assertThat(rows.map { it.min }).containsExactly(5, 6)
     }
+
+    private fun row(tmFc: String, tmEf: String, siRegId: String, sky: String) = MidCombinedForecast(
+        tmFc = tmFc, tmEf = tmEf, doRegId = "11B00000", siRegId = siRegId,
+        sky = sky, pre = "WB09", rnSt = 10, min = 1, max = 15
+    )
+
+    @Test
+    fun `06시·18시 발표가 함께 남아도 tmEf 별로 최신 발표 하나만 tmEf 순으로 돌려준다`() {
+        // 새 발표를 먼저 넣어 PK 순서에 기대지 않는지 확인한다
+        service.saveAll(listOf(
+            row("202610201800", "202610250000", "11B10101", "NEW-25"),
+            row("202610201800", "202610241200", "11B10101", "NEW-24PM"),
+        ))
+        service.saveAll(listOf(
+            row("202610200600", "202610241200", "11B10101", "OLD-24PM"),
+            row("202610200600", "202610250000", "11B10101", "OLD-25"),
+            row("202610200600", "202610240000", "11B10101", "OLD-24AM"),
+            row("202610200600", "202610240000", "11B20201", "OTHER"),
+        ))
+        em.flush(); em.clear()
+
+        val res = service.findBySiRegId("11B10101")
+        assertThat(res.map { it.tmEf }).containsExactly("202610240000", "202610241200", "202610250000")
+        assertThat(res.map { it.sky }).containsExactly("OLD-24AM", "NEW-24PM", "NEW-25")
+    }
 }

@@ -45,12 +45,13 @@ data class ProgramSummaryResponse(
     val rejectReason: String?
 ) {
     companion object {
-        fun from(p: EducationProgram) = ProgramSummaryResponse(
+        // authorName 은 저장된 생성 시점 닉네임이 아니라 응답 시점에 users 에서 확인한 이름을 넘긴다
+        fun from(p: EducationProgram, authorName: String?) = ProgramSummaryResponse(
             id = p.id,
             title = p.title,
             difficulty = p.difficulty,
             status = p.status,
-            authorName = p.authorName,
+            authorName = authorName,
             viewCount = p.viewCount,
             updatedAt = p.updatedAt,
             rejectReason = p.rejectReason
@@ -71,7 +72,7 @@ data class ProgramDetailResponse(
     val rejectReason: String?
 ) {
     companion object {
-        fun from(p: EducationProgram) = ProgramDetailResponse(
+        fun from(p: EducationProgram, authorName: String?) = ProgramDetailResponse(
             id = p.id,
             title = p.title,
             subtitle = p.subtitle,
@@ -80,13 +81,16 @@ data class ProgramDetailResponse(
             steps = p.steps,
             status = p.status,
             authorId = p.authorId,
-            authorName = p.authorName,
+            authorName = authorName,
             rejectReason = p.rejectReason
         )
     }
 }
 
 data class IdStringResponse(val id: String?)
+
+// 작성 화면에서 "직접 발행" 버튼 노출 여부를 판단하기 위한 검수(moderation) 필요 여부
+data class ModerationStatusResponse(val required: Boolean)
 
 data class RejectProgramRequest(
     @field:Size(max = 500, message = "반려 사유는 500자를 넘을 수 없습니다.")

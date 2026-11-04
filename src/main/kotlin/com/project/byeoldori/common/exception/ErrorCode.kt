@@ -62,5 +62,8 @@ enum class ErrorCode(
 
     // 500 Internal Server Error - 서버 내부 오류
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요."),
-    EMAIL_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이메일 전송에 실패했습니다.")
+    EMAIL_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이메일 전송에 실패했습니다."),
+
+    // 502 Bad Gateway - 외부 서비스(소셜 로그인 제공자 등) 연결 실패·응답 지연
+    EXTERNAL_SERVICE_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "외부 서비스와 통신하지 못했습니다. 잠시 후 다시 시도해주세요.")
 }

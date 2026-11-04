@@ -35,6 +35,8 @@ class SecurityConfig(
             "/auth/**",
             "/reset-password",
             "/actuator/health",
+            // 배포 워밍업 게이트(예보 캐시 적재 여부). prod 는 show-details=never 라 상태값만 나간다
+            "/actuator/health/warm",
             "/actuator/prometheus",
             "/weather/**",
         )

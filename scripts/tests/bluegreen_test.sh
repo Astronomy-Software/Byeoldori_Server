@@ -5,6 +5,8 @@
 set -euo pipefail
 SCRIPT="$(cd "$(dirname "$0")/../.." && pwd)/deploy-bluegreen.sh"
 FAILS=0
+REAL_SLEEP=$(command -v sleep)
+export REAL_SLEEP
 
 setup() {   # $1: upstream 포트(없으면 파일 없음), $2: active 파일 내용(없으면 파일 없음)
   T=$(mktemp -d)
@@ -14,6 +16,9 @@ setup() {   # $1: upstream 포트(없으면 파일 없음), $2: active 파일 �
   cat > "$T/bin/docker" <<'EOF'
 #!/bin/bash
 echo "$*" >> "$FAKE_LOG/docker.log"
+# 빌드가 오래 걸리는 상황(그 사이 SSH 가 끊김). 가짜 sleep 이 PATH 앞에 있어 진짜 sleep 경로를 받는다.
+case "$*" in *" build "*) [ -n "${FAKE_BUILD_DELAY:-}" ] && "$REAL_SLEEP" "$FAKE_BUILD_DELAY" ;; esac
+exit 0
 EOF
   cat > "$T/bin/sudo" <<'EOF'
 #!/bin/bash
@@ -31,12 +36,17 @@ echo "$*" >> "$FAKE_LOG/systemctl.log"
 EOF
   cat > "$T/bin/curl" <<'EOF'
 #!/bin/bash
+url="${@: -1}"
+echo "$url" >> "$FAKE_LOG/curl.log"
 [ -n "${FAKE_HEALTH_FAIL:-}" ] && exit 22
+# warm 그룹: 예보 캐시 적재 전에는 503(curl -f 는 22 로 실패)
+case "$url" in */actuator/health/warm) [ -n "${FAKE_WARM_FAIL:-}" ] && exit 22 ;; esac
 echo '{"status":"UP"}'
 EOF
   printf '#!/bin/bash\nexit 0\n' > "$T/bin/sleep"
   chmod +x "$T/bin/"*
   : > "$T/docker.log"
+  : > "$T/curl.log"
 }
 
 run_bg() {
@@ -61,7 +71,7 @@ run_bg
 check "성공 코드" '[ "$RC" -eq 0 ]'
 check "upstream 이 8081" '[ "$(upstream_port)" = "8081" ]'
 check "active 가 green" '[ "$(active)" = "green" ]'
-check "구 색(blue) 정지" 'grep -q "^stop app-blue" "$T/docker.log"'
+check "구 색(blue) 정지(graceful 30초보다 긴 35초 대기)" 'grep -q "^stop -t 35 app-blue" "$T/docker.log"'
 rm -rf "$T"
 
 echo "[2] nginx -t 실패: upstream 을 되돌리고 active 는 그대로, 두 색 모두 유지"
@@ -108,6 +118,53 @@ setup "" ""
 run_bg
 check "성공 코드" '[ "$RC" -eq 0 ]'
 check "upstream 이 8080, active 가 blue" '[ "$(upstream_port)" = "8080" ] && [ "$(active)" = "blue" ]'
+rm -rf "$T"
+
+echo "[7] 예보 캐시 적재 대기: 적재되면 경고 없이 전환"
+setup 8080 blue
+run_bg
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "새 색의 warm 그룹을 확인" 'grep -q "127.0.0.1:8081/actuator/health/warm" "$T/curl.log"'
+check "경고 없음" '! grep -q "경고: 예보 캐시" "$T/out.log"'
+rm -rf "$T"
+
+echo "[8] 예보 캐시가 상한 안에 적재되지 않아도 경고만 남기고 전환한다(배포가 막히지 않음)"
+setup 8080 blue
+FAKE_WARM_FAIL=1 BG_WARM_TRIES=3 run_bg
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "warm 을 상한(3회)까지만 확인" '[ "$(grep -c "/actuator/health/warm" "$T/curl.log")" = "3" ]'
+check "경고 출력" 'grep -q "경고: 예보 캐시" "$T/out.log"'
+check "upstream 이 8081, 구 색 정지" '[ "$(upstream_port)" = "8081" ] && grep -q "^stop -t 35 app-blue" "$T/docker.log"'
+rm -rf "$T"
+
+echo "[9] 첫 배포는 예보 캐시 적재를 기다리지 않는다"
+setup "" ""
+FAKE_WARM_FAIL=1 run_bg
+check "성공 코드" '[ "$RC" -eq 0 ]'
+check "warm 확인 안 함" '! grep -q "/actuator/health/warm" "$T/curl.log"'
+rm -rf "$T"
+
+echo "[10] 앱 포트는 루프백(127.0.0.1)에만 publish 한다(nginx 를 거치지 않은 외부 직접 접근 차단)"
+setup "" ""
+ROOT="$(cd "$(dirname "$SCRIPT")" && pwd)"
+APP_PORTS=$(grep -hoE '"([0-9.]+:)?808[01]:8080"' "$ROOT/docker-compose.oci.yml" "$ROOT/docker-compose.bluegreen.yml")
+echo "$APP_PORTS" > "$T/out.log"
+check "app·app-blue·app-green 포트 3개 확인" '[ "$(echo "$APP_PORTS" | wc -l | tr -d " ")" = "3" ]'
+check "모두 127.0.0.1 바인딩" '! echo "$APP_PORTS" | grep -vq "^\"127\.0\.0\.1:"'
+rm -rf "$T"
+
+echo "[11] 출력 파이프가 닫히면(PTY 없는 SSH 가 Actions 취소로 끊김) SIGPIPE 로 즉사하지 않고 trap 으로 새 색을 내린다"
+setup 8080 blue
+set +e
+# 읽는 쪽이 첫 줄만 읽고 끝나 파이프가 닫힌다(빌드가 1초 걸리는 사이). 이후 echo 가 닫힌 파이프에 쓴다.
+PATH="$T/bin:$PATH" FAKE_LOG="$T" DEPLOY_DIR="$T/deploy" FAKE_BUILD_DELAY=1   BG_UPSTREAM_CONF="$T/nginx/conf.d/byeoldori-upstream.conf" BG_ACTIVE_FILE="$T/nginx/byeoldori_active"   bash "$SCRIPT" 2>&1 | { read -r _; }
+RC=${PIPESTATUS[0]}
+set -e
+: > "$T/out.log"
+check "실패 코드(전환하지 않음)" '[ "$RC" -ne 0 ]'
+check "새 색(green) 정지" 'grep -q "^stop app-green" "$T/docker.log"'
+check "upstream 이 8080 유지" '[ "$(upstream_port)" = "8080" ]'
+check "구 색(blue)은 정지하지 않음" '! grep -q "app-blue" "$T/docker.log"'
 rm -rf "$T"
 
 [ "$FAILS" -eq 0 ] && echo "bluegreen_test: 모두 통과" || { echo "bluegreen_test: 실패 $FAILS 건"; exit 1; }

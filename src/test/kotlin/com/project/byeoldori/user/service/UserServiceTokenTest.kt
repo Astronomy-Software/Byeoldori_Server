@@ -57,6 +57,7 @@ class UserServiceTokenTest {
         emailService = mock(EmailService::class.java),
         cachedUserLookupService = mock(CachedUserLookupService::class.java),
         passwordResetTokenRepo = mock(PasswordResetTokenRepository::class.java),
+        oauthWebClient = mock(org.springframework.web.reactive.function.client.WebClient::class.java),
     )
 
     // refresh_tokens 테이블 대역(삽입 순서 = id 순서)

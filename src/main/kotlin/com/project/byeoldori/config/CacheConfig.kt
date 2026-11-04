@@ -45,8 +45,6 @@ class CacheConfig(private val redisConnectionFactory: RedisConnectionFactory) {
         val cacheConfigs = mapOf(
             // 중기 예보: 스케줄러 갱신 주기(06:10/18:10) 보다 약간 길게
             "midForecast"    to defaultConfig.entryTtl(Duration.ofMinutes(40)),
-            // 광공해: 거의 변하지 않는 데이터 → 24시간
-            "lightPollution" to defaultConfig.entryTtl(Duration.ofHours(24)),
             // 사용자 정보: 탈퇴/정지 반영 위해 짧게
             "userCache"      to defaultConfig.entryTtl(Duration.ofMinutes(5)),
         )

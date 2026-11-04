@@ -1,0 +1,42 @@
+name: Backup check
+
+# VM 백업이 최근에 끝났는지 매일 바깥(GitHub Actions)에서 확인한다.
+# backup.sh 의 실패 알림은 스크립트 안의 trap 에서만 나가서, cron 항목이 사라지거나 cron 데몬이 멈춰 백업이 아예
+# 돌지 않으면 아무 알림도 없다. backup.log 는 호스트 파일이라 Loki·Grafana 에도 보이지 않는다.
+# VM 에서 scripts/check-backup-freshness.sh(cron 항목·데몬, 26시간 안 완성 백업)를 돌리고, 실패하면 Discord 로 알린다.
+# 배포 때도 같은 검사를 돌려 경고한다(deploy.yml). 이 체크는 배포가 없는 날을 덮는다.
+on:
+  schedule:
+    - cron: "0 1 * * *" # 10:00 KST. 백업(03:30 KST) 뒤 충분히 지난 시각
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup-check
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check backup freshness on VM
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 2m
+          script: bash "${{ secrets.DEPLOY_DIR }}/scripts/check-backup-freshness.sh"
+
+      - name: Notify Discord - Backup Stale
+        if: failure()
+        env:
+          DISCORD_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$DISCORD_URL" ] && exit 0
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"🚨 별도리 데이터 백업 확인 실패\",\"description\":\"최근 26시간 안 완성 백업 없음, 백업 cron 누락·cron 데몬 정지, 또는 VM 접속 실패. 사유는 로그 참고\",\"color\":15158332,\"fields\":[{\"name\":\"로그\",\"value\":\"[확인](${RUN_URL})\",\"inline\":true}]}]}" \
+            "$DISCORD_URL" || true

@@ -105,4 +105,11 @@ class QuizStepsTest {
         score = answers.count { it.correct },
         total = 2
     )
+
+    @Test
+    fun `type 이 문자열이 아니어도 500 이 아니라 퀴즈 아닌 스텝으로 본다`() {
+        val numericType = Document(mapOf("id" to "x", "type" to 1))
+        QuizSteps.validate(listOf(numericType, quiz("q1")))
+        assertThat(QuizSteps.extract(listOf(numericType, quiz("q1"))).map { it.id }).containsExactly("q1")
+    }
 }

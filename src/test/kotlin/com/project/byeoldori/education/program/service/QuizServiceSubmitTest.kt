@@ -16,10 +16,14 @@ import org.bson.Document
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.any
+import org.mockito.Mockito.anyCollection
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.mongodb.repository.Query
 import java.util.Optional
 
 /**
@@ -127,5 +131,26 @@ class QuizServiceSubmitTest {
         program(ProgramStatus.PUBLISHED, steps = listOf(text))
         assertThatThrownBy { service.submit("prog-1", other, req()) }
             .isInstanceOf(InvalidInputException::class.java)
+    }
+
+    @Test
+    fun `내 응시 이력은 steps 없이 제목만 프로젝션해 읽는다`() {
+        val pageable = PageRequest.of(0, 20)
+        val attempts = listOf(
+            QuizAttempt(id = "a1", programId = "prog-1", userId = other.id, score = 1, total = 2),
+            QuizAttempt(id = "a2", programId = "prog-1", userId = other.id, score = 2, total = 2),
+            QuizAttempt(id = "a3", programId = "gone", userId = other.id, score = 0, total = 1),
+        )
+        `when`(attemptRepo.findByUserId(other.id, pageable)).thenReturn(PageImpl(attempts, pageable, 3))
+        `when`(programRepo.findTitlesByIdIn(listOf("prog-1", "gone")))
+            .thenReturn(listOf(EducationProgram(id = "prog-1", title = "여름철 별자리", authorId = author.id)))
+
+        val res = service.myAttempts(other, pageable)
+        assertThat(res.content.map { it.programTitle }).containsExactly("여름철 별자리", "여름철 별자리", null)
+        verify(programRepo, never()).findAllById(anyCollection())
+
+        val q = EducationProgramRepository::class.java.methods.first { it.name == "findTitlesByIdIn" }.getAnnotation(Query::class.java)
+        assertThat(q.fields).doesNotContain("steps")
+        assertThat(q.fields.replace(" ", "")).contains("'title':1")
     }
 }

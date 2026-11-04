@@ -5,6 +5,7 @@ import com.project.byeoldori.common.exception.ErrorCode
 import com.project.byeoldori.common.exception.ForbiddenException
 import com.project.byeoldori.common.exception.InvalidInputException
 import com.project.byeoldori.common.exception.NotFoundException
+import com.project.byeoldori.common.exception.UnauthorizedException
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.community.common.dto.toPageResponse
 import com.project.byeoldori.education.program.domain.EducationProgram
@@ -16,7 +17,15 @@ import com.project.byeoldori.education.program.dto.UpdateProgramRequest
 import com.project.byeoldori.education.program.repository.EducationProgramRepository
 import com.project.byeoldori.education.program.repository.QuizAttemptRepository
 import com.project.byeoldori.community.post.repository.EducationPostRepository
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_COUNT
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_LENGTH
+import com.project.byeoldori.star.service.normalizeTargetLabels
 import com.project.byeoldori.user.entity.User
+import com.project.byeoldori.user.repository.UserRepository
+import com.project.byeoldori.user.utils.DeletedAccount
+import org.bson.BsonInvalidOperationException
+import org.bson.codecs.configuration.CodecConfigurationException
+import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
@@ -30,7 +39,8 @@ class EducationProgramService(
     private val systemConfigService: SystemConfigService,
     private val mongoTemplate: MongoTemplate,
     private val quizAttemptRepo: QuizAttemptRepository,
-    private val educationPostRepo: EducationPostRepository
+    private val educationPostRepo: EducationPostRepository,
+    private val userRepository: UserRepository
 ) {
     companion object {
         private const val MAX_STEPS_BYTES = 512 * 1024 // 512KB
@@ -42,6 +52,30 @@ class EducationProgramService(
         repo.findById(id).orElseThrow { NotFoundException(ErrorCode.EDU_PROGRAM_NOT_FOUND) }
 
     /**
+     * 작성자 표시 이름은 응답 시점의 users 에서 가져온다.
+     * 저장된 authorName 은 생성 시점 닉네임이라, 탈퇴하거나 닉네임을 바꿔도 공개 목록에 옛 닉네임이 계속 노출됐다.
+     * 탈퇴(또는 없는) 계정은 게시글처럼 "탈퇴한 사용자"로 보여준다.
+     * 단 authorId 가 0 이하인 기본 제공 프로그램(예: orion-101, 작성자 "별도리")은 사용자 계정이 아니므로 저장된 이름을 쓴다.
+     */
+    private fun displayName(p: EducationProgram, author: User?): String? = when {
+        p.authorId <= 0 -> p.authorName
+        author == null || author.deletedAt != null -> DeletedAccount.ANONYMOUS_NAME
+        else -> author.nickname
+    }
+
+    private fun detail(p: EducationProgram): ProgramDetailResponse =
+        ProgramDetailResponse.from(
+            p,
+            displayName(p, if (p.authorId <= 0) null else userRepository.findById(p.authorId).orElse(null)),
+        )
+
+    private fun summaries(page: Page<EducationProgram>): PageResponse<ProgramSummaryResponse> {
+        val ids = page.content.map { it.authorId }.filter { it > 0 }.toSet()
+        val authors = if (ids.isEmpty()) emptyMap() else userRepository.findAllById(ids).associateBy { it.id }
+        return page.map { ProgramSummaryResponse.from(it, displayName(it, authors[it.authorId])) }.toPageResponse()
+    }
+
+    /**
      * steps 를 org.bson.Document 로 변환하며 전체 직렬화 크기를 제한한다.
      * @Size(max=500) 은 스텝 "개수"만 막으므로, 스텝 하나에 거대한 text/base64 이미지를
      * 넣는 식의 남용은 막지 못한다. 문서 하나가 Mongo 를 잠식하지 않도록 512KB 상한을 둔다.
@@ -49,7 +83,14 @@ class EducationProgramService(
     private fun toSteps(raw: List<Map<String, Any?>>?): List<org.bson.Document> {
         if (raw.isNullOrEmpty()) return emptyList()
         val docs = raw.map { org.bson.Document(it) }
-        val bytes = org.bson.Document("s", docs).toJson().toByteArray(Charsets.UTF_8).size
+        // Long 범위를 넘는 정수(BigInteger) 등 BSON 으로 못 바꾸는 값은 코덱 예외(→500)라 400 으로 바꾼다
+        val bytes = try {
+            org.bson.Document("s", docs).toJson().toByteArray(Charsets.UTF_8).size
+        } catch (e: CodecConfigurationException) {
+            throw InvalidInputException("프로그램 형식이 올바르지 않습니다.")
+        } catch (e: BsonInvalidOperationException) {
+            throw InvalidInputException("프로그램 형식이 올바르지 않습니다.")
+        }
         if (bytes > MAX_STEPS_BYTES) {
             throw InvalidInputException("프로그램 내용이 너무 큽니다(최대 512KB). 이미지 URL 은 링크로 넣어주세요.")
         }
@@ -58,34 +99,58 @@ class EducationProgramService(
         return docs
     }
 
+    /**
+     * 대상 천체 라벨을 정리한다(앞뒤 공백 제거·빈 값/중복 제거) — 게시글 targets 와 같은 규칙.
+     * @Size(max=30) 은 개수만 막아, 라벨 하나에 수 MB 문자열을 넣으면 512KB steps 상한을 우회해
+     * 문서를 키울 수 있었다(목록·검수 큐는 steps 만 빼고 읽으므로 매번 통째로 읽힌다).
+     */
+    private fun normalizeTargets(raw: List<String>): List<String> {
+        val uniq = normalizeTargetLabels(raw)
+        if (uniq.size > CONTENT_TARGET_MAX_COUNT) {
+            throw InvalidInputException("대상 천체는 최대 ${CONTENT_TARGET_MAX_COUNT}개입니다.")
+        }
+        if (uniq.any { it.length > CONTENT_TARGET_MAX_LENGTH }) {
+            throw InvalidInputException("대상 천체 이름은 ${CONTENT_TARGET_MAX_LENGTH}자를 넘을 수 없습니다.")
+        }
+        return uniq
+    }
+
     fun create(user: User, req: CreateProgramRequest): ProgramDetailResponse {
         val program = EducationProgram(
             title = req.title,
             subtitle = req.subtitle,
             difficulty = req.difficulty,
-            targets = req.targets ?: emptyList(),
+            targets = normalizeTargets(req.targets ?: emptyList()),
             authorId = user.id,
             authorName = user.nickname,
             status = ProgramStatus.DRAFT,
             steps = toSteps(req.steps)
         )
-        return ProgramDetailResponse.from(repo.save(program))
+        val saved = repo.save(program)
+        return ProgramDetailResponse.from(saved, displayName(saved, user))
     }
 
     fun update(id: String, req: UpdateProgramRequest, user: User): ProgramDetailResponse {
         val p = findOrThrow(id)
         if (p.authorId != user.id) throw ForbiddenException()
         if (p.status != ProgramStatus.DRAFT && p.status != ProgramStatus.PREVIEW) {
-            throw InvalidInputException("발행되었거나 검수 중이 아닌 상태에서만 수정할 수 있습니다.")
+            throw InvalidInputException("작성 중(DRAFT)이거나 검수 대기(PREVIEW) 상태에서만 수정할 수 있습니다.")
         }
 
         req.title?.let { p.title = it }
         req.subtitle?.let { p.subtitle = it }
         req.difficulty?.let { p.difficulty = it }
-        req.targets?.let { p.targets = it }
+        req.targets?.let { p.targets = normalizeTargets(it) }
         req.steps?.let { p.steps = toSteps(it) }
 
-        return ProgramDetailResponse.from(repo.save(p))
+        // 검수 대기 중 내용을 고치면 관리자가 본 버전과 발행될 버전이 달라진다.
+        // 검수가 필요한 상황(작성자가 직접 발행할 수 없는 경우)이면 DRAFT 로 되돌려 다시 검수 요청을 받는다.
+        if (p.status == ProgramStatus.PREVIEW && !isAdmin(user) && systemConfigService.moderationRequired()) {
+            p.status = ProgramStatus.DRAFT
+            p.rejectReason = null
+        }
+
+        return detail(repo.save(p))
     }
 
     /** DRAFT → PREVIEW (작성자 본인) */
@@ -97,7 +162,7 @@ class EducationProgramService(
         }
         p.status = ProgramStatus.PREVIEW
         p.rejectReason = null
-        return ProgramDetailResponse.from(repo.save(p))
+        return detail(repo.save(p))
     }
 
     /**
@@ -120,7 +185,7 @@ class EducationProgramService(
 
         p.status = ProgramStatus.PUBLISHED
         p.rejectReason = null
-        return ProgramDetailResponse.from(repo.save(p))
+        return detail(repo.save(p))
     }
 
     /** PREVIEW → DRAFT (ADMIN 반려) */
@@ -132,37 +197,33 @@ class EducationProgramService(
         }
         p.status = ProgramStatus.DRAFT
         p.rejectReason = reason?.trim()?.takeIf { it.isNotEmpty() }
-        return ProgramDetailResponse.from(repo.save(p))
+        return detail(repo.save(p))
     }
 
     /** PUBLISHED 전체 공개 목록 */
     fun listPublished(pageable: Pageable): PageResponse<ProgramSummaryResponse> =
-        repo.findByStatus(ProgramStatus.PUBLISHED, pageable)
-            .map { ProgramSummaryResponse.from(it) }
-            .toPageResponse()
+        summaries(repo.findSummariesByStatus(ProgramStatus.PUBLISHED, pageable))
 
     /** 작성자 본인의 전체 상태 목록 */
     fun listMine(user: User, pageable: Pageable): PageResponse<ProgramSummaryResponse> =
-        repo.findByAuthorId(user.id, pageable)
-            .map { ProgramSummaryResponse.from(it) }
-            .toPageResponse()
+        summaries(repo.findSummariesByAuthorId(user.id, pageable))
 
     /** ADMIN 검수 큐(PREVIEW) 목록 */
     fun listPending(user: User, pageable: Pageable): PageResponse<ProgramSummaryResponse> {
         if (!isAdmin(user)) throw ForbiddenException("관리자만 검수 큐를 조회할 수 있습니다.")
-        return repo.findByStatus(ProgramStatus.PREVIEW, pageable)
-            .map { ProgramSummaryResponse.from(it) }
-            .toPageResponse()
+        return summaries(repo.findSummariesByStatus(ProgramStatus.PREVIEW, pageable))
     }
 
     /** PUBLISHED 는 비로그인 포함 누구나. DRAFT/PREVIEW 는 작성자 또는 관리자만. */
     fun get(id: String, user: User?): ProgramDetailResponse {
         val p = findOrThrow(id)
         if (p.status != ProgramStatus.PUBLISHED) {
-            val allowed = user != null && (p.authorId == user.id || isAdmin(user))
+            // 익명(만료 토큰 포함)은 401 → 웹이 토큰 갱신 후 재시도. 로그인한 타인만 403.
+            if (user == null) throw UnauthorizedException(ErrorCode.LOGIN_REQUIRED.message)
+            val allowed = p.authorId == user.id || isAdmin(user)
             if (!allowed) throw ForbiddenException("해당 프로그램을 조회할 권한이 없습니다.")
         }
-        return ProgramDetailResponse.from(p)
+        return detail(p)
     }
 
     fun delete(id: String, user: User) {

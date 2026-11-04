@@ -39,9 +39,16 @@ PORT = int(os.environ.get("PORT", "8080"))
 REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "60"))
 # 애널리틱스 수집 지연 보정: 이 초 이전 데이터만 '확정'으로 간주해 누적한다.
 SETTLE_SECONDS = int(os.environ.get("SETTLE_SECONDS", "180"))
-# 기동 시 과거 N분을 1회 백필해 대시보드/검증에 즉시 데이터가 뜨게 한다.
-BACKFILL_MINUTES = int(os.environ.get("BACKFILL_MINUTES", "60"))
+# 기동 시 과거 N분을 1회 백필한다. 커서와 counter 는 메모리에만 있어 재시작마다 이전 프로세스가 이미 센 구간을
+# 다시 더하고, Prometheus 는 counter 리셋 뒤 첫 값 전체를 증가분으로 보므로 rate/increase[10m] 에 그만큼이 한꺼번에
+# 들어가 가짜 트래픽 급등과 cf-edge-5xx 오탐('10분간 20건 이상' 게이트 통과)이 생긴다. 그래서 기본 0(백필 안 함).
+BACKFILL_MINUTES = int(os.environ.get("BACKFILL_MINUTES", "0"))
+# 한 번에 조회하는 구간 상한(분). 수집이 오래 실패하면 [cursor, now] 가 계속 넓어져 GraphQL 조회 기간 한도를
+# 넘기고, 그러면 같은 구간만 매번 실패해 커서가 영영 전진하지 못한다. 상한씩 잘라 주기마다 따라잡는다.
+MAX_WINDOW_MINUTES = int(os.environ.get("MAX_WINDOW_MINUTES", "60"))
 HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT", "20"))
+# 반드시 수집돼야 하는 존 이름(쉼표 구분, 예: byeoldori.com). 존 목록에 없으면 수집 실패(up=0)로 본다.
+WATCH_ZONES = [z.strip() for z in os.environ.get("WATCH_ZONES", "").split(",") if z.strip()]
 
 if not TOKEN or not ACCOUNT_ID:
     sys.stderr.write("FATAL: CF_API_TOKEN / CF_ACCOUNT_ID(또는 CF_ACCOUNTS) 필요\n")
@@ -85,13 +92,17 @@ def _get_rest(path):
 
 
 def discover_zones():
-    """account의 zone 목록 {zone_id: zone_name} 반환."""
-    try:
-        data = _get_rest("/zones?account.id=%s&per_page=50" % ACCOUNT_ID)
-        return {z["id"]: z["name"] for z in data.get("result", [])}
-    except Exception as e:  # noqa: BLE001
-        sys.stderr.write("zone discovery 실패: %s\n" % e)
-        return {}
+    """account의 zone 목록 {zone_id: zone_name} 반환.
+    조회 실패·빈 목록·감시 존(WATCH_ZONES) 누락은 예외로 올려 그 주기를 실패(up=0)로 만든다. 예전처럼 {} 로 넘기면
+    Worker 만 수집하고 up=1 이 되어, 존 시계열이 없는 cf-edge-5xx 는 NoData→OK, cf-exporter-down 도 울리지 않았다."""
+    data = _get_rest("/zones?account.id=%s&per_page=50" % ACCOUNT_ID)
+    zones = {z["id"]: z["name"] for z in data.get("result", [])}
+    if not zones:
+        raise RuntimeError("zone 목록이 비어 있음(토큰 Zone Read 권한·계정 ID 확인)")
+    missing = [z for z in WATCH_ZONES if z not in zones.values()]
+    if missing:
+        raise RuntimeError("감시 존이 zone 목록에 없음: %s" % ", ".join(missing))
+    return zones
 
 
 WORKER_SUM_Q = """
@@ -124,29 +135,45 @@ query ($z: String!, $min: Time!, $max: Time!) {
 }"""
 
 
-def accumulate_worker(min_dt, max_dt):
+def fetch_worker(min_dt, max_dt):
+    """구간의 Worker 요청·에러 합계 {(script, status): (requests, errors)}. counter 에는 더하지 않는다."""
     data = _post_graphql(WORKER_SUM_Q, {"a": ACCOUNT_ID, "min": _iso(min_dt), "max": _iso(max_dt)})
     accts = data["viewer"]["accounts"]
     rows = accts[0]["workersInvocationsAdaptive"] if accts else []
-    with _lock:
-        for row in rows:
-            script = row["dimensions"]["scriptName"] or "unknown"
-            status = row["dimensions"]["status"] or "unknown"
-            reqs = float(row["sum"]["requests"])
-            errs = float(row["sum"]["errors"])
-            worker_requests[(script, status)] = worker_requests.get((script, status), 0.0) + reqs
-            worker_errors[(script, status)] = worker_errors.get((script, status), 0.0) + errs
+    result = {}
+    for row in rows:
+        script = row["dimensions"]["scriptName"] or "unknown"
+        status = row["dimensions"]["status"] or "unknown"
+        reqs, errs = result.get((script, status), (0.0, 0.0))
+        result[(script, status)] = (reqs + float(row["sum"]["requests"]), errs + float(row["sum"]["errors"]))
+    return result
 
 
-def accumulate_zones(min_dt, max_dt, zones):
+def fetch_zones(min_dt, max_dt, zones):
+    """구간의 존별 edge 상태코드 요청 수 {(zone_name, status): count}. counter 에는 더하지 않는다."""
+    result = {}
     for zid, zname in zones.items():
         data = _post_graphql(ZONE_STATUS_Q, {"z": zid, "min": _iso(min_dt), "max": _iso(max_dt)})
         znodes = data["viewer"]["zones"]
         groups = znodes[0]["httpRequestsAdaptiveGroups"] if znodes else []
-        with _lock:
-            for g in groups:
-                status = str(g["dimensions"]["edgeResponseStatus"])
-                zone_status[(zname, status)] = zone_status.get((zname, status), 0.0) + float(g["count"])
+        for g in groups:
+            status = str(g["dimensions"]["edgeResponseStatus"])
+            result[(zname, status)] = result.get((zname, status), 0.0) + float(g["count"])
+    return result
+
+
+def accumulate_window(min_dt, max_dt, zones):
+    """[min_dt, max_dt) 구간을 Worker·모든 존에 대해 조회한 뒤, 전부 성공했을 때만 counter 에 한 번에 더한다.
+    하나라도 실패하면 예외로 끝나 counter 는 그대로다. 호출자는 커서를 전진시키지 않고 다음 주기에 같은 구간을
+    다시 조회하는데, 앞서 성공한 조회분을 미리 더해 두면 그 구간이 두 번 집계된다(요청·에러 수 스파이크, 5xx 비율 왜곡)."""
+    worker = fetch_worker(min_dt, max_dt)
+    zone = fetch_zones(min_dt, max_dt, zones)
+    with _lock:
+        for key, (reqs, errs) in worker.items():
+            worker_requests[key] = worker_requests.get(key, 0.0) + reqs
+            worker_errors[key] = worker_errors.get(key, 0.0) + errs
+        for key, count in zone.items():
+            zone_status[key] = zone_status.get(key, 0.0) + count
 
 
 def refresh_quantiles(max_dt):
@@ -169,26 +196,36 @@ def refresh_quantiles(max_dt):
         worker_cpu.update(fresh)
 
 
+def next_window_end(cursor, end):
+    """이번 주기에 누적할 구간의 끝. [cursor, end] 가 상한보다 길면 cursor + 상한까지만 조회한다."""
+    return min(end, cursor + timedelta(minutes=MAX_WINDOW_MINUTES))
+
+
+def refresh_once(now=None):
+    """한 주기 수집. 존 목록·Worker·존·분위수 조회가 모두 성공해야 up=1, 하나라도 실패하면 up=0."""
+    try:
+        if not state["zones"]:
+            state["zones"] = discover_zones()
+        now = now or datetime.now(timezone.utc)
+        end = _minute_floor(now) - timedelta(seconds=SETTLE_SECONDS)
+        end = _minute_floor(end)
+        if state["cursor"] is None:
+            state["cursor"] = end - timedelta(minutes=BACKFILL_MINUTES)
+        if end > state["cursor"]:
+            win_end = next_window_end(state["cursor"], end)
+            accumulate_window(state["cursor"], win_end, state["zones"])
+            state["cursor"] = win_end
+        refresh_quantiles(end)
+        state["up"] = 1
+    except Exception as e:  # noqa: BLE001
+        state["up"] = 0
+        state["scrape_errors"] += 1
+        sys.stderr.write("[%s] refresh 오류: %s\n" % (datetime.now(timezone.utc).isoformat(), e))
+
+
 def refresh_loop():
     while True:
-        try:
-            if not state["zones"]:
-                state["zones"] = discover_zones()
-            now = datetime.now(timezone.utc)
-            end = _minute_floor(now) - timedelta(seconds=SETTLE_SECONDS)
-            end = _minute_floor(end)
-            if state["cursor"] is None:
-                state["cursor"] = end - timedelta(minutes=BACKFILL_MINUTES)
-            if end > state["cursor"]:
-                accumulate_worker(state["cursor"], end)
-                accumulate_zones(state["cursor"], end, state["zones"])
-                state["cursor"] = end
-            refresh_quantiles(end)
-            state["up"] = 1
-        except Exception as e:  # noqa: BLE001
-            state["up"] = 0
-            state["scrape_errors"] += 1
-            sys.stderr.write("[%s] refresh 오류: %s\n" % (datetime.now(timezone.utc).isoformat(), e))
+        refresh_once()
         time.sleep(REFRESH_SECONDS)
 
 

@@ -8,7 +8,7 @@ description: 이미지 및 JSON 파일 업로드 — 구현 상세와 제한사�
 | 메서드 | 경로 | key 이름 | 설명 |
 |--------|------|---------|------|
 | POST | `/files/image` | `file` | 게시글/캘린더 이미지 |
-| POST | `/files/json` | `file` | 교육 콘텐츠 JSON |
+| POST | `/files/upload` | `file` | 게시글 첨부 파일(문서 등, 확장자 화이트리스트·20MB) |
 | POST | `/users/me/profile-image` | `image` | 프로필 이미지 |
 
 모두 `Content-Type: multipart/form-data`
@@ -83,4 +83,4 @@ description: 이미지 및 JSON 파일 업로드 — 구현 상세와 제한사�
 
 ## API 직접 테스트
 
-<APIPage document="openapi" operations={[{"path":"/files/image","method":"post"},{"path":"/files/json","method":"post"}]} showTitle />
+<APIPage document="openapi" operations={[{"path":"/files/image","method":"post"},{"path":"/files/upload","method":"post"}]} showTitle />

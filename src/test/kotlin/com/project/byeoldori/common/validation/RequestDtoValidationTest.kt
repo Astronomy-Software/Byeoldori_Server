@@ -7,6 +7,7 @@ import com.project.byeoldori.community.post.dto.EducationRequestDto
 import com.project.byeoldori.community.post.dto.PostCreateRequest
 import com.project.byeoldori.community.post.dto.PostUpdateRequest
 import com.project.byeoldori.community.post.dto.ReviewDto
+import com.project.byeoldori.star.service.CONTENT_TARGET_MAX_COUNT
 import jakarta.validation.Valid
 import jakarta.validation.Validation
 import org.assertj.core.api.Assertions.assertThat
@@ -52,6 +53,16 @@ class RequestDtoValidationTest {
     }
 
     @Test
+    fun `게시글 - 본문 길이와 이미지 개수 상한을 넘으면 거부한다`() {
+        val tooManyImages = (1..21).map { "https://x/$it.png" }
+        assertThat(violations(PostCreateRequest(title = "t", content = "c".repeat(1_000_001), imageUrls = tooManyImages)))
+            .containsExactlyInAnyOrder("content", "imageUrls")
+        assertThat(violations(PostUpdateRequest(content = "c".repeat(1_000_001), imageUrls = tooManyImages)))
+            .containsExactlyInAnyOrder("content", "imageUrls")
+        assertThat(violations(PostCreateRequest(title = "t", content = "c", imageUrls = tooManyImages.take(20)))).isEmpty()
+    }
+
+    @Test
     fun `캘린더 - 제목 120자·장소 255자를 넘으면 거부한다`() {
         val start = LocalDateTime.of(2026, 10, 20, 21, 0)
         assertThat(violations(CreateEventRequest(title = "가".repeat(121), startAt = start, placeName = "나".repeat(256))))
@@ -59,6 +70,24 @@ class RequestDtoValidationTest {
         assertThat(violations(CreateEventRequest(title = "가".repeat(120), startAt = start))).isEmpty()
         assertThat(violations(UpdateEventRequest(title = "가".repeat(121), placeName = "나".repeat(256))))
             .containsExactlyInAnyOrder("title", "placeName")
+    }
+
+    @Test
+    fun `게시글·캘린더 - 대상 천체 개수 상한을 넘으면 거부한다`() {
+        val tooMany = (1..CONTENT_TARGET_MAX_COUNT + 1).map { "star-$it" }
+        val ok = tooMany.take(CONTENT_TARGET_MAX_COUNT)
+        val start = LocalDateTime.of(2026, 10, 20, 21, 0)
+
+        assertThat(violations(PostCreateRequest(
+            title = "t", content = "c",
+            review = ReviewDto(targets = tooMany), education = EducationRequestDto(targets = tooMany),
+        ))).containsExactlyInAnyOrder("review.targets", "education.targets")
+        assertThat(violations(PostUpdateRequest(review = ReviewDto(targets = tooMany)))).containsExactly("review.targets")
+        assertThat(violations(CreateEventRequest(title = "t", startAt = start, targets = tooMany))).containsExactly("targets")
+        assertThat(violations(UpdateEventRequest(targets = tooMany))).containsExactly("targets")
+
+        assertThat(violations(PostCreateRequest(title = "t", content = "c", review = ReviewDto(targets = ok)))).isEmpty()
+        assertThat(violations(CreateEventRequest(title = "t", startAt = start, targets = ok))).isEmpty()
     }
 
     @Test
