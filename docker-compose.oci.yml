@@ -55,7 +55,10 @@ services:
     image: mysql:8.0
     container_name: mysql
     restart: always
-    command: --default-authentication-plugin=mysql_native_password --lower_case_table_names=1
+    # --innodb-ft-enable-stopword=0: ngram FULLTEXT 가 기본 영어 불용어(a·i·on·or…)를 포함한 토큰을 빼
+    # 'Orion' 같은 영문 제목이 검색되지 않던 문제. 배포는 mysql 을 다시 만들지 않으므로(app 만 --no-deps 로 기동)
+    # 실행 중인 DB 에는 scripts/ensure-mysql-ft-stopword-off.sh 가 SET PERSIST 로 같은 값을 넣는다(README 참고).
+    command: --default-authentication-plugin=mysql_native_password --lower_case_table_names=1 --innodb-ft-enable-stopword=0
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: byeoldori

@@ -164,6 +164,33 @@ class OpsConfigFilesTest {
     }
 
     @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `FULLTEXT 불용어는 compose 와 배포 훅 모두에서 끄고 배포 훅은 새 앱 기동(Flyway V8) 전에 돈다`() {
+        val mysql = yaml("docker-compose.oci.yml").obj("services").obj("mysql")
+        assertThat(mysql["command"] as String).contains("--innodb-ft-enable-stopword=0")
+
+        val steps = yaml(".github/workflows/deploy.yml").obj("jobs").obj("deploy")["steps"] as List<Map<String, Any?>>
+        val remote = steps.mapNotNull { (it["with"] as Map<String, Any?>?)?.get("script") as String? }.joinToString("\n")
+        val hook = remote.indexOf("bash scripts/ensure-mysql-ft-stopword-off.sh\n")
+        assertThat(hook).isGreaterThan(0)
+        assertThat(hook).isLessThan(remote.indexOf("bash deploy-bluegreen.sh"))
+        // 실패를 삼키면 불용어가 켜진 채 V8 재색인이 돌고, V8 은 다시 실행되지 않는다
+        assertThat(remote).doesNotContain("ensure-mysql-ft-stopword-off.sh ||")
+
+        val v8 = File("src/main/resources/db/migration/V8__community_mid_forecast_indexes_ngram_reindex.sql").readText()
+        assertThat(v8).contains(
+            "DROP INDEX `ft_community_title`", "ADD FULLTEXT INDEX `ft_community_title` (`title`) WITH PARSER ngram",
+            "DROP INDEX `ft_community_content`", "ADD FULLTEXT INDEX `ft_community_content` (`content`) WITH PARSER ngram",
+        )
+        // 엔티티 @Index 와 마이그레이션의 인덱스 이름이 같아야 한다
+        assertThat(File("src/main/kotlin/com/project/byeoldori/community/post/domain/CommunityPost.kt").readText())
+            .contains("idx_community_type_created")
+        assertThat(File("src/main/kotlin/com/project/byeoldori/forecast/entity/MidCombinedForecast.kt").readText())
+            .contains("idx_mid_combined_si_reg_tm_fc")
+        assertThat(v8).contains("`idx_community_type_created` (`type`, `created_at`)", "`idx_mid_combined_si_reg_tm_fc` (`si_reg_id`, `tm_fc`)")
+    }
+
+    @Test
     fun `블루그린 스크립트는 전환 전 실패 시 새 색을 내리고 nginx 검사 실패를 무시하지 않는다`() {
         val script = File("deploy-bluegreen.sh").readText()
         assertThat(script).contains("trap cleanup_new EXIT")

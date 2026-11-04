@@ -96,3 +96,26 @@ docker run --rm -i --user 0 --entrypoint tar -v "$VOL":/data/uploads byeoldori-s
 PORT=$(grep -o '127.0.0.1:[0-9]*' /etc/nginx/conf.d/byeoldori-upstream.conf | head -1 | cut -d: -f2)
 [ "$PORT" = 8081 ] && docker start app-green || docker start app-blue
 ```
+
+## 🔎 커뮤니티 검색 FULLTEXT 불용어 설정 (V8)
+
+제목·본문 검색은 ngram 파서 FULLTEXT 인덱스를 쓴다. ngram 파서는 불용어를 **포함한** 토큰을 색인에서 빼는데, MySQL 기본 불용어 목록에 `a`·`i`·`on`·`or` 등이 있어 `Orion`·`Mira`·`Iris` 같은 영문 제목은 검색 결과가 항상 0건이었다. 그래서 불용어 사용(`innodb_ft_enable_stopword`)을 끄고 V8 마이그레이션이 인덱스를 다시 만든다.
+
+- 이 값은 **GLOBAL** 이어야 하고(세션 값만 바꾸면 효과 없음, 2026-10-23 백업 복원본에서 확인), **V8 이 돌기 전에** 꺼져 있어야 한다. 켜진 채로 V8 이 돌면 재색인 결과가 이전과 같고 V8 은 다시 돌지 않는다.
+- 배포는 mysql 컨테이너를 다시 만들지 않는다(`deploy-bluegreen.sh` 는 app 만 `--no-deps` 로 기동). 그래서 `docker-compose.oci.yml` 의 `--innodb-ft-enable-stopword=0` 만으로는 실행 중인 DB 에 반영되지 않는다.
+- 대신 배포(`deploy.yml`)가 새 앱 기동 전에 `scripts/ensure-mysql-ft-stopword-off.sh` 를 돌려 `SET PERSIST innodb_ft_enable_stopword = OFF` 를 넣는다. DB 재시작·중단이 없고, 값은 데이터 볼륨(`mysqld-auto.cnf`)에 저장돼 재시작 후에도 유지된다. 이미 OFF 면 아무것도 하지 않는다. 설정에 실패하면 새 색을 만들기 전에 배포를 중단한다(기존 색 유지).
+
+배포 순서(자동, 확인용):
+
+1. `ensure-mysql-ft-stopword-off.sh` → `[ft-stopword] OFF 확인` 또는 `이미 OFF`
+2. 새 색 기동 → Flyway V7(탈퇴 계정 개인 데이터 정리)·V8(인덱스 추가·FULLTEXT 재색인)
+3. V8 은 `community` 의 FULLTEXT 인덱스를 지웠다 다시 만든다. 그 몇 초 동안 구 색의 키워드 검색이 실패(500)할 수 있고, 인덱스를 만드는 동안 글쓰기가 잠깐 대기할 수 있다. 글 수가 적어 짧게 끝난다.
+
+배포 뒤 확인(VM):
+
+```bash
+docker exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -e "SELECT @@GLOBAL.innodb_ft_enable_stopword"'   # 0
+docker exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot byeoldori -e "SELECT version, success FROM flyway_schema_history WHERE version IN (\"7\",\"8\")"'
+```
+
+mysql 컨테이너를 새로 만들 일이 생기면(`docker compose -f docker-compose.oci.yml up -d mysql` 등, DB 가 잠깐 내려간다) compose 의 `--innodb-ft-enable-stopword=0` 이 같은 값을 준다. V8 배포 뒤 어떤 이유로든 값이 다시 켜진 상태에서 인덱스를 만들었다면, 끈 뒤 V8 의 FULLTEXT DROP/ADD 네 문장을 직접 다시 실행한다.
