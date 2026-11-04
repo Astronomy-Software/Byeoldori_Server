@@ -89,14 +89,30 @@ class LiveGridForecastService(
             weatherData.fetchLiveWeather(tmfc, ForecastElement.SKY),
         ).map { t ->
             reachability.onSuccess()
+            val grids = linkedMapOf(
+                ForecastElement.T1H to GridDataParser.parseGridData(t.t1),
+                ForecastElement.VEC to GridDataParser.parseGridData(t.t2),
+                ForecastElement.WSD to GridDataParser.parseGridData(t.t3),
+                ForecastElement.PTY to GridDataParser.parseGridData(t.t4),
+                ForecastElement.RN1 to GridDataParser.parseGridData(t.t5),
+                ForecastElement.REH to GridDataParser.parseGridData(t.t6),
+                ForecastElement.SKY to GridDataParser.parseGridData(t.t7),
+            )
+            // 한 요소라도 비었으면(기상청이 아직 안 만든 발표분) 예외로 재시도하지 않고 빈 격자를 돌려
+            // 기존 캐시를 유지한다. 같은 발표분은 다음 주기에도 대개 비어 있어 즉시 재시도는 호출만 늘린다.
+            val incomplete = GridDataParser.incompleteGrids(grids)
+            if (incomplete.isNotEmpty()) {
+                logger.warn("실황 격자 중 {} 요소가 비었거나 크기가 달라 이번 갱신을 건너뜁니다. (tmfc={})", incomplete, tmfc)
+                return@map mutableListOf<MutableList<LiveGridCell>>()
+            }
             combineGrids(
-                GridDataParser.parseGridData(t.t1),
-                GridDataParser.parseGridData(t.t2),
-                GridDataParser.parseGridData(t.t3),
-                GridDataParser.parseGridData(t.t4),
-                GridDataParser.parseGridData(t.t5),
-                GridDataParser.parseGridData(t.t6),
-                GridDataParser.parseGridData(t.t7),
+                grids.getValue(ForecastElement.T1H),
+                grids.getValue(ForecastElement.VEC),
+                grids.getValue(ForecastElement.WSD),
+                grids.getValue(ForecastElement.PTY),
+                grids.getValue(ForecastElement.RN1),
+                grids.getValue(ForecastElement.REH),
+                grids.getValue(ForecastElement.SKY),
             )
         }
     }

@@ -60,6 +60,18 @@ object GridDataParser {
     }
 
     /**
+     * 여러 요소 격자를 셀 단위로 합치기 전에, 비었거나 크기가 다른 요소의 키를 돌려준다.
+     * 기상청이 한 요소만 아직 안 만들었으면 그 요소 응답이 0행으로 오는데, 그대로 합치면 인덱스 예외가 난다.
+     * 모든 요소가 비어 있으면 전부 돌려준다.
+     */
+    fun <K> incompleteGrids(grids: Map<K, List<List<Double?>>>): List<K> {
+        val rows = grids.values.maxOfOrNull { it.size } ?: 0
+        val cols = grids.values.maxOfOrNull { grid -> grid.maxOfOrNull { it.size } ?: 0 } ?: 0
+        if (rows == 0 || cols == 0) return grids.keys.toList()
+        return grids.filterValues { grid -> grid.size != rows || grid.any { it.size != cols } }.keys.toList()
+    }
+
+    /**
      * 2차원 리스트 데이터를 심볼로 출력합니다.
      * 각 셀이 null이면 빈 네모("□"), 값이 있으면 채워진 네모("■")로 표시하여 한 줄로 출력합니다.
      *
