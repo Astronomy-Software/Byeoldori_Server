@@ -31,6 +31,9 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
+      - name: Docker version (진단)
+        run: docker version --format '{{.Server.Version}} (API {{.Server.APIVersion}}, min {{.Server.MinAPIVersion}})' || true
+
       - name: Build and Test
         run: |
           chmod +x gradlew
