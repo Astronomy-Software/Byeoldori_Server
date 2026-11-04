@@ -182,6 +182,9 @@ class OpsConfigFilesTest {
             "DROP INDEX `ft_community_title`", "ADD FULLTEXT INDEX `ft_community_title` (`title`) WITH PARSER ngram",
             "DROP INDEX `ft_community_content`", "ADD FULLTEXT INDEX `ft_community_content` (`content`) WITH PARSER ngram",
         )
+        // 불용어 상태는 테이블 단위라 FULLTEXT 인덱스를 모두 지운 뒤에야 초기화된다 → DROP 두 개가 ADD 보다 먼저
+        val firstAdd = v8.indexOf("ADD FULLTEXT INDEX")
+        assertThat(v8.lastIndexOf("DROP INDEX `ft_community_")).isLessThan(firstAdd)
         // 엔티티 @Index 와 마이그레이션의 인덱스 이름이 같아야 한다
         assertThat(File("src/main/kotlin/com/project/byeoldori/community/post/domain/CommunityPost.kt").readText())
             .contains("idx_community_type_created")

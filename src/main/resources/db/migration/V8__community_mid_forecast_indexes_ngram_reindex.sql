@@ -16,7 +16,10 @@ ALTER TABLE `mid_combined_forecast` ADD INDEX `idx_mid_combined_si_reg_tm_fc` (`
 --    배포가 앱 기동(이 마이그레이션) 전에 scripts/ensure-mysql-ft-stopword-off.sh 로 맞추고,
 --    docker-compose.oci.yml 의 mysql command 에도 --innodb-ft-enable-stopword=0 을 둔다. 순서는 README 참고.
 --    InnoDB 는 FULLTEXT 인덱스를 한 번에 하나만 만들 수 있어(오류 1795) 문장을 나눈다.
+--    불용어 상태는 인덱스가 아니라 테이블 단위(FTS 캐시·CONFIG 의 use_stopword)로 남고, 마지막 FULLTEXT
+--    인덱스가 지워질 때만 초기화된다. 하나라도 남긴 채 다시 만들면 예전 불용어 설정이 그대로 쓰이므로
+--    두 인덱스를 모두 지운 뒤에 다시 만든다(순서를 바꾸지 말 것).
 ALTER TABLE `community` DROP INDEX `ft_community_title`;
-ALTER TABLE `community` ADD FULLTEXT INDEX `ft_community_title` (`title`) WITH PARSER ngram;
 ALTER TABLE `community` DROP INDEX `ft_community_content`;
+ALTER TABLE `community` ADD FULLTEXT INDEX `ft_community_title` (`title`) WITH PARSER ngram;
 ALTER TABLE `community` ADD FULLTEXT INDEX `ft_community_content` (`content`) WITH PARSER ngram;

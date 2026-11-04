@@ -118,4 +118,4 @@ docker exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -
 docker exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot byeoldori -e "SELECT version, success FROM flyway_schema_history WHERE version IN (\"7\",\"8\")"'
 ```
 
-mysql 컨테이너를 새로 만들 일이 생기면(`docker compose -f docker-compose.oci.yml up -d mysql` 등, DB 가 잠깐 내려간다) compose 의 `--innodb-ft-enable-stopword=0` 이 같은 값을 준다. V8 배포 뒤 어떤 이유로든 값이 다시 켜진 상태에서 인덱스를 만들었다면, 끈 뒤 V8 의 FULLTEXT DROP/ADD 네 문장을 직접 다시 실행한다.
+mysql 컨테이너를 새로 만들 일이 생기면(`docker compose -f docker-compose.oci.yml up -d mysql` 등, DB 가 잠깐 내려간다) compose 의 `--innodb-ft-enable-stopword=0` 이 같은 값을 준다. V8 배포 뒤 어떤 이유로든 값이 다시 켜진 상태에서 인덱스를 만들었다면, 끈 뒤 V8 의 FULLTEXT DROP/ADD 네 문장을 V8 에 적힌 순서 그대로(DROP 두 개를 먼저, 그다음 ADD 두 개) 직접 다시 실행한다. 불용어 상태는 테이블 단위로 남아 FULLTEXT 인덱스가 하나라도 남아 있으면 초기화되지 않으므로, DROP 과 ADD 를 번갈아 실행하면 효과가 없다.
