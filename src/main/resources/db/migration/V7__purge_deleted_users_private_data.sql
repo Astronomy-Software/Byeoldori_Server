@@ -6,7 +6,7 @@
 -- uploaded_file(업로더 기록)도 지우지 않는다 → 사진 실제 파일을 나중에 소유자 기준으로 정리할 근거로 남긴다.
 -- MongoDB 퀴즈 응시 기록은 Flyway 범위 밖이라 여기서 다루지 않는다.
 -- 대상이 없으면 아무 행도 지우지 않으므로 다시 실행해도 결과가 같다.
--- (H2 회귀 테스트 AccountDataPurgeMigrationTest 가 이 파일을 그대로 실행하므로 표준 SQL 로만 쓴다)
+-- (H2 회귀 테스트 AccountDataPurgeTest 가 이 파일을 그대로 실행하므로 표준 SQL 로만 쓴다)
 
 -- 1) 일정의 대상 천체 태그 (content_target 은 FK 가 없어 일정과 함께 지워지지 않는다)
 DELETE FROM content_target
