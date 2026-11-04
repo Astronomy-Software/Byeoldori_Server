@@ -51,6 +51,7 @@ class UserService(
     private val emailService: EmailService,
     private val cachedUserLookupService: CachedUserLookupService,
     private val passwordResetTokenRepo: PasswordResetTokenRepository,
+    private val accountDataPurgeService: AccountDataPurgeService,
     @Qualifier("oauthWebClient") private val oauthWebClient: WebClient
 ) {
 
@@ -301,6 +302,8 @@ class UserService(
         refreshTokenRepo.deleteByUserId(user.id)
         emailTokenRepo.deleteAllByUserId(user.id)
         passwordResetTokenRepo.deleteAllByUserId(user.id)
+        // 본인만 보던 개인 데이터(관측 일정·사진·즐겨찾기 좌표·알림·퀴즈 기록)는 남기지 않고 지운다
+        accountDataPurgeService.purgePrivateData(user.id)
 
         // 소프트 딜리트: PII 익명화 후 삭제 시각 기록 (게시글/댓글은 "탈퇴한 사용자"로 유지)
         // email 은 UNIQUE 라 그대로 두면 같은 이메일로 재가입·소셜 로그인을 영영 못 한다 → 자리표시자로 바꾼다

@@ -18,6 +18,14 @@ interface ContentTargetRepository : JpaRepository<ContentTarget, Long> {
         @Param("id") id: Long
     ): Int
 
+    // 여러 콘텐츠의 태그를 한 번에 지운다(회원 탈퇴 시 본인 일정 전체)
+    @Modifying
+    @Query("delete from ContentTarget ct where ct.contentType = :type and ct.contentId in :ids")
+    fun deleteAllByContentIds(
+        @Param("type") type: ContentType,
+        @Param("ids") ids: Collection<Long>
+    ): Int
+
     @Query("""select ct.contentId from ContentTarget ct where ct.contentType = :type and ct.starObjectName = :name""")
     fun findContentIdsByStar(
         @Param("type") type: ContentType,

@@ -48,6 +48,7 @@ class UserServiceAccountTest {
     private val refreshTokenRepo = mock(RefreshTokenRepository::class.java)
     private val passwordResetTokenRepo = mock(PasswordResetTokenRepository::class.java)
     private val emailService = mock(EmailService::class.java)
+    private val accountDataPurgeService = mock(AccountDataPurgeService::class.java)
 
     private val service = UserService(
         publicBaseUrl = "http://localhost:8080/files",
@@ -64,6 +65,7 @@ class UserServiceAccountTest {
         emailService = emailService,
         cachedUserLookupService = cachedUserLookupService,
         passwordResetTokenRepo = passwordResetTokenRepo,
+        accountDataPurgeService = accountDataPurgeService,
         oauthWebClient = mock(WebClient::class.java),
     )
 
@@ -143,6 +145,15 @@ class UserServiceAccountTest {
         assertThat(me.provider).isNull()
         assertThat(me.providerId).isNull()
         assertThat(me.passwordHash).isEqualTo("DELETED")
+    }
+
+    @Test
+    fun `탈퇴하면 본인만 보던 개인 데이터(일정·사진·즐겨찾기·알림·퀴즈 기록)를 지운다`() {
+        `when`(currentUserResolver.getUser()).thenReturn(user(id = 42))
+
+        service.deleteAccount()
+
+        verify(accountDataPurgeService).purgePrivateData(42)
     }
 
     @Test
