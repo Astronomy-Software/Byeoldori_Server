@@ -8,6 +8,7 @@ import com.project.byeoldori.community.like.repository.LikeRepository
 import com.project.byeoldori.community.post.repository.CommunityPostRepository
 import com.project.byeoldori.notification.service.NotificationService
 import com.project.byeoldori.user.entity.User
+import com.project.byeoldori.user.utils.NicknameRules
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
@@ -99,7 +100,7 @@ class LikeService(
         if (delta > 0 && comment.author.id != user.id && firstCommentLikeNotify(commentId, user.id)) {
             notificationService.notifyCommentLiked(
                 commentAuthorId = comment.author.id,
-                likerName = user.nickname ?: user.name
+                likerName = user.nickname ?: NicknameRules.FALLBACK_DISPLAY_NAME
             )
         }
 
