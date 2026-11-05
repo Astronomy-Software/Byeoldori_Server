@@ -3,7 +3,6 @@ package com.project.byeoldori.forecast.utils.forecasts
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 
 /**
@@ -107,15 +106,14 @@ class MidForecastParsersTest {
     }
 
     @Test
-    fun `컬럼이 부족한 줄은 현재 IndexOutOfBounds 로 전체 파싱이 실패한다`() {
-        // 현재 동작 기록: 기상청이 주석(#) 없는 오류 문구나 짧은 줄을 섞어 보내면 응답 전체를 버린다
+    fun `정상 줄이 하나도 없는 응답은 예외로 두어 스케줄러가 재시도하게 한다`() {
+        // 오류 문구만 온 응답은 저장할 게 없으므로 빈 목록 대신 예외(재시도 대상)로 둔다 (#179)
         assertThatThrownBy { land.parse("Authentication failed") }
-            .isInstanceOf(IndexOutOfBoundsException::class.java)
+            .isInstanceOf(IllegalStateException::class.java)
         assertThatThrownBy { temp.parse("11B10101 202610200600 202610230000") }
-            .isInstanceOf(IndexOutOfBoundsException::class.java)
+            .isInstanceOf(IllegalStateException::class.java)
     }
 
-    @Disabled("의심 버그: 컬럼이 부족한 줄 하나가 정상 줄까지 모두 버린다. 해당 줄만 건너뛰는 것이 기대 동작 — PR 본문 참고")
     @Test
     fun `컬럼이 부족한 줄은 건너뛰고 나머지는 파싱해야 한다`() {
         val mixed = "11B10101  202610200600 202610230000 A02 109 1 WB01 WB00 WB40 맑음 10\n" +
