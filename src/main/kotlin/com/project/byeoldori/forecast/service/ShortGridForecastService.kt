@@ -126,6 +126,15 @@ class ShortGridForecastService(
             val snoGrid = GridDataParser.parseGridData(snoData)
             val rehGrid = GridDataParser.parseGridData(rehData)
 
+            // 한 요소라도 비었거나 크기가 다르면 합치다 인덱스 예외가 나므로, 이유를 담아 이 tmef 만 실패시킨다(상위에서 건너뜀)
+            val incomplete = GridDataParser.incompleteGrids(linkedMapOf(
+                ForecastElement.TMP to tmpGrid, ForecastElement.TMX to tmxGrid, ForecastElement.TMN to tmnGrid,
+                ForecastElement.VEC to vecGrid, ForecastElement.WSD to wsdGrid, ForecastElement.SKY to skyGrid,
+                ForecastElement.PTY to ptyGrid, ForecastElement.POP to popGrid, ForecastElement.PCP to pcpGrid,
+                ForecastElement.SNO to snoGrid, ForecastElement.REH to rehGrid,
+            ))
+            check(incomplete.isEmpty()) { "격자 요소 $incomplete 가 비었거나 크기가 다름 (tmfc=$tmfc, tmef=$tmef)" }
+
             // 2차원 ShortGridCell 리스트 결합
             val combinedGrid = combineShortGrids(
                 tmpGrid, tmxGrid, tmnGrid,
@@ -160,7 +169,8 @@ class ShortGridForecastService(
                     .doOnNext { circuit.onSuccess(); reachability.onSuccess() }
                     .onErrorResume { e ->
                         circuit.onFailure(e)
-                        logger.error("단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
+                        // 이 tmef 만 건너뛰고 나머지는 반영하는 처리된 실패라 WARN(주기 전체 실패는 updateAll 에서 ERROR)
+                        logger.warn("단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
                         Mono.empty()
                     }
             }, 5)  // KMA API 과부하 방지: 최대 5개 tmef 동시 처리

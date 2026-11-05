@@ -51,9 +51,9 @@ class WeatherData(
             .doOnSuccess {
                 logger.info("초단기예보 API 호출 성공 - tmfc=$tmfc, tmef=$tmef, vars=$vars")
             }
-            // 에러 발생 시점에 로그
+            // 에러 발생 시점에 로그. 호출한 서비스가 tmef 단위로 건너뛰거나 주기 실패로 다시 기록하므로 여기선 WARN 한 줄
             .doOnError { error ->
-                logger.error("초단기예보 API 호출 실패 - tmfc=$tmfc, tmef=$tmef, vars=$vars", error)
+                logger.warn("초단기예보 API 호출 실패 - tmfc=$tmfc, tmef=$tmef, vars=$vars: $error")
             }
     }
 
@@ -79,9 +79,9 @@ class WeatherData(
             .doOnSuccess {
                 logger.info("단기예보 API 호출 성공 - tmfc=$tmfc, tmef=$tmef, vars=$vars")
             }
-            // 에러 발생 시점에 로그
+            // 에러 발생 시점에 로그. 호출한 서비스가 tmef 단위로 건너뛰거나 주기 실패로 다시 기록하므로 여기선 WARN 한 줄
             .doOnError { error ->
-                logger.error("단기예보 API 호출 실패 - tmfc=$tmfc, tmef=$tmef, vars=$vars", error)
+                logger.warn("단기예보 API 호출 실패 - tmfc=$tmfc, tmef=$tmef, vars=$vars: $error")
             }
     }
 

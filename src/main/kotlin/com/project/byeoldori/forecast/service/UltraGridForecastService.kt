@@ -102,6 +102,14 @@ class UltraGridForecastService(
             val rehGrid = GridDataParser.parseGridData(rehData)
             val skyGrid = GridDataParser.parseGridData(skyData)
 
+            // 한 요소라도 비었거나 크기가 다르면 합치다 인덱스 예외가 나므로, 이유를 담아 이 tmef 만 실패시킨다(상위에서 건너뜀)
+            val incomplete = GridDataParser.incompleteGrids(linkedMapOf(
+                ForecastElement.T1H to t1hGrid, ForecastElement.VEC to vecGrid, ForecastElement.WSD to wsdGrid,
+                ForecastElement.PTY to ptyGrid, ForecastElement.RN1 to rn1Grid, ForecastElement.REH to rehGrid,
+                ForecastElement.SKY to skyGrid,
+            ))
+            check(incomplete.isEmpty()) { "격자 요소 $incomplete 가 비었거나 크기가 다름 (tmfc=$tmfc, tmef=$tmef)" }
+
             // 2차원 GridCell 리스트 결합
             val combinedGrid = combineUltraGrids(
                 t1hGrid, vecGrid, wsdGrid,
@@ -135,7 +143,8 @@ class UltraGridForecastService(
                     .doOnNext { circuit.onSuccess(); reachability.onSuccess() }
                     .onErrorResume { e ->
                         circuit.onFailure(e)
-                        logger.error("초단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
+                        // 이 tmef 만 건너뛰고 나머지는 반영하는 처리된 실패라 WARN(주기 전체 실패는 updateAll 에서 ERROR)
+                        logger.warn("초단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
                         Mono.empty()
                     }
             }, 3)  // KMA API 과부하 방지: 최대 3개 tmef 동시 처리
