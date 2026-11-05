@@ -69,7 +69,10 @@ class JwtUtil(
         val nowDate = Date.from(now.atZone(zoneId).toInstant())
         val expDate = Date.from(exp.atZone(zoneId).toInstant())
 
+        // jti: iat/exp 는 초 단위라 같은 초에 만든 토큰이 바이트까지 같아진다.
+        // 고유값을 넣어 회전 직후 옛 refresh 재사용 거부·세션별 token_hash UNIQUE 가 항상 성립하게 한다.
         return Jwts.builder()
+            .setId(UUID.randomUUID().toString())
             .setSubject(email)
             .setIssuedAt(nowDate)
             .setExpiration(expDate)

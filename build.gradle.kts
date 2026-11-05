@@ -13,6 +13,10 @@ springBoot {
 group = "com.project"
 version = "0.0.1-SNAPSHOT"
 
+// Spring Boot 3.4.3 이 고정한 Testcontainers 1.20.5 는 Docker Engine 29(최소 API 1.44)에 접속하지 못한다.
+// GitHub 러너가 Docker 29 로 오른 뒤 CI 의 contextLoads 가 DockerClientProviderStrategy 오류로 깨져 1.21.4 로 올린다.
+extra["testcontainers.version"] = "1.21.4"
+
 java {
 	sourceCompatibility = JavaVersion.VERSION_21
 	targetCompatibility = JavaVersion.VERSION_21
