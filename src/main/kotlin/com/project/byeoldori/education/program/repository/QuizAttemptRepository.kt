@@ -12,4 +12,7 @@ interface QuizAttemptRepository : MongoRepository<QuizAttempt, String> {
     fun findByUserId(userId: Long, pageable: Pageable): Page<QuizAttempt>
 
     fun deleteByProgramId(programId: String)
+
+    // 회원 탈퇴 시 응시 기록을 지운다
+    fun deleteByUserId(userId: Long)
 }

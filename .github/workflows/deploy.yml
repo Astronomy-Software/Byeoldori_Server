@@ -49,6 +49,7 @@ jobs:
           bash scripts/tests/backup_freshness_test.sh
           bash scripts/tests/bluegreen_test.sh
           bash scripts/tests/monitoring_reload_test.sh
+          bash scripts/tests/ft_stopword_test.sh
           python3 scripts/tests/cf_exporter_test.py
 
       - name: Upload test results
@@ -131,6 +132,9 @@ jobs:
               > monitoring/secrets.env
             # 교육 프로그램 저장용 MongoDB 기동(앱이 연결하므로 배포 전에). 이미 떠있으면 no-op.
             docker compose -f docker-compose.oci.yml -f docker-compose.mongo.yml up -d mongo || true
+            # FULLTEXT 불용어를 GLOBAL 로 끈다(SET PERSIST, DB 재시작 없음·멱등). V8 의 ngram 재색인은 새 앱 기동 때
+            # Flyway 가 돌리므로 반드시 그 전에 맞춰야 한다. 실패하면 set -e 로 새 색을 만들기 전에 중단(기존 색 유지).
+            bash scripts/ensure-mysql-ft-stopword-off.sh
             # 블루-그린 무중단 배포: 비활성 색을 빌드·기동→헬스 통과 시에만
             # nginx upstream 전환→구 색 정지. 실패하면 기존 컨테이너 유지.
             bash deploy-bluegreen.sh

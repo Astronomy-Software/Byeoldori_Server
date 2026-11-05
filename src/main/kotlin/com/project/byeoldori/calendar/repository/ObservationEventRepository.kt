@@ -19,6 +19,9 @@ interface ObservationEventRepository : JpaRepository<ObservationEvent, Long> {
 
     fun findByIdAndUserId(id: Long, userId: Long): Optional<ObservationEvent>
 
+    // 회원 탈퇴 시 본인 일정을 모두 지우려고 읽는다(AccountDataPurgeService)
+    fun findAllByUserId(userId: Long): List<ObservationEvent>
+
     fun findStartStatusByUserIdAndStartAtGreaterThanEqualAndStartAtLessThan(
         userId: Long,
         from: LocalDateTime,

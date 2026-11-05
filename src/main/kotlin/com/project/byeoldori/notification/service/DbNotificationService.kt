@@ -46,6 +46,8 @@ class DbNotificationService(
             log.warn("알림 전송 실패 - 사용자 없음: userId={}", userId)
             return
         }
+        // 탈퇴 계정 앞으로는 쌓지 않는다(남은 공개 글에 달린 댓글·좋아요 알림에 다른 사람 이름·내용이 담기므로)
+        if (user.deletedAt != null) return
         notificationRepository.save(Notification(user = user, type = type, title = title, body = body))
     }
 }

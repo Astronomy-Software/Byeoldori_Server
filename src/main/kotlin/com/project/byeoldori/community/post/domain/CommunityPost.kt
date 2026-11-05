@@ -11,7 +11,11 @@ import org.hibernate.annotations.DynamicUpdate
 // 바뀐 컬럼만 UPDATE 한다 — 글 수정이 트랜잭션 시작 때 읽은 조회수·좋아요·댓글 수로 덮어쓰지 않도록
 @DynamicUpdate
 @Entity
-@Table(name = "community")
+// 게시판·홈 목록(where type = ? order by created_at desc)용 인덱스. V8 마이그레이션과 이름·컬럼을 맞춘다
+@Table(
+    name = "community",
+    indexes = [Index(name = "idx_community_type_created", columnList = "type,created_at")]
+)
 class CommunityPost(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
