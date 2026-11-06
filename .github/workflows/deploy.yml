@@ -50,6 +50,7 @@ jobs:
           bash scripts/tests/bluegreen_test.sh
           bash scripts/tests/monitoring_reload_test.sh
           bash scripts/tests/ft_stopword_test.sh
+          bash scripts/tests/grafana_admin_test.sh
           python3 scripts/tests/cf_exporter_test.py
 
       - name: Upload test results
@@ -113,7 +114,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           # 빌드 + 헬스 게이트(최대 6분) + 예보 캐시 적재 대기(최대 5분)가 들어가도록 여유를 둔다
           command_timeout: 30m
-          envs: DISCORD_WEBHOOK_BACKEND_URL,CLOUDFLARE_API_TOKEN,CLOUDFLARE_ACCOUNT_ID
+          envs: DISCORD_WEBHOOK_BACKEND_URL,CLOUDFLARE_API_TOKEN,CLOUDFLARE_ACCOUNT_ID,GRAFANA_ADMIN_PASSWORD
           script: |
             set -e
             # 취소된 이전 배포의 VM 쪽 스크립트가 아직 돌고 있으면 끝날 때까지(최대 20분) 기다린다.
@@ -144,6 +145,8 @@ jobs:
             # (모니터링 반영 실패 → 알림 룰·exporter 가 옛 상태, 백업 cron 설치 실패 → 백업 0건인데 아무 알림 없음)
             DEPLOY_WARN=""
             bash scripts/reload-monitoring.sh || DEPLOY_WARN="${DEPLOY_WARN}모니터링 반영 실패(reload-monitoring.sh). "
+            # Grafana 관리자 비밀번호를 GitHub secret GRAFANA_ADMIN_PASSWORD 로 맞춘다(비어 있으면 건너뜀, 표준입력으로만 전달).
+            bash scripts/ensure-grafana-admin-password.sh || DEPLOY_WARN="${DEPLOY_WARN}Grafana 관리자 비밀번호 적용 실패. "
             # 운영 데이터(MySQL·MongoDB·업로드) 일일 백업 cron 설치/갱신(멱등).
             bash scripts/install-backup-cron.sh || DEPLOY_WARN="${DEPLOY_WARN}백업 cron 설치 실패(install-backup-cron.sh). "
             # 백업 신선도(cron 항목·데몬, 26시간 안 완성 백업). backup.sh 의 실패 알림은 스크립트가 돌아야만 나간다.
@@ -165,6 +168,7 @@ jobs:
           DISCORD_WEBHOOK_BACKEND_URL: ${{ secrets.DISCORD_WEBHOOK_BACKEND_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
       - name: Notify Discord - Deploy Success
         if: success()
