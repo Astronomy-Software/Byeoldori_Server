@@ -109,6 +109,17 @@ class UserServiceAccountTest {
     }
 
     @Test
+    fun `생년월일은 보내도 저장하지 않는다(수집 중단, 기존 앱 호환으로 400 은 내지 않음)`() {
+        val me = user()
+        `when`(currentUserResolver.getUser()).thenReturn(me)
+
+        service.updateMe(UserUpdateRequestDto(birthdate = java.time.LocalDate.of(2000, 1, 1), phone = "01011112222"))
+
+        assertThat(me.birthdate).isNull()
+        assertThat(me.phone).isEqualTo("01011112222")
+    }
+
+    @Test
     fun `이미 쓰는 닉네임이면 409`() {
         `when`(currentUserResolver.getUser()).thenReturn(user())
         `when`(userRepository.existsByNickname("남의별")).thenReturn(true)
@@ -198,17 +209,21 @@ class UserServiceAccountTest {
 
     @Test
     fun `인증 링크가 모두 만료된 미인증 가입은 새 가입으로 덮어쓰고 인증 메일을 다시 보낸다`() {
-        val pending = user(id = 5, email = "new@gmail.com", nickname = null).apply { emailVerified = false }
+        val pending = user(id = 5, email = "new@gmail.com", nickname = null).apply {
+            emailVerified = false
+            birthdate = java.time.LocalDate.of(1990, 5, 5)  // 예전 가입 때 저장된 값
+        }
         `when`(userRepository.findByEmail("new@gmail.com")).thenReturn(Optional.of(pending))
         `when`(emailTokenRepo.existsUsableByUserId(eq(5L), anyTime())).thenReturn(false)
         `when`(passwordEncoder.encode("Passw0rd!")).thenReturn("newHash")
         `when`(userRepository.save(pending)).thenReturn(pending)
         `when`(emailTokenRepo.save(any(EmailVerificationToken::class.java))).thenAnswer { it.getArgument(0) }
 
-        service.signup(signupReq())
+        service.signup(signupReq().copy(birthdate = java.time.LocalDate.of(2001, 2, 3)))
 
         assertThat(pending.passwordHash).isEqualTo("newHash")
         assertThat(pending.name).isEqualTo("새사람")
+        assertThat(pending.birthdate).isNull()  // 새로 보낸 값도, 예전 값도 남기지 않는다
         assertThat(pending.emailVerified).isFalse()
         // 옛 인증 링크를 먼저 무효화해야 이전 가입자의 링크로 새 비밀번호 계정이 인증되지 않는다
         val order = inOrder(emailTokenRepo)

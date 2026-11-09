@@ -80,7 +80,8 @@ class UserService(
             existing.name = req.name
             existing.phone = req.phone
             existing.nickname = nickname
-            existing.birthdate = req.birthdate
+            // 생년월일은 쓰는 곳이 없어 더는 저장하지 않는다(요청 필드는 기존 앱 호환을 위해 받기만 한다)
+            existing.birthdate = null
             userRepository.save(existing)
         } else {
             userRepository.save(
@@ -89,8 +90,7 @@ class UserService(
                     passwordHash = passwordEncoder.encode(req.password),
                     name = req.name,
                     phone = req.phone,
-                    nickname = nickname,
-                    birthdate = req.birthdate
+                    nickname = nickname
                 )
             )
         }
@@ -268,7 +268,7 @@ class UserService(
                 user.nickname = nickname
             }
         }
-        req.birthdate?.let { user.birthdate = it }
+        // req.birthdate 는 기존 앱 호환을 위해 받기만 하고 저장하지 않는다
         req.phone?.let { user.phone = it }
         cachedUserLookupService.evictByEmail(user.email)
     }

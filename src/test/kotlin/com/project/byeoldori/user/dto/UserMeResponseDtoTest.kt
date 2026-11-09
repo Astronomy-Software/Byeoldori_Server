@@ -27,7 +27,8 @@ class UserMeResponseDtoTest {
         assertThat(dto.name).isEqualTo("서범수")
         assertThat(dto.phone).isEqualTo("01012345678")
         assertThat(dto.nickname).isEqualTo("별지기")
-        assertThat(dto.birthdate).isEqualTo(LocalDate.of(1999, 7, 10))
+        // 생년월일은 수집 중단 — DB 에 예전 값이 남아 있어도 응답에는 내보내지 않는다
+        assertThat(dto.birthdate).isNull()
         assertThat(dto.emailVerified).isTrue()
         assertThat(dto.lastLoginAt).isEqualTo(LocalDateTime.of(2026, 10, 20, 9, 0))
         assertThat(dto.roles).containsExactlyInAnyOrder("USER", "ADMIN")
