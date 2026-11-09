@@ -25,7 +25,9 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class ForecastIncompleteResponseTest {
 
-    private val full = (0 until 149 * 2).joinToString(",") { "7.0" }
+    private fun grid(value: Int) = (0 until 149 * 2).joinToString(",") { "$value.0" }
+    @Volatile private var value = 7
+    private val full get() = grid(value)
     private val calls = AtomicInteger()
     private val emptyElements = mutableSetOf<String>()
 
@@ -40,21 +42,49 @@ class ForecastIncompleteResponseTest {
     )
 
     @Test
-    fun `실황 한 요소가 비면 예외 없이 이번 갱신만 건너뛰고 기존 캐시를 유지한다`() {
+    fun `실황 한 요소가 비면 그 요소만 직전 값으로 채우고 나머지는 갱신한다(예외·재시도 없음)`() {
         live.updateLiveData("202611040900").block()
         assertThat(live.getLiveDataForCell(0, 0)?.t1h).isEqualTo(7)
 
-        emptyElements += ForecastElement.VEC
+        // 다음 발표분: 값은 9 로 바뀌었는데 SKY 만 비었다(2026-11-07~08 의 17시간 공백과 같은 모양)
+        value = 9
+        emptyElements += ForecastElement.SKY
         calls.set(0)
         val error = catchThrowable { live.updateLiveData("202611041000").block() }
 
         assertThat(error).isNull()                 // 예외가 없으니 스케줄러가 즉시 재시도하지 않는다
         assertThat(calls.get()).isEqualTo(7)       // 요소당 1회, 추가 호출 없음
-        assertThat(live.getLiveDataForCell(0, 0)?.t1h).isEqualTo(7)  // 직전 발표분 유지
+        val cell = live.getLiveDataForCell(0, 0)!!
+        assertThat(cell.t1h).isEqualTo(9)          // 정상 요소는 새 값
+        assertThat(cell.vec).isEqualTo(9)
+        assertThat(cell.sky).isEqualTo(7)          // 빈 요소는 직전 값 유지
+
+        // 공백이 이어져도 같은 방식으로 계속 갱신된다
+        value = 11
+        live.updateLiveData("202611041100").block()
+        assertThat(live.getLiveDataForCell(0, 0)?.t1h).isEqualTo(11)
+        assertThat(live.getLiveDataForCell(0, 0)?.sky).isEqualTo(7)
 
         emptyElements.clear()
-        live.updateLiveData("202611041100").block()
-        assertThat(live.getLiveDataForCell(0, 0)?.vec).isEqualTo(7)
+        live.updateLiveData("202611041200").block()
+        assertThat(live.getLiveDataForCell(0, 0)?.sky).isEqualTo(11)
+    }
+
+    @Test
+    fun `직전 격자가 없거나 모든 요소가 비면 이번 갱신만 건너뛴다`() {
+        emptyElements += ForecastElement.SKY
+        assertThat(catchThrowable { live.updateLiveData("202611040900").block() }).isNull()
+        assertThat(live.getLiveDataForCell(0, 0)).isNull()  // 채울 직전 값이 없음
+
+        emptyElements.clear()
+        live.updateLiveData("202611041000").block()
+        assertThat(live.getLiveDataForCell(0, 0)?.t1h).isEqualTo(7)
+
+        emptyElements += listOf(ForecastElement.T1H, ForecastElement.VEC, ForecastElement.WSD, ForecastElement.PTY,
+            ForecastElement.RN1, ForecastElement.REH, ForecastElement.SKY)
+        value = 9
+        assertThat(catchThrowable { live.updateLiveData("202611041100").block() }).isNull()
+        assertThat(live.getLiveDataForCell(0, 0)?.t1h).isEqualTo(7)  // 전부 비면 기존 캐시 그대로
     }
 
     @Test

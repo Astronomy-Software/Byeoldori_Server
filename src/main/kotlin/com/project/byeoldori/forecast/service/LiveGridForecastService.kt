@@ -12,6 +12,8 @@ import com.project.byeoldori.forecast.utils.forecasts.GridDataParser
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
+import java.time.Duration
+import java.time.Instant
 import kotlin.math.abs
 
 data class LiveGridCell(
@@ -52,6 +54,8 @@ class LiveGridForecastService(
     // 갱신 시 새 격자를 완성한 뒤 참조를 원자적으로 교체(@Volatile). 읽기는 현재 참조를 그대로 사용.
     @Volatile
     private var liveGrid: MutableList<MutableList<LiveGridCell>> = mutableListOf()
+    // 요소별로 비기 시작한 시각(직전 값으로 채운 기간을 로그로 알리기 위함). 갱신 주기는 하나라 동시 갱신은 없다
+    private val missingSince = HashMap<String, Instant>()
 
     /**
      * 완료를 기다릴 수 있도록 Mono<Void>를 반환한다(호출자가 성공/실패를 관찰·재시도 가능).
@@ -98,12 +102,20 @@ class LiveGridForecastService(
                 ForecastElement.REH to GridDataParser.parseGridData(t.t6),
                 ForecastElement.SKY to GridDataParser.parseGridData(t.t7),
             )
-            // 한 요소라도 비었으면(기상청이 아직 안 만든 발표분) 예외로 재시도하지 않고 빈 격자를 돌려
-            // 기존 캐시를 유지한다. 같은 발표분은 다음 주기에도 대개 비어 있어 즉시 재시도는 호출만 늘린다.
+            // 요소 일부만 비었으면(기상청이 그 요소만 안 만든 발표분) 그 요소만 직전 값으로 채우고 나머지는 새 값으로 갱신한다.
+            // (2026-11-07~08 SKY 하나가 17시간 비는 동안 기온·바람까지 통째로 멈췄던 일 방지)
+            // 직전 격자가 없거나 크기가 다르거나 모두 비었으면 예외 없이 이번 갱신만 건너뛰고 기존 캐시를 유지한다.
             val incomplete = GridDataParser.incompleteGrids(grids)
+            trackMissing(incomplete)
             if (incomplete.isNotEmpty()) {
-                logger.warn("실황 격자 중 {} 요소가 비었거나 크기가 달라 이번 갱신을 건너뜁니다. (tmfc={})", incomplete, tmfc)
-                return@map mutableListOf<MutableList<LiveGridCell>>()
+                val filled = fillFromPrevious(grids, incomplete)
+                if (filled == null) {
+                    logger.warn("실황 격자 중 {} 요소가 비었거나 크기가 달라 이번 갱신을 건너뜁니다. (tmfc={})", incomplete, tmfc)
+                    return@map mutableListOf<MutableList<LiveGridCell>>()
+                }
+                grids.putAll(filled)
+                logger.warn("실황 {} 요소가 비어 직전 값으로 채우고 나머지는 갱신합니다. (공백 {}, tmfc={})",
+                    incomplete, missingDurations(incomplete), tmfc)
             }
             combineGrids(
                 grids.getValue(ForecastElement.T1H),
@@ -175,7 +187,48 @@ class LiveGridForecastService(
         }
     }
 
+    /**
+     * 빈 요소를 직전 실황 격자의 같은 요소 값으로 만든 격자로 돌려준다.
+     * 정상 요소가 하나도 없거나, 직전 격자가 없거나 크기가 다르면 null(이번 갱신을 건너뜀).
+     */
+    private fun fillFromPrevious(
+        grids: Map<String, MutableList<MutableList<Double?>>>, missing: List<String>
+    ): Map<String, MutableList<MutableList<Double?>>>? {
+        val reference = grids.filterKeys { it !in missing }.values.firstOrNull() ?: return null
+        val rows = reference.size
+        val cols = reference.firstOrNull()?.size ?: return null
+        val prev = liveGrid
+        if (prev.size != rows || prev.any { it.size != cols }) return null
+        return missing.associateWith { element ->
+            val field = PREVIOUS_FIELD[element] ?: return null
+            MutableList(rows) { i -> MutableList(cols) { j -> field(prev[i][j]) } }
+        }
+    }
+
+    /** 요소별로 비기 시작한 시각을 기록하고, 다시 채워진 요소는 지운다. */
+    private fun trackMissing(missing: List<String>, now: Instant = Instant.now()) {
+        missingSince.keys.retainAll(missing.toSet())
+        missing.forEach { missingSince.putIfAbsent(it, now) }
+    }
+
+    private fun missingDurations(missing: List<String>, now: Instant = Instant.now()): String =
+        missing.joinToString { el ->
+            val minutes = missingSince[el]?.let { Duration.between(it, now).toMinutes() } ?: 0
+            "$el ${minutes}분째"
+        }
+
     companion object {
         private const val SNAPSHOT_SLOT = "live"
+
+        // 직전 셀에서 요소 값을 꺼내 격자 값(Double?)으로 되돌린다
+        private val PREVIOUS_FIELD: Map<String, (LiveGridCell) -> Double?> = mapOf(
+            ForecastElement.T1H to { c -> c.t1h?.toDouble() },
+            ForecastElement.VEC to { c -> c.vec?.toDouble() },
+            ForecastElement.WSD to { c -> c.wsd?.toDouble() },
+            ForecastElement.PTY to { c -> c.pty?.toDouble() },
+            ForecastElement.RN1 to { c -> c.rn1?.toDouble() },
+            ForecastElement.REH to { c -> c.reh?.toDouble() },
+            ForecastElement.SKY to { c -> c.sky?.toDouble() },
+        )
     }
 }
