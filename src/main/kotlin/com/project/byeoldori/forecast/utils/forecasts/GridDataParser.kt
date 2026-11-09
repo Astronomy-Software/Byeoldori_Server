@@ -47,7 +47,11 @@ object GridDataParser {
         // 행 순서를 반전시켜 맨 위의 행이 원래 맨 아래 행이 되도록 함.
         result.reverse()
 
-        if (result.size != 253) {
+        if (result.isEmpty()) {
+            // 빈 응답(0행)은 호출한 서비스가 incompleteGrids 로 어느 요소가 비었는지 한 줄로 알린다.
+            // 여기서도 WARN 을 남기면 요소마다 같은 상황이 중복으로 쌓인다(12시간 105건)
+            logger.debug("격자 응답이 비었습니다(0행)")
+        } else if (result.size != 253) {
             logger.warn("예상 행의 개수 253개와 다릅니다. 실제 행 개수: ${result.size}")
         }
         result.forEachIndexed { index, row ->
