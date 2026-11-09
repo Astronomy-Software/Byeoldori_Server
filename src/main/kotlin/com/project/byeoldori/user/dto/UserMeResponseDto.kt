@@ -30,7 +30,8 @@ data class UserMeResponseDto(
                 name = u.name,
                 phone = u.phone,
                 nickname = u.nickname,
-                birthdate = u.birthdate,
+                // 생년월일은 수집을 중단했다. 기존 앱이 필드를 기대하므로 키는 남기고 항상 null 을 준다
+                birthdate = null,
                 emailVerified = u.emailVerified,
                 lastLoginAt = u.lastLoginAt,
                 roles = u.roles.toSet(),
