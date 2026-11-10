@@ -88,6 +88,27 @@ class ForecastIncompleteResponseTest {
     }
 
     @Test
+    fun `빈 요소가 과반이면 부분 반영하지 않고 건너뛴다(새 값 1개로 새 발표분처럼 기록하지 않음)`() {
+        live.updateLiveData("202611110400").block()
+        assertThat(live.getLiveDataForCell(0, 0)?.sky).isEqualTo(7)
+
+        // 2026-11-11 05:01: 7요소 중 6개가 비고 SKY 만 왔다
+        value = 9
+        emptyElements += listOf(ForecastElement.T1H, ForecastElement.VEC, ForecastElement.WSD, ForecastElement.PTY,
+            ForecastElement.RN1, ForecastElement.REH)
+        assertThat(catchThrowable { live.updateLiveData("202611110500").block() }).isNull()
+        assertThat(live.getLiveDataForCell(0, 0)?.sky).isEqualTo(7)  // SKY 도 반영하지 않고 직전 발표분 그대로
+        assertThat(live.getLiveDataForCell(0, 0)?.t1h).isEqualTo(7)
+
+        // 3개(소수)만 비면 부분 반영한다
+        emptyElements.clear()
+        emptyElements += listOf(ForecastElement.T1H, ForecastElement.VEC, ForecastElement.WSD)
+        live.updateLiveData("202611110600").block()
+        assertThat(live.getLiveDataForCell(0, 0)?.sky).isEqualTo(9)  // 새 값
+        assertThat(live.getLiveDataForCell(0, 0)?.t1h).isEqualTo(7)  // 빈 요소는 직전 값
+    }
+
+    @Test
     fun `격자 크기 검사는 비었거나 행·열 수가 다른 요소만 골라낸다`() {
         val ok = GridDataParser.parseGridData(full)
         val short = GridDataParser.parseGridData((0 until 149).joinToString(",") { "1" })

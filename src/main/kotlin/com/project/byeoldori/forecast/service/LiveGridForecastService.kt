@@ -104,7 +104,7 @@ class LiveGridForecastService(
             )
             // 요소 일부만 비었으면(기상청이 그 요소만 안 만든 발표분) 그 요소만 직전 값으로 채우고 나머지는 새 값으로 갱신한다.
             // (2026-11-07~08 SKY 하나가 17시간 비는 동안 기온·바람까지 통째로 멈췄던 일 방지)
-            // 직전 격자가 없거나 크기가 다르거나 모두 비었으면 예외 없이 이번 갱신만 건너뛰고 기존 캐시를 유지한다.
+            // 빈 요소가 과반이거나 직전 격자가 없거나 크기가 다르면 예외 없이 이번 갱신만 건너뛰고 기존 캐시를 유지한다.
             val incomplete = GridDataParser.incompleteGrids(grids)
             trackMissing(incomplete)
             if (incomplete.isNotEmpty()) {
@@ -189,11 +189,14 @@ class LiveGridForecastService(
 
     /**
      * 빈 요소를 직전 실황 격자의 같은 요소 값으로 만든 격자로 돌려준다.
-     * 정상 요소가 하나도 없거나, 직전 격자가 없거나 크기가 다르면 null(이번 갱신을 건너뜀).
+     * 빈 요소가 과반이거나, 직전 격자가 없거나 크기가 다르면 null(이번 갱신을 건너뜀).
+     * 과반이 비었는데 채우면 새 값은 한두 개뿐인데도 새 발표분(tmfc)으로 기록·스냅샷돼 옛 값을 새 값처럼 다루게 된다
+     * (2026-11-11 05:01 7요소 중 6개가 비고 SKY 만 온 발표분).
      */
     private fun fillFromPrevious(
         grids: Map<String, MutableList<MutableList<Double?>>>, missing: List<String>
     ): Map<String, MutableList<MutableList<Double?>>>? {
+        if (missing.size * 2 > grids.size) return null
         val reference = grids.filterKeys { it !in missing }.values.firstOrNull() ?: return null
         val rows = reference.size
         val cols = reference.firstOrNull()?.size ?: return null
