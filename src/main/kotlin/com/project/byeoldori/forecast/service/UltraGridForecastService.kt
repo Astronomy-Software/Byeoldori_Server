@@ -1,6 +1,7 @@
 package com.project.byeoldori.forecast.service
 
 import com.project.byeoldori.forecast.api.KmaCallCircuit
+import com.project.byeoldori.forecast.api.KmaFailures
 import com.project.byeoldori.forecast.api.KmaReachability
 import com.project.byeoldori.forecast.api.KmaUnreachableException
 import com.project.byeoldori.forecast.api.WeatherData
@@ -144,7 +145,7 @@ class UltraGridForecastService(
                     .onErrorResume { e ->
                         circuit.onFailure(e)
                         // 이 tmef 만 건너뛰고 나머지는 반영하는 처리된 실패라 WARN(주기 전체 실패는 updateAll 에서 ERROR)
-                        logger.warn("초단기 tmef=$tmef 로드 실패, 건너뜀: ${e.message}")
+                        logger.warn("초단기 tmef=$tmef 로드 실패, 건너뜀: ${KmaFailures.describe(e)}")
                         Mono.empty()
                     }
             }, 3)  // KMA API 과부하 방지: 최대 3개 tmef 동시 처리

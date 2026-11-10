@@ -33,6 +33,24 @@ object KmaFailures {
         }
         return false
     }
+
+    /**
+     * 로그용 한 줄 설명. WebClientRequestException 처럼 메시지가 null 인 예외는 e.message 만 찍으면 "null" 이 되므로
+     * 바깥 예외 이름에 가장 안쪽 원인(이름: 메시지)을 붙인다. 예) "WebClientRequestException ← PrematureCloseException: Connection prematurely closed"
+     */
+    fun describe(error: Throwable): String {
+        var root = error
+        var depth = 0
+        while (depth < 10) {
+            val next = root.cause ?: break
+            if (next === root) break
+            root = next
+            depth++
+        }
+        val outer = error.javaClass.simpleName + (error.message?.let { ": $it" } ?: "")
+        if (root === error) return outer
+        return "${error.javaClass.simpleName} ← ${root.javaClass.simpleName}" + (root.message?.let { ": $it" } ?: "")
+    }
 }
 
 /**
