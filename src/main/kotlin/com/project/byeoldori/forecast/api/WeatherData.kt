@@ -5,7 +5,9 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.core.publisher.Mono
+import reactor.util.retry.Retry
 import org.slf4j.LoggerFactory
+import java.time.Duration
 
 
 @Component
@@ -17,6 +19,21 @@ class WeatherData(
     private val logger = LoggerFactory.getLogger(this::class.java)
     // AuthKey ".env"에서 가져옴
     private val weatherApiKey: String by lazy { weatherApiProperties.key }
+    // 응답 도중 연결이 끊긴 요청을 다시 보내기까지 기다리는 시간(테스트에서 줄인다)
+    internal var transientRetryDelay: Duration = Duration.ofSeconds(2)
+
+    /**
+     * 응답 도중 연결이 끊긴 경우(PrematureClose 등)만 잠깐 뒤 한 번 더 요청한다.
+     * 운영에서 하루 수 건씩 tmef 하나가 이 이유로 통째로 빠졌고, 단기는 3시간 주기라 그 시각이 다음 발표까지 비었다.
+     * 연결 단계 실패·시간 초과·HTTP 오류는 재시도하지 않는다(KmaFailures.isTransientReadFailure).
+     */
+    private fun Mono<String>.retryTransientOnce(label: String): Mono<String> =
+        retryWhen(
+            Retry.fixedDelay(1, transientRetryDelay)
+                .filter(KmaFailures::isTransientReadFailure)
+                .doBeforeRetry { logger.info("$label 응답 중 연결이 끊겨 한 번 더 요청합니다: ${KmaFailures.describe(it.failure())}") }
+                .onRetryExhaustedThrow { _, signal -> signal.failure() }
+        )
     // 실황 조회
     fun fetchLiveWeather(tmfc: String, vars: String): Mono<String> {
         return weatherApiClient.get()
@@ -43,6 +60,7 @@ class WeatherData(
             }
             .retrieve()
             .bodyToMono(String::class.java)
+            .retryTransientOnce("초단기예보 tmef=$tmef vars=$vars")
             // 구독 시작 시점에 로그
             .doOnSubscribe {
                 logger.info("초단기예보 API 호출 시작 - tmfc=$tmfc, tmef=$tmef, vars=$vars")
@@ -71,6 +89,7 @@ class WeatherData(
             }
             .retrieve()
             .bodyToMono(String::class.java)
+            .retryTransientOnce("단기예보 tmef=$tmef vars=$vars")
             // 구독 시작 시점에 로그
             .doOnSubscribe {
                 logger.info("단기예보 API 호출 시작 - tmfc=$tmfc, tmef=$tmef, vars=$vars")
