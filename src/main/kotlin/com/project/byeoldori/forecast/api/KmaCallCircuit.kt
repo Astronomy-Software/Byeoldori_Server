@@ -1,6 +1,7 @@
 package com.project.byeoldori.forecast.api
 
 import org.springframework.stereotype.Component
+import org.springframework.web.reactive.function.client.WebClientRequestException
 import reactor.core.publisher.Mono
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -32,6 +33,23 @@ object KmaFailures {
             depth++
         }
         return false
+    }
+
+    /**
+     * 응답을 받는 도중 연결이 끊긴 일시적 실패인지(요청 단위 재시도 1회 대상). 예) PrematureCloseException.
+     * 연결 단계 실패(isNetworkFailure — 회로 차단·프로브가 맡음), 응답 시간 초과(다시 60초를 기다리게 됨),
+     * 기상청이 돌려준 HTTP 오류 상태(WebClientResponseException)는 해당하지 않는다.
+     */
+    fun isTransientReadFailure(error: Throwable?): Boolean {
+        if (error !is WebClientRequestException || isNetworkFailure(error)) return false
+        var e: Throwable? = error
+        var depth = 0
+        while (e != null && depth < 10) {
+            if (e is java.util.concurrent.TimeoutException || e is io.netty.handler.timeout.TimeoutException) return false
+            e = e.cause.takeIf { it !== e }
+            depth++
+        }
+        return true
     }
 
     /**
