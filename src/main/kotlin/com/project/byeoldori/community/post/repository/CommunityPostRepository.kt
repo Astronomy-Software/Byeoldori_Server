@@ -63,6 +63,14 @@ interface CommunityPostRepository : JpaRepository<CommunityPost, Long> {
     )
     fun findVisibleByTypeAndAuthorNickname(@Param("type") type: PostType, @Param("nickname") nickname: String, pageable: Pageable): Page<CommunityPost>
 
+    // 관측지 상세의 후기 목록. review_post.observation_site_id 는 FK 인덱스가 있어 추가 인덱스는 두지 않는다
+    @EntityGraph(attributePaths = ["author"])
+    @Query(
+        value = "select p from CommunityPost p where p.type = com.project.byeoldori.community.common.domain.PostType.REVIEW and exists (select 1 from ReviewPost r where r.post = p and r.observationSite.id = :siteId)",
+        countQuery = "select count(p) from CommunityPost p where p.type = com.project.byeoldori.community.common.domain.PostType.REVIEW and exists (select 1 from ReviewPost r where r.post = p and r.observationSite.id = :siteId)"
+    )
+    fun findReviewsBySiteId(@Param("siteId") siteId: Long, pageable: Pageable): Page<CommunityPost>
+
     @Query("SELECT SUM(p.likeCount) FROM ReviewPost r JOIN r.post p WHERE r.observationSite.id = :siteId")
     fun sumLikesBySiteId(@Param("siteId") siteId: Long): Long?
 
