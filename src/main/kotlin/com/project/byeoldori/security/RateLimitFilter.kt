@@ -19,7 +19,8 @@ import java.time.Duration
 @Component
 class RateLimitFilter(
     private val redisTemplate: StringRedisTemplate,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val clientIpResolver: ClientIpResolver
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(this::class.java)
@@ -49,7 +50,7 @@ class RateLimitFilter(
             return
         }
 
-        val ip = resolveClientIp(request)
+        val ip = clientIpResolver.resolve(request)
         val key = "rate:$path:$ip"
 
         // INCR 와 EXPIRE 를 한 번의 Lua 스크립트로 원자 실행한다. 따로 호출하면 INCR 만 성공하고 EXPIRE 가
@@ -72,27 +73,6 @@ class RateLimitFilter(
             .trimEnd('/')
             .lowercase()
 
-    // 신뢰 프록시(리버스 프록시)가 XFF를 세팅한다는 가정 하에, 첫 값의 형식을 검증해서 사용.
-    // 형식이 유효하지 않거나 헤더가 없으면 remoteAddr로 폴백(스푸핑 방지).
-    private fun resolveClientIp(request: HttpServletRequest): String {
-        val forwarded = request.getHeader("X-Forwarded-For")
-            ?.split(",")
-            ?.firstOrNull()
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() && isValidIp(it) }
-        if (forwarded != null) return forwarded
-
-        val realIp = request.getHeader("X-Real-IP")
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() && isValidIp(it) }
-        if (realIp != null) return realIp
-
-        return request.remoteAddr
-    }
-
-    private fun isValidIp(ip: String): Boolean =
-        IPV4_REGEX.matches(ip) || IPV6_REGEX.matches(ip)
-
     companion object {
         internal val INCR_WITH_TTL: RedisScript<Long> = DefaultRedisScript(
             """
@@ -104,10 +84,6 @@ class RateLimitFilter(
             """.trimIndent(),
             Long::class.javaObjectType
         )
-
-        // 형식 검증용(엄밀한 범위 검증이 아닌 스푸핑성 임의 문자열 차단 목적)
-        private val IPV4_REGEX = Regex("^(\\d{1,3})(\\.\\d{1,3}){3}\$")
-        private val IPV6_REGEX = Regex("^[0-9A-Fa-f:]+\$")
     }
 
     private fun sendTooManyRequests(response: HttpServletResponse) {
