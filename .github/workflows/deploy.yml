@@ -50,6 +50,7 @@ jobs:
           bash scripts/tests/bluegreen_test.sh
           bash scripts/tests/monitoring_reload_test.sh
           bash scripts/tests/ft_stopword_test.sh
+          bash scripts/tests/db_upgrade_test.sh
           bash scripts/tests/grafana_admin_test.sh
           python3 scripts/tests/cf_exporter_test.py
 
@@ -132,7 +133,13 @@ jobs:
               "$DISCORD_WEBHOOK_BACKEND_URL" "$CLOUDFLARE_API_TOKEN" "$CLOUDFLARE_ACCOUNT_ID" "$CLOUDFLARE_ACCOUNT_ID" \
               > monitoring/secrets.env
             # 교육 프로그램 저장용 MongoDB 기동(앱이 연결하므로 배포 전에). 이미 떠있으면 no-op.
-            docker compose -f docker-compose.oci.yml -f docker-compose.mongo.yml up -d mongo || true
+            # 8.0 용 새 볼륨(prepare-mongo)이 준비되기 전에는 mongo 를 건드리지 않는다 — 그대로 up 하면 빈 새 볼륨으로 바뀐다.
+            if bash scripts/db-upgrade.sh mongo-ready; then
+              docker compose -f docker-compose.oci.yml -f docker-compose.mongo.yml up -d mongo || true
+            else
+              echo "[db-upgrade] mongo_data_v8 준비 전 — mongodb 컨테이너는 그대로 둔다(bash scripts/db-upgrade.sh prepare-mongo)"
+              MONGO_WARN="MongoDB 8.0 볼륨 준비 전이라 mongo 갱신을 건너뜀(prepare-mongo 필요). "
+            fi
             # FULLTEXT 불용어를 GLOBAL 로 끈다(SET PERSIST, DB 재시작 없음·멱등). V8 의 ngram 재색인은 새 앱 기동 때
             # Flyway 가 돌리므로 반드시 그 전에 맞춰야 한다. 실패하면 set -e 로 새 색을 만들기 전에 중단(기존 색 유지).
             bash scripts/ensure-mysql-ft-stopword-off.sh
@@ -143,7 +150,7 @@ jobs:
             # 재생성하지 않으므로, 파일 sha256 이 달라진 서비스만 다시 만든다.
             # 아래 세 단계는 실패해도 배포(이미 전환된 새 버전)는 성공으로 두되, 예전처럼 삼키지 않고 Discord 로 경고한다.
             # (모니터링 반영 실패 → 알림 룰·exporter 가 옛 상태, 백업 cron 설치 실패 → 백업 0건인데 아무 알림 없음)
-            DEPLOY_WARN=""
+            DEPLOY_WARN="${MONGO_WARN:-}"
             bash scripts/reload-monitoring.sh || DEPLOY_WARN="${DEPLOY_WARN}모니터링 반영 실패(reload-monitoring.sh). "
             # Grafana 관리자 비밀번호를 GitHub secret GRAFANA_ADMIN_PASSWORD 로 맞춘다(비어 있으면 건너뜀, 표준입력으로만 전달).
             bash scripts/ensure-grafana-admin-password.sh || DEPLOY_WARN="${DEPLOY_WARN}Grafana 관리자 비밀번호 적용 실패. "
