@@ -52,7 +52,8 @@ class UserService(
     private val cachedUserLookupService: CachedUserLookupService,
     private val passwordResetTokenRepo: PasswordResetTokenRepository,
     private val accountDataPurgeService: AccountDataPurgeService,
-    @Qualifier("oauthWebClient") private val oauthWebClient: WebClient
+    @Qualifier("oauthWebClient") private val oauthWebClient: WebClient,
+    private val rotationGrace: RefreshRotationGrace = RefreshRotationGrace(),
 ) {
 
     private val log = LoggerFactory.getLogger(UserService::class.java)
@@ -75,14 +76,19 @@ class UserService(
         val user = if (existing != null) {
             // 인증 링크가 모두 만료된 채 버려진 가입 → 새 가입 정보로 덮어쓰고 인증 메일을 다시 보낸다.
             // (그대로 두면 이메일 주인이 영영 가입하지 못하고, 남의 이메일을 미인증 가입으로 영구 선점할 수 있다)
+            // 같은 이메일 가입이 동시에 들어와도 한쪽만 덮어쓰도록, 읽은 비밀번호 해시가 그대로일 때만 바꾸는 조건부 UPDATE 로 한다.
+            // 토큰 삭제·메일 발송보다 먼저 해야 진 쪽이 상대의 인증 링크를 지우지 않는다. 생년월일은 더는 저장하지 않는다.
+            val updated = userRepository.overwriteAbandonedSignup(
+                id = existing.id,
+                expectedHash = existing.passwordHash,
+                newHash = passwordEncoder.encode(req.password),
+                name = req.name,
+                phone = req.phone,
+                nickname = nickname,
+            )
+            if (updated == 0) throw ConflictException(ErrorCode.EMAIL_ALREADY_EXISTS)
             emailTokenRepo.deleteAllByUserId(existing.id)
-            existing.passwordHash = passwordEncoder.encode(req.password)
-            existing.name = req.name
-            existing.phone = req.phone
-            existing.nickname = nickname
-            // 생년월일은 쓰는 곳이 없어 더는 저장하지 않는다(요청 필드는 기존 앱 호환을 위해 받기만 한다)
-            existing.birthdate = null
-            userRepository.save(existing)
+            existing
         } else {
             userRepository.save(
                 User(
@@ -116,6 +122,29 @@ class UserService(
 
         token.usedAt = LocalDateTime.now()
         token.user.emailVerified = true
+    }
+
+    /**
+     * 인증 메일을 다시 보낸다. 계정이 있는지 드러나지 않게 호출부는 항상 같은 응답을 준다.
+     * 대상: 탈퇴하지 않은 미인증 로컬(이메일) 가입만. 60초 안에 이미 보냈으면 조용히 넘어간다(연타·메일 폭탄 방지).
+     * 예전 링크는 지우고 새 링크(24시간)를 보낸다. 메일 발송 실패도 밖으로 드러내지 않는다(500 으로 존재가 새지 않게).
+     */
+    @Transactional
+    fun resendVerificationEmail(email: String) {
+        val user = userRepository.findByEmail(email.trim()).orElse(null) ?: return
+        if (user.provider != null || user.emailVerified || user.deletedAt != null) return
+        val recentThreshold = LocalDateTime.now()
+            .plusHours(EmailVerificationToken.VALID_HOURS)
+            .minusSeconds(RESEND_INTERVAL_SECONDS)
+        if (emailTokenRepo.existsUnusedExpiringAfter(user.id, recentThreshold)) return
+
+        emailTokenRepo.deleteAllByUserId(user.id)
+        val token = emailTokenRepo.save(EmailVerificationToken(user = user))
+        try {
+            emailService.sendEmailVerification(user.email, token.id)
+        } catch (e: Exception) {
+            log.warn("인증 메일 재발송 실패 (userId={}): {}", user.id, e.message)
+        }
     }
 
     @Transactional(readOnly = true)
@@ -158,10 +187,11 @@ class UserService(
 
         // 기기(세션)마다 행이 따로 있으므로 제시된 토큰의 해시로 그 행만 찾는다.
         // 이미 회전된 옛 토큰·로그아웃된 토큰은 행이 없어 거부된다.
-        val stored = refreshTokenRepo.findByTokenHashForUpdate(TokenHasher.sha256Hex(refreshToken))
+        val oldHash = TokenHasher.sha256Hex(refreshToken)
+        val stored = refreshTokenRepo.findByTokenHashForUpdate(oldHash)
             .orElse(null)
             ?.takeIf { it.user.id == user.id }
-            ?: throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
+            ?: return reissueWithinGrace(oldHash, user, email)
 
         if (!stored.isActive()) throw UnauthorizedException("리프레시 토큰이 만료되었거나 폐기되었습니다.")
 
@@ -171,11 +201,30 @@ class UserService(
         stored.tokenHash = TokenHasher.sha256Hex(newRefresh)
         stored.expiresAt = jwt.extractExpiration(newRefresh)
         stored.rotatedAt = LocalDateTime.now()
+        // 같은 브라우저의 다른 탭이 방금 그 옛 토큰으로 동시에 재발급하면 이 새 토큰을 그대로 받게 한다
+        rotationGrace.remember(oldHash, newRefresh, user.id)
 
         return AuthResponseDto.of(
             newAccess, newRefresh,
             jwt.extractExpiration(newAccess).atZone(zone).toInstant(),
             jwt.extractExpiration(newRefresh).atZone(zone).toInstant()
+        )
+    }
+
+    // 방금 회전된 옛 토큰(유예 30초 안): 다른 탭이 이미 받은 후속 토큰의 세션이 살아 있으면 같은 후속 토큰을 돌려준다(멱등).
+    // 그 세션이 지워졌거나(로그아웃·비밀번호 변경) 유예가 지났으면 예전처럼 401.
+    private fun reissueWithinGrace(oldHash: String, user: User, email: String): AuthResponseDto {
+        val successor = rotationGrace.successorOf(oldHash, user.id)
+            ?: throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
+        val successorRow = refreshTokenRepo.findByTokenHashForUpdate(TokenHasher.sha256Hex(successor))
+            .orElse(null)
+            ?.takeIf { it.user.id == user.id && it.isActive() }
+            ?: throw UnauthorizedException("리프레시 토큰이 일치하지 않습니다.")
+        val newAccess = jwt.generateAccessToken(email)
+        return AuthResponseDto.of(
+            newAccess, successor,
+            jwt.extractExpiration(newAccess).atZone(zone).toInstant(),
+            successorRow.expiresAt.atZone(zone).toInstant()
         )
     }
 
@@ -545,7 +594,10 @@ class UserService(
 
         user.provider = provider
         user.providerId = providerId
-        user.emailVerified = email.isNotBlank()
+        // provider 가 저장된 이메일과 같은 이메일의 소유를 확인해 줬을 때만 인증으로 올린다(네이버는 정보가 없고, 카카오는 미확인일 수 있음).
+        // 예전에는 이메일만 있으면 true 라 확인되지 않은 소셜 이메일도 인증된 것처럼 저장됐다. 이미 인증된 값은 내리지 않는다. 소셜 로그인 자체에는 영향 없음.
+        val providerVerifiedThisEmail = email.isNotBlank() && providerEmailVerified == true && user.email == email
+        user.emailVerified = user.emailVerified || providerVerifiedThisEmail
         if (!picture.isNullOrBlank() && user.profileImageUrl.isNullOrBlank()) {
             user.profileImageUrl = picture
         }
@@ -577,9 +629,10 @@ class UserService(
         // 로그인마다 새 세션 행을 만든다(다른 기기의 세션은 그대로 유지).
         // 만료·폐기된 행은 지우고, 세션이 상한을 넘으면 가장 오래된 것부터 끝낸다.
         refreshTokenRepo.deleteInactiveByUserId(user.id, LocalDateTime.now())
-        val sessions = refreshTokenRepo.findAllByUserIdNewestFirst(user.id)
-        if (sessions.size >= MAX_SESSIONS_PER_USER) {
-            refreshTokenRepo.deleteAll(sessions.drop(MAX_SESSIONS_PER_USER - 1))
+        // id 로 한 번에 지운다(동시 로그인이 같은 행을 먼저 지워도 실패하지 않게, RefreshTokenRepository.deleteByIdIn 참고)
+        val sessionIds = refreshTokenRepo.findIdsByUserIdNewestFirst(user.id)
+        if (sessionIds.size >= MAX_SESSIONS_PER_USER) {
+            refreshTokenRepo.deleteByIdIn(sessionIds.drop(MAX_SESSIONS_PER_USER - 1))
         }
         refreshTokenRepo.save(RefreshToken(user = user, tokenHash = hash, expiresAt = exp))
 
@@ -597,5 +650,7 @@ class UserService(
         const val NO_EMAIL_DOMAIN = "noemail.byeoldori"
         // 사용자당 동시에 유지하는 로그인 세션(refresh 토큰) 수 상한
         const val MAX_SESSIONS_PER_USER = 10
+        // 인증 메일 재발송 최소 간격
+        const val RESEND_INTERVAL_SECONDS = 60L
     }
 }

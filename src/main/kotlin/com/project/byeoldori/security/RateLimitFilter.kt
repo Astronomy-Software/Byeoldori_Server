@@ -31,6 +31,7 @@ class RateLimitFilter(
         "/auth/signup"                  to RateRule(5,   Duration.ofMinutes(1)),
         "/auth/password/reset-request"  to RateRule(3,   Duration.ofHours(1)),
         "/auth/find-email"              to RateRule(10,  Duration.ofMinutes(1)),
+        "/auth/verify-email/resend"     to RateRule(5,   Duration.ofHours(1)),
         "/auth/google"                  to RateRule(10,  Duration.ofMinutes(1)),
         "/auth/kakao"                   to RateRule(10,  Duration.ofMinutes(1)),
         "/auth/naver"                   to RateRule(10,  Duration.ofMinutes(1)),
