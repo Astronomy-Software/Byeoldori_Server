@@ -165,6 +165,32 @@ class OpsConfigFilesTest {
 
     @Test
     @Suppress("UNCHECKED_CAST")
+    fun `DB 업그레이드 - mysql 8_4 는 없어진 인증 옵션을 쓰지 않고 mongo 8_0 은 새 볼륨이 준비됐을 때만 배포가 갱신한다`() {
+        val mysql = yaml("docker-compose.oci.yml").obj("services").obj("mysql")
+        assertThat(mysql["image"]).isEqualTo("mysql:8.4")
+        // 8.4 에서 없어진 옵션이 남으면 'unknown variable' 로 기동 자체가 실패한다(2026-11-19 사본 검증)
+        assertThat(mysql["command"] as String)
+            .doesNotContain("--default-authentication-plugin")
+            .contains("--mysql-native-password=ON", "--lower_case_table_names=1")
+
+        val mongoFile = yaml("docker-compose.mongo.yml")
+        val mongo = mongoFile.obj("services").obj("mongo")
+        assertThat(mongo["image"]).isEqualTo("mongo:8.0")
+        // 6.0 데이터 디렉터리는 8.0 이 읽지 못하므로 옛 볼륨(mongo_data)을 그대로 붙이면 안 된다
+        assertThat(mongo["volumes"] as List<String>).containsExactly("mongo_data_v8:/data/db")
+        assertThat(mongoFile.obj("volumes").keys).containsExactly("mongo_data_v8")
+
+        val steps = yaml(".github/workflows/deploy.yml").obj("jobs").obj("deploy")["steps"] as List<Map<String, Any?>>
+        val remote = steps.mapNotNull { (it["with"] as Map<String, Any?>?)?.get("script") as String? }.joinToString("\n")
+        val guard = remote.indexOf("if bash scripts/db-upgrade.sh mongo-ready; then")
+        assertThat(guard).isGreaterThan(0)
+        assertThat(guard).isLessThan(remote.indexOf("up -d mongo"))
+        // 경고가 DEPLOY_WARN 초기화에 지워지지 않는다
+        assertThat(remote).contains("DEPLOY_WARN=\"\${MONGO_WARN:-}\"")
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
     fun `FULLTEXT 불용어는 compose 와 배포 훅 모두에서 끄고 배포 훅은 새 앱 기동(Flyway V8) 전에 돈다`() {
         val mysql = yaml("docker-compose.oci.yml").obj("services").obj("mysql")
         assertThat(mysql["command"] as String).contains("--innodb-ft-enable-stopword=0")

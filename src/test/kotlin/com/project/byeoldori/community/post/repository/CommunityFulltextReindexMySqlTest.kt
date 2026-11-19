@@ -20,7 +20,7 @@ class CommunityFulltextReindexMySqlTest {
     companion object {
         @Container
         @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
+        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.4")
             .withDatabaseName("byeoldori")
             .withUsername("root")
             .withPassword("test")
