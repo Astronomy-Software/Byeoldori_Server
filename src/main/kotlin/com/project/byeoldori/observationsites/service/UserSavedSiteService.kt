@@ -2,11 +2,14 @@ package com.project.byeoldori.observationsites.service
 
 import com.project.byeoldori.common.exception.*
 import com.project.byeoldori.observationsites.dto.*
+import com.project.byeoldori.observationsites.entity.ObservationSite
 import com.project.byeoldori.observationsites.entity.UserSavedSite
 import com.project.byeoldori.observationsites.repository.ObservationSiteRepository
 import com.project.byeoldori.observationsites.repository.UserSavedSiteRepository
 import com.project.byeoldori.user.entity.User
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 
 @Service
@@ -16,6 +19,10 @@ class UserSavedSiteService(
     private val siteRepo: ObservationSiteRepository
 ) {
 
+    // 공식 관측지는 (user_id, site_id) UNIQUE(V9)라, 같은 사용자의 토글이 동시에 두 번 들어오면 한쪽 INSERT 가
+    // 제약 위반으로 실패한다. 실패한 INSERT 가 바깥 트랜잭션을 롤백 전용으로 만들지 않도록 이 메서드는
+    // 트랜잭션 없이 돌고(저장소 호출마다 짧은 트랜잭션), 위반이면 먼저 저장된 행을 돌려준다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun toggleSite(user: User, request: SiteToggleRequest): SiteToggleResponse {
         // 저장된 관측지(siteId) 토글
         if (request.siteId != null) {
@@ -28,8 +35,7 @@ class UserSavedSiteService(
                 savedSiteRepo.delete(savedSiteOpt.get())
                 SiteToggleResponse(isSaved = false, savedSiteId = null)
             } else {
-                val newSavedSite = savedSiteRepo.save(UserSavedSite(user = user, site = site))
-                SiteToggleResponse(isSaved = true, savedSiteId = newSavedSite.id)
+                saveOfficialSite(user, site)
             }
         }
         // 임의 장소(좌표) 토글
@@ -55,6 +61,17 @@ class UserSavedSiteService(
             throw InvalidInputException("관측지 ID 또는 좌표 정보가 필요합니다.")
         }
     }
+
+    // 동시에 들어온 다른 요청이 먼저 저장했으면 그 행을 그대로 돌려준다(이미 저장된 상태 = 성공).
+    // 찾지 못하면 중복이 아닌 다른 제약 위반이므로 그대로 던진다.
+    private fun saveOfficialSite(user: User, site: ObservationSite): SiteToggleResponse =
+        try {
+            val saved = savedSiteRepo.save(UserSavedSite(user = user, site = site))
+            SiteToggleResponse(isSaved = true, savedSiteId = saved.id)
+        } catch (e: DataIntegrityViolationException) {
+            val existing = savedSiteRepo.findByUserAndSite(user, site).orElseThrow { e }
+            SiteToggleResponse(isSaved = true, savedSiteId = existing.id)
+        }
 
     // 저장된 관측지 정보를 반환
     @Transactional(readOnly = true)
