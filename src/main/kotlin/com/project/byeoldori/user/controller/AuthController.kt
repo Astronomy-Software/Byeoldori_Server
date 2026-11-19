@@ -48,6 +48,13 @@ class AuthController(
 
     // GET /auth/verify-email 은 메일 링크로 브라우저가 여는 HTML 페이지라 EmailVerificationPageController 가 맡는다
 
+    @PostMapping("/verify-email/resend")
+    @Operation(summary = "인증 메일 재발송", description = "미인증 이메일 가입이면 새 인증 링크를 보냅니다. 계정 존재 여부와 관계없이 같은 응답을 줍니다.")
+    fun resendVerification(@Valid @RequestBody req: ResendVerificationRequestDto): ResponseEntity<ApiResponse<Unit>> {
+        userService.resendVerificationEmail(req.email)
+        return ResponseEntity.ok(ApiResponse.ok("인증이 필요한 계정이면 인증 메일을 다시 보냈습니다. 메일함을 확인해주세요."))
+    }
+
     @PostMapping("/find-email")
     @Operation(summary = "아이디(이메일) 찾기", description = "이름과 전화번호로 가입된 아이디 목록을 반환합니다.")
     fun findIds(@Valid @RequestBody req: FindEmailRequestDto)

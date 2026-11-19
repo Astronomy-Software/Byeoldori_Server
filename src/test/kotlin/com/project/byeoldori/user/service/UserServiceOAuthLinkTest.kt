@@ -147,6 +147,29 @@ class UserServiceOAuthLinkTest {
     }
 
     @Test
+    fun `provider 가 확인해 준 이메일일 때만 인증으로 두고, 확인 정보가 없으면 미인증으로 만든다`() {
+        assertThat(link("google", "g9", "new1@gmail.com", true).emailVerified).isTrue()
+        assertThat(link("naver", "n9", "new2@naver.com", null).emailVerified).isFalse()
+        assertThat(link("kakao", "k9", "new3@kakao.com", false).emailVerified).isFalse()
+    }
+
+    @Test
+    fun `이미 인증된 소셜 계정은 확인 정보 없이 다시 로그인해도 인증을 내리지 않는다`() {
+        val owner = local().apply { provider = "naver"; providerId = "n1" }
+        `when`(userRepository.findByProviderAndProviderId("naver", "n1")).thenReturn(owner)
+
+        assertThat(link("naver", "n1", "star@gmail.com", null).emailVerified).isTrue()
+    }
+
+    @Test
+    fun `provider 가 확인한 이메일이 저장된 이메일과 다르면 인증으로 올리지 않는다`() {
+        val owner = local().apply { provider = "kakao"; providerId = "k1"; emailVerified = false }
+        `when`(userRepository.findByProviderAndProviderId("kakao", "k1")).thenReturn(owner)
+
+        assertThat(link("kakao", "k1", "changed@kakao.com", true).emailVerified).isFalse()
+    }
+
+    @Test
     fun `이미 프로필 사진이 있으면 소셜 사진으로 덮어쓰지 않는다`() {
         val owner = local().apply { provider = "google"; providerId = "g1"; profileImageUrl = "http://localhost:8080/files/me.png" }
         `when`(userRepository.findByProviderAndProviderId("google", "g1")).thenReturn(owner)

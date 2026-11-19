@@ -209,27 +209,93 @@ class UserServiceAccountTest {
 
     @Test
     fun `인증 링크가 모두 만료된 미인증 가입은 새 가입으로 덮어쓰고 인증 메일을 다시 보낸다`() {
-        val pending = user(id = 5, email = "new@gmail.com", nickname = null).apply {
-            emailVerified = false
-            birthdate = java.time.LocalDate.of(1990, 5, 5)  // 예전 가입 때 저장된 값
-        }
+        val pending = user(id = 5, email = "new@gmail.com", nickname = null).apply { emailVerified = false }
         `when`(userRepository.findByEmail("new@gmail.com")).thenReturn(Optional.of(pending))
         `when`(emailTokenRepo.existsUsableByUserId(eq(5L), anyTime())).thenReturn(false)
         `when`(passwordEncoder.encode("Passw0rd!")).thenReturn("newHash")
-        `when`(userRepository.save(pending)).thenReturn(pending)
+        `when`(userRepository.overwriteAbandonedSignup(5L, "hash", "newHash", "새사람", "01055556666", null)).thenReturn(1)
         `when`(emailTokenRepo.save(any(EmailVerificationToken::class.java))).thenAnswer { it.getArgument(0) }
 
         service.signup(signupReq().copy(birthdate = java.time.LocalDate.of(2001, 2, 3)))
 
-        assertThat(pending.passwordHash).isEqualTo("newHash")
-        assertThat(pending.name).isEqualTo("새사람")
-        assertThat(pending.birthdate).isNull()  // 새로 보낸 값도, 예전 값도 남기지 않는다
-        assertThat(pending.emailVerified).isFalse()
-        // 옛 인증 링크를 먼저 무효화해야 이전 가입자의 링크로 새 비밀번호 계정이 인증되지 않는다
+        // 읽은 해시("hash")를 조건으로 건 UPDATE 로 덮어쓴다(생년월일은 쿼리에서 null)
+        verify(userRepository).overwriteAbandonedSignup(5L, "hash", "newHash", "새사람", "01055556666", null)
+        verify(userRepository, never()).save(any(User::class.java))
+        // 덮어쓰기에 이긴 뒤에 옛 인증 링크를 무효화하고 새 링크를 보낸다
+        val order = inOrder(userRepository, emailTokenRepo)
+        order.verify(userRepository).overwriteAbandonedSignup(5L, "hash", "newHash", "새사람", "01055556666", null)
+        order.verify(emailTokenRepo).deleteAllByUserId(5)
+        order.verify(emailTokenRepo).save(any(EmailVerificationToken::class.java))
+        verify(emailService).sendEmailVerification(eq("new@gmail.com") ?: "", anyString())
+    }
+
+    @Test
+    fun `같은 이메일 가입이 동시에 들어와 덮어쓰기에 지면 409 이고 상대의 인증 링크를 지우지 않는다`() {
+        val pending = user(id = 5, email = "new@gmail.com", nickname = null).apply { emailVerified = false }
+        `when`(userRepository.findByEmail("new@gmail.com")).thenReturn(Optional.of(pending))
+        `when`(emailTokenRepo.existsUsableByUserId(eq(5L), anyTime())).thenReturn(false)
+        `when`(passwordEncoder.encode("Passw0rd!")).thenReturn("newHash")
+        // 다른 요청이 먼저 해시를 바꿔 조건이 맞지 않음
+        `when`(userRepository.overwriteAbandonedSignup(5L, "hash", "newHash", "새사람", "01055556666", null)).thenReturn(0)
+
+        assertThatThrownBy { service.signup(signupReq()) }.isInstanceOf(ConflictException::class.java)
+        verify(emailTokenRepo, never()).deleteAllByUserId(5)
+        verify(emailService, never()).sendEmailVerification(anyString(), anyString())
+    }
+
+    // ── 인증 메일 재발송 ──
+
+    @Test
+    fun `미인증 로컬 가입이면 옛 링크를 지우고 새 인증 메일을 보낸다`() {
+        val pending = user(id = 5, email = "new@gmail.com").apply { emailVerified = false }
+        `when`(userRepository.findByEmail("new@gmail.com")).thenReturn(Optional.of(pending))
+        `when`(emailTokenRepo.existsUnusedExpiringAfter(eq(5L), anyTime())).thenReturn(false)
+        `when`(emailTokenRepo.save(any(EmailVerificationToken::class.java))).thenAnswer { it.getArgument(0) }
+
+        service.resendVerificationEmail(" new@gmail.com ")
+
         val order = inOrder(emailTokenRepo)
         order.verify(emailTokenRepo).deleteAllByUserId(5)
         order.verify(emailTokenRepo).save(any(EmailVerificationToken::class.java))
         verify(emailService).sendEmailVerification(eq("new@gmail.com") ?: "", anyString())
+    }
+
+    @Test
+    fun `60초 안에 이미 보냈으면 다시 보내지 않는다`() {
+        val pending = user(id = 5, email = "new@gmail.com").apply { emailVerified = false }
+        `when`(userRepository.findByEmail("new@gmail.com")).thenReturn(Optional.of(pending))
+        `when`(emailTokenRepo.existsUnusedExpiringAfter(eq(5L), anyTime())).thenReturn(true)
+
+        service.resendVerificationEmail("new@gmail.com")
+
+        verify(emailTokenRepo, never()).deleteAllByUserId(5)
+        verify(emailService, never()).sendEmailVerification(anyString(), anyString())
+    }
+
+    @Test
+    fun `없는 이메일·인증된 계정·소셜·탈퇴 계정이면 아무것도 보내지 않고 조용히 넘어간다`() {
+        `when`(userRepository.findByEmail("none@gmail.com")).thenReturn(Optional.empty())
+        `when`(userRepository.findByEmail("b@gmail.com")).thenReturn(Optional.of(user(id = 6, email = "b@gmail.com").apply { emailVerified = true }))
+        `when`(userRepository.findByEmail("d@gmail.com")).thenReturn(Optional.of(
+            user(id = 8, email = "d@gmail.com").apply { emailVerified = false; provider = "naver"; providerId = "n1" }))
+        `when`(userRepository.findByEmail("w@gmail.com")).thenReturn(Optional.of(
+            user(id = 9, email = "w@gmail.com").apply { emailVerified = false; deletedAt = LocalDateTime.now() }))
+
+        listOf("none@gmail.com", "b@gmail.com", "d@gmail.com", "w@gmail.com").forEach { service.resendVerificationEmail(it) }
+
+        verify(emailService, never()).sendEmailVerification(anyString(), anyString())
+        verify(emailTokenRepo, never()).save(any(EmailVerificationToken::class.java))
+    }
+
+    @Test
+    fun `재발송 메일 발송이 실패해도 예외를 밖으로 내지 않는다(계정 존재가 500 으로 새지 않게)`() {
+        val pending = user(id = 5, email = "new@gmail.com").apply { emailVerified = false }
+        `when`(userRepository.findByEmail("new@gmail.com")).thenReturn(Optional.of(pending))
+        `when`(emailTokenRepo.existsUnusedExpiringAfter(eq(5L), anyTime())).thenReturn(false)
+        `when`(emailTokenRepo.save(any(EmailVerificationToken::class.java))).thenAnswer { it.getArgument(0) }
+        org.mockito.Mockito.doThrow(RuntimeException("smtp down")).`when`(emailService).sendEmailVerification(anyString(), anyString())
+
+        service.resendVerificationEmail("new@gmail.com")
     }
 
     @Test
