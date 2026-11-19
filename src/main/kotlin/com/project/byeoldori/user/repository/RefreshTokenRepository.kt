@@ -14,9 +14,19 @@ interface RefreshTokenRepository : JpaRepository<RefreshToken, Long> {
     @Query("select t from RefreshToken t where t.tokenHash = :tokenHash")
     fun findByTokenHashForUpdate(tokenHash: String): Optional<RefreshToken>
 
-    // 세션 수 상한 계산용(최근 로그인 순)
+    // 세션 목록(최근 로그인 순)
     @Query("select t from RefreshToken t where t.user.id = :userId order by t.id desc")
     fun findAllByUserIdNewestFirst(userId: Long): List<RefreshToken>
+
+    // 세션 수 상한 계산용 id 만(최근 로그인 순)
+    @Query("select t.id from RefreshToken t where t.user.id = :userId order by t.id desc")
+    fun findIdsByUserIdNewestFirst(userId: Long): List<Long>
+
+    // 상한을 넘은 오래된 세션을 한 번에 지운다. 엔티티를 하나씩 지우면 같은 사용자의 동시 로그인이
+    // 같은 행을 먼저 지웠을 때 삭제 행 수가 0 이 되어 StaleStateException(로그인 500)이 났다. 일괄 삭제는 0건이어도 실패하지 않는다.
+    @Modifying
+    @Query("delete from RefreshToken t where t.id in :ids")
+    fun deleteByIdIn(ids: Collection<Long>): Int
 
     // 로그아웃: 현재 기기의 세션만 지운다
     @Modifying

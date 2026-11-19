@@ -167,4 +167,30 @@ class UserSavedSiteServiceTest {
         service.deleteSavedSite(me, 6)
         verify(savedRepo).delete(mine)
     }
+
+    @Test
+    fun `공식 관측지 - 동시에 두 번 저장해 UNIQUE 에 걸리면 먼저 저장된 행을 그대로 돌려준다`() {
+        `when`(siteRepo.findById(10L)).thenReturn(Optional.of(site))
+        val raced = UserSavedSite(id = 7, user = me, site = site)
+        // 처음 조회 땐 없었는데 저장 직전에 다른 요청이 먼저 넣었다
+        `when`(savedRepo.findByUserAndSite(me, site)).thenReturn(Optional.empty(), Optional.of(raced))
+        `when`(savedRepo.save(any(UserSavedSite::class.java)))
+            .thenThrow(org.springframework.dao.DataIntegrityViolationException("uk_user_saved_sites_user_site"))
+
+        val res = service.toggleSite(me, SiteToggleRequest(siteId = 10))
+
+        assertThat(res.isSaved).isTrue()
+        assertThat(res.savedSiteId).isEqualTo(7)
+    }
+
+    @Test
+    fun `공식 관측지 - 제약 위반인데 기존 행도 없으면 다른 문제이므로 그대로 던진다`() {
+        `when`(siteRepo.findById(10L)).thenReturn(Optional.of(site))
+        `when`(savedRepo.findByUserAndSite(me, site)).thenReturn(Optional.empty())
+        `when`(savedRepo.save(any(UserSavedSite::class.java)))
+            .thenThrow(org.springframework.dao.DataIntegrityViolationException("다른 제약"))
+
+        assertThatThrownBy { service.toggleSite(me, SiteToggleRequest(siteId = 10)) }
+            .isInstanceOf(org.springframework.dao.DataIntegrityViolationException::class.java)
+    }
 }

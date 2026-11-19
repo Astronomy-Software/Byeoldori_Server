@@ -3,10 +3,13 @@ package com.project.byeoldori.observationsites.controller
 import com.project.byeoldori.common.web.ApiResponse
 import com.project.byeoldori.community.common.dto.PageResponse
 import com.project.byeoldori.community.common.dto.toPageResponse
+import com.project.byeoldori.community.post.dto.PostSummaryResponse
+import com.project.byeoldori.community.post.service.PostService
 import com.project.byeoldori.observationsites.dto.ObservationSiteDetailDto
 import com.project.byeoldori.observationsites.dto.ObservationSiteDto
 import com.project.byeoldori.observationsites.dto.ObservationSiteResponseDto
 import com.project.byeoldori.observationsites.service.ObservationSiteService
+import com.project.byeoldori.user.entity.User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -23,7 +26,8 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/observationsites")
 class ObservationSiteController(
-    private val siteService: ObservationSiteService
+    private val siteService: ObservationSiteService,
+    private val postService: PostService,
 ) {
     @Operation(summary = "관측지 등록", description = "새로운 관측지 정보를 등록합니다. (ADMIN 전용)")
     @PreAuthorize("hasRole('ADMIN')")
@@ -53,6 +57,15 @@ class ObservationSiteController(
     @GetMapping("/{id}")
     fun getOne(@PathVariable id: Long): ResponseEntity<ApiResponse<ObservationSiteDetailDto>> =
         ResponseEntity.ok(ApiResponse.ok(siteService.getSiteDetailById(id)))
+
+    @Operation(summary = "관측지 후기 목록", description = "이 관측지에 연결된 관측 후기를 최신순으로 반환합니다. (기본 20개, 최대 50개)")
+    @GetMapping("/{id}/reviews")
+    fun getReviews(
+        @PathVariable id: Long,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+        @RequestAttribute("currentUser") user: User
+    ): PageResponse<PostSummaryResponse> = postService.listReviewsBySite(id, page, size, user)
 
     @Operation(summary = "관측지 검색", description = "키워드가 포함된 관측지 이름으로 검색합니다.")
     @GetMapping("/name")

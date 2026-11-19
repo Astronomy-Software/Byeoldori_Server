@@ -5,7 +5,11 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "user_saved_sites")
+// 같은 사용자가 같은 공식 관측지를 두 번 저장하지 못하게 한다. V9 마이그레이션과 이름·컬럼을 맞춘다
+@Table(
+    name = "user_saved_sites",
+    uniqueConstraints = [UniqueConstraint(name = "uk_user_saved_sites_user_site", columnNames = ["user_id", "site_id"])]
+)
 class UserSavedSite(
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
