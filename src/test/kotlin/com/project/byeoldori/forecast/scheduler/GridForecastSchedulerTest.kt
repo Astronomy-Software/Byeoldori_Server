@@ -118,4 +118,20 @@ class GridForecastSchedulerTest {
         val gen = s.nextGeneration("단기예보")
         assertThat(s.retry("단기예보", 2, gen, { Mono.empty() }, null)).isFalse()
     }
+
+    @Test
+    fun `적재 실패는 스케줄러가 처리해 Reactor onErrorDropped 로 새지 않는다`() {
+        val dropped = mutableListOf<Throwable>()
+        reactor.core.publisher.Hooks.onErrorDropped { dropped.add(it) }
+        try {
+            var calls = 0
+            // 재시도 1회 한도라 타이머 없이 바로 끝난다
+            scheduler(attempts = 1).fetchWithRetry("실황") { calls++; Mono.error(IllegalStateException("504 Gateway Timeout")) }
+
+            assertThat(calls).isEqualTo(1)
+            assertThat(dropped).isEmpty()
+        } finally {
+            reactor.core.publisher.Hooks.resetOnErrorDropped()
+        }
+    }
 }
