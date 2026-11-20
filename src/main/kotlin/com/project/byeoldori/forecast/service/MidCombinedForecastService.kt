@@ -102,8 +102,14 @@ class MidCombinedForecastService(
     }
 
     @Transactional
-    fun deleteOldForecasts() {
-        val cutoffTime = LocalDateTime.now().minusHours(24)
+    fun deleteOldForecasts(now: LocalDateTime = LocalDateTime.now()) {
+        val cutoffTime = now.minusHours(24)
+        // 그사이 수집이 모두 실패해(기상청 504 등) 새로 저장한 묶음이 없으면 지우지 않는다.
+        // 지우면 다음 수집이 성공할 때까지 중기 예보가 통째로 빈다(11/20 06:10 수집 실패 → 18:35 삭제 위험).
+        if (!combinedForecastRepository.existsByCreatedAtGreaterThanEqual(cutoffTime)) {
+            logger.warn("최근 24시간 안에 새로 저장한 중기 예보가 없어 이전 예보를 지우지 않고 유지합니다")
+            return
+        }
         combinedForecastRepository.deleteByCreatedAtBefore(cutoffTime)
     }
 
