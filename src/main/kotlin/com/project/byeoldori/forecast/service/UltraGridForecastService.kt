@@ -191,7 +191,7 @@ class UltraGridForecastService(
             }
             .doOnError { e ->
                 reachability.onCycleError(e)
-                logger.error("초단기 전체 데이터 업데이트 실패", e)
+                logger.warn("초단기 전체 데이터 업데이트 실패: ${KmaFailures.describe(e)}")  // 재시도·최종 실패 ERROR 는 GridForecastScheduler 가 남긴다
             }
             .then()
     }

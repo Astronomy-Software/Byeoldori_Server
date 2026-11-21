@@ -165,14 +165,18 @@ class GridForecastScheduler(
     private fun runAttempt(tag: String, attempt: Int, generation: Long, fetchFunction: () -> Mono<Void>) {
         logger.info("[$tag][$attempt/$maxRetryAttempts] 실행 시도 중...")
         try {
-            fetchFunction()
-                .doOnError {
-                    logger.error("[$tag][$attempt] 오류 발생: ${it.message}", it)
-                    retry(tag, attempt, generation, fetchFunction, it)
+            // 실패는 subscribe 의 에러 콜백에서 받는다. doOnError + 인자 없는 subscribe() 는 에러를 처리하지 않은 것으로 보여
+            // Reactor 가 "Operator called default onErrorDropped" ERROR 를 한 번 더 찍었다(기상청 504 한 번에 ERROR 3건).
+            // 재시도로 회복될 수 있는 실패는 WARN 한 줄, 끝내 실패하면 retry() 가 ERROR 를 남긴다.
+            fetchFunction().subscribe(
+                null,
+                { e ->
+                    logger.warn("[$tag][$attempt] 오류 발생: ${KmaFailures.describe(e)}")
+                    retry(tag, attempt, generation, fetchFunction, e)
                 }
-                .subscribe()
+            )
         } catch (e: Exception) {
-            logger.error("[$tag][$attempt] 예외 발생", e)
+            logger.warn("[$tag][$attempt] 예외 발생: ${KmaFailures.describe(e)}")
             retry(tag, attempt, generation, fetchFunction, e)
         }
     }
@@ -180,7 +184,8 @@ class GridForecastScheduler(
     /** 재시도를 예약했으면 true. 최대 횟수를 넘었거나 같은 태그의 새 주기가 이미 시작됐으면 false. */
     fun retry(tag: String, currentAttempt: Int, generation: Long, fetchFunction: () -> Mono<Void>, error: Throwable?): Boolean {
         if (currentAttempt >= maxRetryAttempts) {
-            logger.error("[$tag] 최대 재시도 횟수($maxRetryAttempts) 초과 → 중단")
+            val cause = error?.let { ": ${KmaFailures.describe(it)}" } ?: ""
+            logger.error("[$tag] 최대 재시도 횟수($maxRetryAttempts) 초과 → 중단$cause", error)
             return false
         }
         if (generation != currentGeneration(tag)) {
