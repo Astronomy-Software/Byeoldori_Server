@@ -178,6 +178,20 @@ class PostService(
         return PageImpl(summaryList, postPage.pageable, postPage.totalElements).toPageResponse()
     }
 
+    // 관측지 하나에 연결된 후기 목록(최신순). 응답은 후기 게시판 목록과 같은 요약 형식이다.
+    @Transactional(readOnly = true)
+    fun listReviewsBySite(siteId: Long, page: Int, size: Int, user: User? = null): PageResponse<PostSummaryResponse> {
+        if (!siteRepo.existsById(siteId)) throw NotFoundException(ErrorCode.SITE_NOT_FOUND)
+        // 같은 시각에 쓴 글끼리도 순서가 페이지마다 바뀌지 않도록 id 를 보조 정렬로 둔다
+        val pageable = PageRequest.of(
+            page.coerceAtLeast(0), size.coerceIn(1, 50),
+            Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
+        )
+        val postPage = postRepo.findReviewsBySiteId(siteId, pageable)
+        val summaryList = mapToSummaryResponse(postPage.content, user)
+        return PageImpl(summaryList, postPage.pageable, postPage.totalElements).toPageResponse()
+    }
+
     @Transactional(readOnly = true)
     fun listAllByStar(
         type: PostType,

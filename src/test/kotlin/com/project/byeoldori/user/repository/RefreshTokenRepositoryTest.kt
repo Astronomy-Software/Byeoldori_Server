@@ -69,4 +69,18 @@ class RefreshTokenRepositoryTest @Autowired constructor(
         assertThat(repo.deleteByUserIdAndTokenHash(u.id, "live".padEnd(64, '0'))).isEqualTo(1)
         assertThat(repo.findAllByUserIdNewestFirst(u.id)).isEmpty()
     }
+
+    @Test
+    fun `상한 정리는 id 로 한 번에 지우고, 이미 지워진 id 가 섞여도 실패하지 않는다`() {
+        val u = user(5)
+        token(u, "old1"); token(u, "old2"); token(u, "keep")
+        em.flush(); em.clear()
+
+        val ids = repo.findIdsByUserIdNewestFirst(u.id)
+        assertThat(ids).hasSize(3)
+        // 동시 로그인이 같은 행을 먼저 지운 상황: 한 번 지운 뒤 같은 id 로 다시 지워도 0 건일 뿐 예외가 없다
+        assertThat(repo.deleteByIdIn(ids.dropLast(1))).isEqualTo(2)
+        assertThat(repo.deleteByIdIn(ids.dropLast(1))).isZero()
+        assertThat(repo.findAllByUserIdNewestFirst(u.id).map { it.tokenHash.take(4) }).containsExactly("old1")
+    }
 }

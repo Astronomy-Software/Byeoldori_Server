@@ -1,5 +1,6 @@
 package com.project.byeoldori.forecast.service
 
+import com.project.byeoldori.forecast.api.KmaFailures
 import com.project.byeoldori.forecast.api.KmaReachability
 import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.dto.LiveForecastResponseDTO
@@ -78,7 +79,7 @@ class LiveGridForecastService(
             snapshotStore.saveAsync(ForecastSnapshotKind.LIVE, tmfc, mapOf(SNAPSHOT_SLOT to grid), LiveGridCellCodec)
         }.doOnError { e ->
             reachability.onCycleError(e)
-            logger.error("실황 격자 데이터 업데이트 실패", e)
+            logger.warn("실황 격자 데이터 업데이트 실패: ${KmaFailures.describe(e)}")  // 재시도·최종 실패 ERROR 는 GridForecastScheduler 가 남긴다
         }.then()
     }
 

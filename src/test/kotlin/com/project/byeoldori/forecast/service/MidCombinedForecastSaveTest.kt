@@ -75,4 +75,38 @@ class MidCombinedForecastSaveTest @Autowired constructor(
         assertThat(res.map { it.tmEf }).containsExactly("202610240000", "202610241200", "202610250000")
         assertThat(res.map { it.sky }).containsExactly("OLD-24AM", "NEW-24PM", "NEW-25")
     }
+
+    private fun setCreatedAt(siRegId: String, at: java.time.LocalDateTime) {
+        em.entityManager.createNativeQuery("update mid_combined_forecast set created_at = :at where si_reg_id = :si")
+            .setParameter("at", at).setParameter("si", siRegId).executeUpdate()
+    }
+
+    @Test
+    fun `24시간 안에 새로 저장한 예보가 없으면(수집 실패) 이전 예보를 지우지 않는다`() {
+        val now = java.time.LocalDateTime.of(2026, 11, 20, 18, 35)
+        service.saveAll(listOf(forecast("11B10101", "WB01", 3)))
+        em.flush()
+        setCreatedAt("11B10101", now.minusHours(24).minusMinutes(25))  // 어제 18:10 저장분
+        em.clear()
+
+        service.deleteOldForecasts(now)
+        em.flush(); em.clear()
+
+        assertThat(repo.findAll()).hasSize(1)
+    }
+
+    @Test
+    fun `새로 저장한 예보가 있으면 24시간 지난 예보만 지운다`() {
+        val now = java.time.LocalDateTime.of(2026, 11, 20, 18, 35)
+        service.saveAll(listOf(forecast("11B10101", "WB01", 3), forecast("11B20201", "WB01", 4)))
+        em.flush()
+        setCreatedAt("11B10101", now.minusHours(24).minusMinutes(25))
+        setCreatedAt("11B20201", now.minusMinutes(25))  // 오늘 18:10 저장분
+        em.clear()
+
+        service.deleteOldForecasts(now)
+        em.flush(); em.clear()
+
+        assertThat(repo.findAll().map { it.siRegId }).containsExactly("11B20201")
+    }
 }

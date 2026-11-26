@@ -18,10 +18,15 @@ class EmailVerificationToken(
     val user: User,
 
     @Column(nullable = false)
-    val expiresAt: LocalDateTime = LocalDateTime.now().plusHours(24),
+    val expiresAt: LocalDateTime = LocalDateTime.now().plusHours(VALID_HOURS),
 
     var usedAt: LocalDateTime? = null
 ) : BaseTimeEntity() {
     fun isUsable(now: LocalDateTime = LocalDateTime.now()) =
         usedAt == null && now.isBefore(expiresAt)
+
+    companion object {
+        // 인증 링크 유효 시간
+        const val VALID_HOURS = 24L
+    }
 }

@@ -4,7 +4,10 @@
 # 기동: docker compose -f docker-compose.oci.yml -f docker-compose.mongo.yml up -d mongo
 services:
   mongo:
-    image: mongo:6.0
+    # 6.0 은 EOL. 8.0 은 6.0 데이터 디렉터리를 바로 못 읽어(7.0 을 거쳐야 함) 새 볼륨(mongo_data_v8)을 쓴다.
+    # 새 볼륨은 머지 전에 `bash scripts/db-upgrade.sh prepare-mongo` 로 채워 두고, 배포는 그 볼륨이 있을 때만
+    # mongo 를 다시 만든다(deploy.yml). 옛 볼륨 mongo_data 는 되돌리기용으로 남긴다.
+    image: mongo:8.0
     container_name: mongodb
     restart: always
     mem_limit: 400m
@@ -13,7 +16,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-root}
       MONGO_INITDB_DATABASE: byeoldori
     volumes:
-      - mongo_data:/data/db
+      - mongo_data_v8:/data/db
     networks: [backend]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
@@ -26,4 +29,4 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
 volumes:
-  mongo_data:
+  mongo_data_v8:

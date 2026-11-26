@@ -72,6 +72,7 @@
 - 실패하면 Discord(Grafana 알림과 같은 웹훅)로 알린다.
 - 백업이 아예 돌지 않는 경우(cron 항목 누락·cron 데몬 정지)는 `scripts/check-backup-freshness.sh` 가 잡는다. 매일 10:00(KST) `backup-check.yml` 이 VM 에 접속해 돌리고, 배포 때도 돌려 26시간 안에 완성 백업이 없으면 Discord 로 알린다(배포는 실패로 만들지 않고 경고만).
 - 로컬 백업은 같은 부트볼륨에 있어서 VM 을 통째로 잃으면 함께 사라진다. VM 밖 보관은 `~/.byeoldori-backup.env` 에 `BACKUP_OCI_BUCKET=<버킷>` 을 두고 VM 에 oci CLI 를 설정하면 켜진다(버킷 수명주기 규칙으로 보존 기간 관리). OCI 콘솔의 부트볼륨 백업 정책도 함께 켜 둔다.
+  - 운영(2026-11-09~): 버킷 `byeoldori-backup`(춘천, 비공개), VM 인스턴스 주체 인증(`OCI_CLI_AUTH=instance_principal`, 키 파일 없음, 이 버킷에 객체 생성·조회만), 30일 뒤 자동 삭제, 7일 보존 규칙(삭제·덮어쓰기 금지). 2026-11-19 복원 연습: 원격 객체 MD5 = VM 파일 MD5, 임시 컨테이너에 MySQL·MongoDB·업로드 복원 정상.
 
 - 디스크 사용률(이번 백업 예상 크기 포함)이 `BACKUP_MAX_DISK_PCT`(기본 90%) 이상이면 보관 기간이 지난 백업부터 지우고 다시 잰다. 그래도 모자라면 실패로 알린다. 가장 최근 완성 백업 하나는 보관 기간이 지나도 남긴다.
 
@@ -96,6 +97,24 @@ docker run --rm -i --user 0 --entrypoint tar -v "$VOL":/data/uploads byeoldori-s
 PORT=$(grep -o '127.0.0.1:[0-9]*' /etc/nginx/conf.d/byeoldori-upstream.conf | head -1 | cut -d: -f2)
 [ "$PORT" = 8081 ] && docker start app-green || docker start app-blue
 ```
+
+## ⬆️ DB 메이저 업그레이드 (MySQL 8.0 → 8.4 LTS, MongoDB 6.0 → 8.0)
+
+8.0·6.0 은 지원 종료(EOL)라 올린다. `scripts/db-upgrade.sh` 로 VM 에서 단계별로 한다(자동 실행 아님). 2026-11-19 운영 백업 사본으로 검증: MySQL 8.0 볼륨을 8.4 로 그대로 띄워 행 수·Flyway V8·앱 계정(native) 로그인 유지, MongoDB 8.0 에 덤프 복원 시 문서 수 일치.
+
+- MySQL: 8.4 는 8.0 데이터 디렉터리를 제자리에서 올린다. 단 8.0 의 `--default-authentication-plugin` 옵션이 8.4 에서 없어져 그대로면 `unknown variable` 로 기동하지 못한다 → compose 를 `--mysql-native-password=ON` 으로 바꿨다(기존 계정이 mysql_native_password). **8.4 → 8.0 제자리 되돌리기는 안 된다**(되돌릴 때는 8.0 새 볼륨에 백업 복원).
+- MongoDB: 8.0 은 6.0 데이터 디렉터리를 바로 못 읽는다(7.0 을 거쳐야 함). 데이터가 작아 새 볼륨 `mongo_data_v8` 에 덤프·복원하고 compose 가 새 볼륨을 보게 했다. 옛 볼륨 `mongo_data` 는 남는다.
+- 배포는 매번 `up -d mongo` 를 하므로, 새 볼륨이 준비되기 전에는 배포가 mongo 를 건드리지 않는다(`db-upgrade.sh mongo-ready`, Discord 경고).
+
+순서(VM, 배포 디렉터리에서):
+
+1. 조용한 시간에 `bash scripts/backup.sh` (직전 백업)
+2. **머지 전** `bash scripts/db-upgrade.sh prepare-mongo` → 6.0 덤프를 새 볼륨에 8.0 으로 복원하고 컬렉션별 문서 수 비교
+3. 업그레이드 PR 머지 → 배포가 mongodb 를 8.0 + 새 볼륨으로 다시 만든다(수 초)
+4. `bash scripts/db-upgrade.sh upgrade-mysql` → 직전 백업(1시간 안·체크섬) 확인 후 mysql 을 8.4 로 다시 만들고 불용어 OFF·행 수 비교(앱은 1분 안쪽 DB 연결이 끊겼다 다시 붙음)
+5. `bash scripts/db-upgrade.sh verify`, `curl -s https://api.byeoldori.com/actuator/health/warm`
+
+되돌리기: MongoDB 는 compose 를 `mongo:6.0` + `mongo_data` 로 되돌려 배포. MySQL 은 `mysql:8.0` 새 볼륨을 만들고 1번 백업을 복원(위 "복원" 절차).
 
 ## 🔎 커뮤니티 검색 FULLTEXT 불용어 설정 (V8)
 
