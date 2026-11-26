@@ -22,7 +22,7 @@ import java.time.Duration
 class RateLimitFilterTest {
 
     private val redis = mock(StringRedisTemplate::class.java)
-    private val filter = RateLimitFilter(redis, ObjectMapper())
+    private val filter = RateLimitFilter(redis, ObjectMapper(), ClientIpResolver("test-proxy-secret"))
 
     private fun login(ip: String): MockHttpServletResponse {
         val req = MockHttpServletRequest("POST", "/auth/login").apply { remoteAddr = ip }
@@ -73,6 +73,39 @@ class RateLimitFilterTest {
         filter.doFilter(req, res, MockFilterChain())
         assertThat(res.status).isEqualTo(429)
         assertThat(count).isEqualTo(11)
+    }
+
+    @Test
+    fun `X-Forwarded-For 맨 왼쪽을 바꿔 가며 보내도 nginx 가 붙인 IP 하나로 센다`() {
+        var count = 0L
+        `when`(redis.execute(eq(RateLimitFilter.INCR_WITH_TTL), eq(listOf("rate:/auth/login:1.2.3.4")), eq("60")))
+            .thenAnswer { ++count }
+
+        repeat(11) { i ->
+            val req = MockHttpServletRequest("POST", "/auth/login").apply {
+                addHeader("X-Forwarded-For", "10.0.0.$i, 1.2.3.4")
+            }
+            val res = MockHttpServletResponse()
+            filter.doFilter(req, res, MockFilterChain())
+            assertThat(res.status).isEqualTo(if (i < 10) 200 else 429)
+        }
+    }
+
+    @Test
+    fun `웹 프록시가 비밀과 함께 넘긴 사용자 IP 별로 따로 센다`() {
+        `when`(redis.execute(eq(RateLimitFilter.INCR_WITH_TTL), eq(listOf("rate:/auth/login:203.0.113.7")), eq("60")))
+            .thenReturn(1L)
+
+        val req = MockHttpServletRequest("POST", "/auth/login").apply {
+            addHeader("X-Forwarded-For", "104.28.0.1")
+            addHeader(ClientIpResolver.PROXY_SECRET_HEADER, "test-proxy-secret")
+            addHeader(ClientIpResolver.CLIENT_IP_HEADER, "203.0.113.7")
+        }
+        val res = MockHttpServletResponse()
+        filter.doFilter(req, res, MockFilterChain())
+
+        assertThat(res.status).isEqualTo(200)
+        verify(redis).execute(eq(RateLimitFilter.INCR_WITH_TTL), eq(listOf("rate:/auth/login:203.0.113.7")), eq("60"))
     }
 
     @Test
