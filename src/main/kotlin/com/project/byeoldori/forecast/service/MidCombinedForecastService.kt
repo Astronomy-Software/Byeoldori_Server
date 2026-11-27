@@ -14,6 +14,7 @@ import org.springframework.cache.annotation.CacheEvict
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil
 import java.time.LocalDateTime
 
 @Service
@@ -29,9 +30,12 @@ class MidCombinedForecastService(
     @CacheEvict(value = ["midForecast"], allEntries = true)
     @Transactional
     fun fetchAndSaveFromApi(): String {
-        val landResponse = weatherData.fetchMidLandForecast().block()
+        // 최근 24시간 발표분(06시·18시 중 직전 것이 항상 포함)을 받는다. 두 발표분이 함께 와도 저장은 (tmFc, tmEf, siRegId) upsert 이고
+        // 조회는 tmEf 별 최신 발표만 쓰므로 그대로 된다.
+        val (tmfc1, tmfc2) = ForecastTimeUtil.getMidForecastTmfcWindow()
+        val landResponse = weatherData.fetchMidLandForecast(tmfc1, tmfc2).block()
             ?: throw InternalServerException("기상청 중기 육상 예보 API 호출에 실패했습니다.")
-        val tempResponse = weatherData.fetchMidTemperatureForecast().block()
+        val tempResponse = weatherData.fetchMidTemperatureForecast(tmfc1, tmfc2).block()
             ?: throw InternalServerException("기상청 중기 기온 예보 API 호출에 실패했습니다.")
 
         val landList = midForecastParser.parse(landResponse)
@@ -119,6 +123,11 @@ class MidCombinedForecastService(
 
     @Transactional(readOnly = true)
     fun count(): Long = combinedForecastRepository.count()
+
+    /** 최근 24시간 안에 저장한 중기 예보가 있는지(기동 시 수집을 보충할지 판단용, 정리 가드와 같은 기준). */
+    @Transactional(readOnly = true)
+    fun hasFreshData(now: LocalDateTime = LocalDateTime.now()): Boolean =
+        combinedForecastRepository.existsByCreatedAtGreaterThanEqual(now.minusHours(24))
 
     @Transactional(readOnly = true)
     fun findAll(): List<MidCombinedForecastDTO> {

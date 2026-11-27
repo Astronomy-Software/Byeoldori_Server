@@ -4,6 +4,7 @@ import com.project.byeoldori.forecast.api.WeatherData
 import com.project.byeoldori.forecast.entity.MidCombinedForecast
 import com.project.byeoldori.forecast.repository.MidCombinedForecastRepository
 import com.project.byeoldori.forecast.utils.forecasts.MidForecastParser
+import com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil
 import com.project.byeoldori.forecast.utils.forecasts.MidTempForecastParser
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -41,8 +42,8 @@ class MidCombinedForecastFetchTest {
     """.trimIndent()
 
     private fun stub(land: String, temp: String) {
-        `when`(weatherData.fetchMidLandForecast()).thenReturn(Mono.just(land))
-        `when`(weatherData.fetchMidTemperatureForecast()).thenReturn(Mono.just(temp))
+        `when`(weatherData.fetchMidLandForecast(anyString(), anyString())).thenReturn(Mono.just(land))
+        `when`(weatherData.fetchMidTemperatureForecast(anyString(), anyString())).thenReturn(Mono.just(temp))
         `when`(repo.findByTmFcAndTmEfAndSiRegId(anyString(), anyString(), anyString())).thenReturn(null)
         `when`(repo.save(any(MidCombinedForecast::class.java))).thenAnswer { it.getArgument(0) }
     }
@@ -65,6 +66,45 @@ class MidCombinedForecastFetchTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("dfs_file_read error")
         verify(repo, never()).save(any(MidCombinedForecast::class.java))
+    }
+
+    @Test
+    fun `발표시각 범위는 지금 기준 지난 24시간을 yyyyMMddHH 로 넘긴다`() {
+        // 2026-11-27 부터 기상청이 tmfc1·tmfc2 없이는 헤더만 돌려줘 저장 0건이 났다. 24시간 창이면 직전 06시·18시 발표가 항상 들어온다
+        assertThat(ForecastTimeUtil.getMidForecastTmfcWindow(java.time.LocalDateTime.of(2026, 11, 27, 18, 10)))
+            .isEqualTo("2026112618" to "2026112718")
+        assertThat(ForecastTimeUtil.getMidForecastTmfcWindow(java.time.LocalDateTime.of(2026, 1, 1, 6, 10)))
+            .isEqualTo("2025123106" to "2026010106")
+    }
+
+    @Test
+    fun `호출할 때 발표시각 범위 두 값을 모두 넘긴다`() {
+        stub(land = landBody, temp = tempBody)
+
+        service.fetchAndSaveFromApi()
+
+        val tmfc = org.mockito.ArgumentCaptor.forClass(String::class.java)
+        // Kotlin 비null 파라미터라 capture() 의 null 을 그대로 넘기면 NPE → 빈 문자열로 대체(값은 captor 에 쌓인다)
+        verify(weatherData).fetchMidLandForecast(tmfc.capture() ?: "", tmfc.capture() ?: "")
+        assertThat(tmfc.allValues).hasSize(2).allMatch { it.matches(Regex("\\d{10}")) }
+        assertThat(tmfc.allValues[0]).isLessThan(tmfc.allValues[1])
+    }
+
+    @Test
+    fun `24시간 창에 두 발표분이 함께 오면 둘 다 (tmFc, tmEf, siRegId) 로 저장한다 - 조회는 tmEf 별 최신 tmFc 를 고른다`() {
+        // 조회 쪽 최신 선택은 MidCombinedForecastSaveTest("06시·18시 발표가 함께 남아도 ...")가 검증한다
+        val twoIssues = landBody.replace(
+            "#7777END",
+            "11B00000  202611271800 202611300000 A02  109 1  WB03 WB09 WB40 흐리고비  60\n#7777END"
+        )
+        stub(land = twoIssues, temp = tempBody)
+
+        service.fetchAndSaveFromApi()
+
+        val saved = org.mockito.ArgumentCaptor.forClass(MidCombinedForecast::class.java)
+        verify(repo, times(70)).save(saved.capture())
+        assertThat(saved.allValues.map { it.tmFc }.distinct()).containsExactlyInAnyOrder("202611270600", "202611271800")
+        assertThat(saved.allValues.filter { it.tmFc == "202611271800" }).allMatch { it.sky == "WB03" && it.rnSt == 60 }
     }
 
     @Test

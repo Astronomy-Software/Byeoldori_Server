@@ -9,6 +9,13 @@ object ForecastTimeUtil {
     private val shortFormatter = DateTimeFormatter.ofPattern("yyyyMMddHH")   // 단기 tmfc/tmef용 (분 없음)
 
     /**
+     * 중기(육상·기온) 예보 API 에 넘길 발표시각 범위(tmfc1, tmfc2) — 지금 기준 지난 24시간(yyyyMMddHH).
+     * 2026-11-27 부터 기상청이 두 값이 모두 없으면 헤더만 돌려준다. 24시간 창이면 직전 06시·18시 발표가 항상 들어온다.
+     */
+    fun getMidForecastTmfcWindow(now: LocalDateTime = LocalDateTime.now()): Pair<String, String> =
+        now.minusHours(24).format(shortFormatter) to now.format(shortFormatter)
+
+    /**
      * 실황 데이터의 발표시각(tmfc) — 현재 시각 기준 1시간 전 정각
      */
     fun getStableLiveTmfc(now: LocalDateTime = LocalDateTime.now()): String {
