@@ -24,7 +24,8 @@ class MidTempForecastService(
 
     @Transactional
     fun fetchParseSaveAndRespond(): Mono<String> {
-        return weatherData.fetchMidTemperatureForecast()
+        val (tmfc1, tmfc2) = com.project.byeoldori.forecast.utils.forecasts.ForecastTimeUtil.getMidForecastTmfcWindow()
+        return weatherData.fetchMidTemperatureForecast(tmfc1, tmfc2)
             .map { response ->
                 val midTempForecastList = midTempForecastParser.parse(response)
                 saveAll(midTempForecastList)

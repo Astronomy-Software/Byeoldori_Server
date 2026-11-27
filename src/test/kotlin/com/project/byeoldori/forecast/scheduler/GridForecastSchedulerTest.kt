@@ -33,10 +33,11 @@ class GridForecastSchedulerTest {
     private val ultra = mock(UltraGridForecastService::class.java)
     private val short = mock(ShortGridForecastService::class.java)
     private val live = mock(LiveGridForecastService::class.java)
+    private val mid = mock(MidCombinedForecastService::class.java)
 
     private fun scheduler(attempts: Int = 1) = GridForecastScheduler(
         ultra, short, live, RetryProperties(delay = 60, attempts = attempts),
-        mock(MidForecastService::class.java), mock(MidTempForecastService::class.java), mock(MidCombinedForecastService::class.java)
+        mock(MidForecastService::class.java), mock(MidTempForecastService::class.java), mid
     )
 
     private fun stubUpdates() {
@@ -133,5 +134,34 @@ class GridForecastSchedulerTest {
         } finally {
             reactor.core.publisher.Hooks.resetOnErrorDropped()
         }
+    }
+
+    private fun anyTime(): java.time.LocalDateTime =
+        org.mockito.ArgumentMatchers.any(java.time.LocalDateTime::class.java) ?: java.time.LocalDateTime.MIN
+
+    @Test
+    fun `기동 때 24시간 안에 저장한 중기 예보가 없으면 바로 한 번 받는다`() {
+        stubUpdates()
+        `when`(live.restoreSnapshot(anyString())).thenReturn(SnapshotRestore.FRESH)
+        `when`(ultra.restoreSnapshot(anyString())).thenReturn(SnapshotRestore.FRESH)
+        `when`(short.restoreSnapshot(anyString())).thenReturn(SnapshotRestore.FRESH)
+        `when`(mid.hasFreshData(anyTime())).thenReturn(false)
+
+        scheduler().startupLoad().block()
+
+        verify(mid).fetchAndSaveFromApi()
+    }
+
+    @Test
+    fun `기동 때 중기 예보가 최신이면 기상청을 부르지 않는다`() {
+        stubUpdates()
+        `when`(live.restoreSnapshot(anyString())).thenReturn(SnapshotRestore.FRESH)
+        `when`(ultra.restoreSnapshot(anyString())).thenReturn(SnapshotRestore.FRESH)
+        `when`(short.restoreSnapshot(anyString())).thenReturn(SnapshotRestore.FRESH)
+        `when`(mid.hasFreshData(anyTime())).thenReturn(true)
+
+        scheduler().startupLoad().block()
+
+        verify(mid, never()).fetchAndSaveFromApi()
     }
 }

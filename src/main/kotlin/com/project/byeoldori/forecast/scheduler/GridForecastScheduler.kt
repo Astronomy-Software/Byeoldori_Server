@@ -57,7 +57,22 @@ class GridForecastScheduler(
             restoreOrFetch("실황", { liveGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableLiveTmfc()) }) { clockForLiveForecast() }
             restoreOrFetch("초단기예보", { ultraGridForecastService.restoreSnapshot(ForecastTimeUtil.getStableUltraTmfc()) }) { clockForUltraForecast() }
             restoreOrFetch("단기예보", { shortGridForecastService.restoreSnapshot(getTMFCTimeForShort()) }) { clockForShortForecast() }
+            catchUpMidForecastIfStale()
         }.subscribeOn(Schedulers.boundedElastic())
+
+    // 중기 예보는 하루 두 번(06:10·18:10)만 받아, 수집이 며칠 실패한 뒤 고쳐 배포해도 다음 정기 시각까지 묵은 값이 남는다.
+    // 기동 때 24시간 안에 저장한 묶음이 없으면 한 번 바로 받는다(정상일 땐 DB 조회 1회뿐, 기상청 호출 없음).
+    private fun catchUpMidForecastIfStale() {
+        val fresh = try {
+            midCombinedForecastService.hasFreshData()
+        } catch (e: Exception) {
+            logger.warn("[시작] 중기 예보 최신 여부 확인 실패, 보충 수집은 건너뜁니다: ${e.message}")
+            return
+        }
+        if (fresh) return
+        logger.info("[시작] 최근 24시간 안에 저장한 중기 예보가 없어 지금 바로 받습니다")
+        collectMidCombinedDirect()
+    }
 
     private fun restoreOrFetch(tag: String, restore: () -> SnapshotRestore, fetch: () -> Unit) {
         val result = try {

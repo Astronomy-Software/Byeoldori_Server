@@ -104,33 +104,38 @@ class WeatherData(
             }
     }
 
-    // 중기 육상 예보 조회
-    fun fetchMidLandForecast(): Mono<String> {
+    // 중기 육상 예보 조회. tmfc1·tmfc2(발표시각 범위, yyyyMMddHH)는 둘 다 넘긴다 —
+    // 2026-11-27 부터 기상청이 둘 중 하나라도 없으면 헤더만 돌려준다(그 전엔 없이도 최신 발표를 줬다).
+    fun fetchMidLandForecast(tmfc1: String, tmfc2: String): Mono<String> {
         return weatherApiClient.get()
             .uri { builder ->
                 builder.path("/url/fct_afs_wl.php")
+                    .queryParam("tmfc1", tmfc1)
+                    .queryParam("tmfc2", tmfc2)
                     .queryParam("authKey", weatherApiKey)
                     .build()
             }
             .retrieve()
             .bodyToMono(String::class.java)
-            .doOnSubscribe { logger.info("중기 육상 예보 API 호출 시작") }
-            .doOnSuccess { logger.info("중기 육상 예보 API 호출 성공") }
+            .doOnSubscribe { logger.info("중기 육상 예보 API 호출 시작 - tmfc=$tmfc1~$tmfc2") }
+            .doOnSuccess { logger.info("중기 육상 예보 API 호출 성공 - tmfc=$tmfc1~$tmfc2") }
             .doOnError { logger.error("중기 육상 예보 API 호출 실패", it) }
     }
 
-    // 중기 기온 예보 조회
-    fun fetchMidTemperatureForecast(): Mono<String> {
+    // 중기 기온 예보 조회(위와 같은 범위 규칙)
+    fun fetchMidTemperatureForecast(tmfc1: String, tmfc2: String): Mono<String> {
         return weatherApiClient.get()
             .uri { builder ->
                 builder.path("/url/fct_afs_wc.php")
+                    .queryParam("tmfc1", tmfc1)
+                    .queryParam("tmfc2", tmfc2)
                     .queryParam("authKey", weatherApiKey)
                     .build()
             }
             .retrieve()
             .bodyToMono(String::class.java)
-            .doOnSubscribe { logger.info("중기 기온 예보 API 호출 시작") }
-            .doOnSuccess { logger.info("중기 기온 예보 API 호출 성공") }
+            .doOnSubscribe { logger.info("중기 기온 예보 API 호출 시작 - tmfc=$tmfc1~$tmfc2") }
+            .doOnSuccess { logger.info("중기 기온 예보 API 호출 성공 - tmfc=$tmfc1~$tmfc2") }
             .doOnError { logger.error("중기 기온 예보 API 호출 실패", it) }
     }
 }
