@@ -59,10 +59,21 @@ class MidForecastParsersTest {
     }
 
     @Test
-    fun `육상예보 - 빈 응답·주석만 있는 응답은 빈 목록`() {
-        assertThat(land.parse("")).isEmpty()
-        assertThat(land.parse("#START7777\n#7777END\n")).isEmpty()
-        assertThat(land.parse("\n\n   \n")).isEmpty()
+    fun `육상예보 - 빈 응답·주석만 있는 응답은 예외(재시도 대상)이고 본문 앞부분을 메시지에 남긴다`() {
+        // 2026-11-27 06:11 기상청이 200 으로 빈 본문을 줘 저장 0건이 "성공"으로 끝났다. 빈 목록 대신 예외로 두어 재시도한다
+        assertThatThrownBy { land.parse("") }
+            .isInstanceOf(IllegalStateException::class.java).hasMessageContaining("(빈 응답)")
+        assertThatThrownBy { land.parse("#START7777\n# dfs_file_read error (-1)\n#7777END\n") }
+            .isInstanceOf(IllegalStateException::class.java).hasMessageContaining("dfs_file_read error")
+        assertThatThrownBy { land.parse("\n\n   \n") }.isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun `응답 본문 요약은 공백을 정리하고 120자에서 끊는다`() {
+        assertThat(ResponseBodySummary.of(null)).isEqualTo("(빈 응답)")
+        assertThat(ResponseBodySummary.of("  a \n\t b  ")).isEqualTo("a b")
+        val long = ResponseBodySummary.of("x".repeat(500))
+        assertThat(long).hasSize(121).endsWith("…")
     }
 
     @Test
@@ -100,9 +111,10 @@ class MidForecastParsersTest {
     }
 
     @Test
-    fun `기온예보 - 빈 응답은 빈 목록`() {
-        assertThat(temp.parse("")).isEmpty()
-        assertThat(temp.parse("# only comment")).isEmpty()
+    fun `기온예보 - 빈 응답·주석만 있는 응답은 예외(재시도 대상)`() {
+        assertThatThrownBy { temp.parse("") }.isInstanceOf(IllegalStateException::class.java)
+        assertThatThrownBy { temp.parse("# only comment") }
+            .isInstanceOf(IllegalStateException::class.java).hasMessageContaining("only comment")
     }
 
     @Test

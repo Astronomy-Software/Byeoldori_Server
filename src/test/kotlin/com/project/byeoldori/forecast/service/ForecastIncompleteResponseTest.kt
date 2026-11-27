@@ -158,7 +158,8 @@ class ForecastIncompleteResponseTest {
             .isInstanceOf(IllegalStateException::class.java)
         assertThatThrownBy { MidTempForecastParser().parse("error\n#7777END") }
             .isInstanceOf(IllegalStateException::class.java)
-        // 주석뿐인 빈 응답은 기존처럼 빈 목록
-        assertThat(MidForecastParser().parse("#START7777\n#7777END")).isEmpty()
+        // 주석뿐인 빈 응답도 예외: 빈 목록으로 두면 저장 0건이 "성공"으로 끝나 재시도가 없다(2026-11-27 06:11)
+        assertThatThrownBy { MidForecastParser().parse("#START7777\n#7777END") }
+            .isInstanceOf(IllegalStateException::class.java)
     }
 }

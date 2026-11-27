@@ -31,11 +31,11 @@ class MidTempForecastParser {
                 )
             }
             .toList()
-        if (skipped > 0) {
-            // 정상 줄이 하나도 없으면 응답 자체가 잘못된 것이라 예외로 두어 스케줄러가 재시도하게 한다
-            check(forecasts.isNotEmpty()) { "중기 기온 예보 응답에 정상 줄이 없습니다. (형식이 다른 줄 ${skipped}개)" }
-            logger.warn("중기 기온 예보 응답에서 형식이 다른 줄 {}개를 건너뛰었습니다.", skipped)
+        // 정상 줄이 하나도 없으면(오류 문구만, 주석만, 빈 본문) 예외로 두어 스케줄러가 재시도하게 한다(MidForecastParser 와 같음)
+        check(forecasts.isNotEmpty()) {
+            "중기 기온 예보 응답에 정상 줄이 없습니다. (형식이 다른 줄 ${skipped}개, 본문: ${ResponseBodySummary.of(response)})"
         }
+        if (skipped > 0) logger.warn("중기 기온 예보 응답에서 형식이 다른 줄 {}개를 건너뛰었습니다.", skipped)
         return forecasts
     }
 

@@ -38,6 +38,10 @@ class MidCombinedForecastService(
         val tempList = midTempForecastParser.parse(tempResponse)
 
         val combinedList = mergeForecasts(landList, tempList)
+        // 병합 결과가 비면(도 코드가 하나도 매핑되지 않음) 저장할 게 없으므로 성공으로 끝내지 않고 재시도하게 한다
+        check(combinedList.isNotEmpty()) {
+            "중기 예보 병합 결과가 비어 있습니다. (육상 ${landList.size}행, 기온 ${tempList.size}행, 육상 regId: ${landList.map { it.regId }.distinct().take(5)})"
+        }
         saveAll(combinedList)
 
         return "기상청 API에서 데이터 수집 후 병합 및 저장 완료 (${combinedList.size}건)"
