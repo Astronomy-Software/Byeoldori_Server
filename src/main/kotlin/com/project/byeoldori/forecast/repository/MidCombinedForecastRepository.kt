@@ -15,6 +15,7 @@ interface MidCombinedForecastRepository : JpaRepository<MidCombinedForecast, Lon
     fun findBySiRegIdOrderByTmEfAscTmFcDesc(siRegId: String): List<MidCombinedForecast>
 
     fun existsByCreatedAtGreaterThanEqual(time: LocalDateTime): Boolean
+    fun existsByTmFc(tmFc: String): Boolean
 
     @Transactional
     fun deleteByCreatedAtBefore(cutoffTime: LocalDateTime): Long

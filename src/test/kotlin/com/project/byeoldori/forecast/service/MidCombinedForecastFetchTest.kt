@@ -78,6 +78,16 @@ class MidCombinedForecastFetchTest {
     }
 
     @Test
+    fun `기대하는 최근 발표시각은 06시·18시 기준으로 고른다`() {
+        val d = { h: Int, m: Int -> java.time.LocalDateTime.of(2026, 11, 28, h, m) }
+        assertThat(ForecastTimeUtil.getExpectedMidTmfc(d(6, 40))).isEqualTo("202611280600")
+        assertThat(ForecastTimeUtil.getExpectedMidTmfc(d(17, 59))).isEqualTo("202611280600")
+        assertThat(ForecastTimeUtil.getExpectedMidTmfc(d(18, 40))).isEqualTo("202611281800")
+        assertThat(ForecastTimeUtil.getExpectedMidTmfc(d(23, 59))).isEqualTo("202611281800")
+        assertThat(ForecastTimeUtil.getExpectedMidTmfc(d(5, 59))).isEqualTo("202611271800")  // 자정~06시 전은 어제 18시
+    }
+
+    @Test
     fun `호출할 때 발표시각 범위 두 값을 모두 넘긴다`() {
         stub(land = landBody, temp = tempBody)
 

@@ -119,7 +119,8 @@ class WeatherData(
             .bodyToMono(String::class.java)
             .doOnSubscribe { logger.info("중기 육상 예보 API 호출 시작 - tmfc=$tmfc1~$tmfc2") }
             .doOnSuccess { logger.info("중기 육상 예보 API 호출 성공 - tmfc=$tmfc1~$tmfc2") }
-            .doOnError { logger.error("중기 육상 예보 API 호출 실패", it) }
+            // 스케줄러가 재시도하고 모두 실패할 때만 ERROR 를 남기므로 여기선 WARN 한 줄(#192 와 같은 기준)
+            .doOnError { logger.warn("중기 육상 예보 API 호출 실패 - tmfc=$tmfc1~$tmfc2: ${KmaFailures.describe(it)}") }
     }
 
     // 중기 기온 예보 조회(위와 같은 범위 규칙)
@@ -136,6 +137,6 @@ class WeatherData(
             .bodyToMono(String::class.java)
             .doOnSubscribe { logger.info("중기 기온 예보 API 호출 시작 - tmfc=$tmfc1~$tmfc2") }
             .doOnSuccess { logger.info("중기 기온 예보 API 호출 성공 - tmfc=$tmfc1~$tmfc2") }
-            .doOnError { logger.error("중기 기온 예보 API 호출 실패", it) }
+            .doOnError { logger.warn("중기 기온 예보 API 호출 실패 - tmfc=$tmfc1~$tmfc2: ${KmaFailures.describe(it)}") }
     }
 }
