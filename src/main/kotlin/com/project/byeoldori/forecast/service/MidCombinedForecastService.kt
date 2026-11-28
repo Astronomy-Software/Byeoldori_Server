@@ -124,6 +124,10 @@ class MidCombinedForecastService(
     @Transactional(readOnly = true)
     fun count(): Long = combinedForecastRepository.count()
 
+    /** 해당 발표시각(tmFc, yyyyMMddHHmm)의 중기 예보가 이미 저장돼 있는지(당일 발표분을 받았으면 추가 수집을 건너뛴다). */
+    @Transactional(readOnly = true)
+    fun hasIssue(tmFc: String): Boolean = combinedForecastRepository.existsByTmFc(tmFc)
+
     /** 최근 24시간 안에 저장한 중기 예보가 있는지(기동 시 수집을 보충할지 판단용, 정리 가드와 같은 기준). */
     @Transactional(readOnly = true)
     fun hasFreshData(now: LocalDateTime = LocalDateTime.now()): Boolean =

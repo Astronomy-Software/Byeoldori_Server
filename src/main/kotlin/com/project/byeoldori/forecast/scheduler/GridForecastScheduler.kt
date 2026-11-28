@@ -133,8 +133,25 @@ class GridForecastScheduler(
         )
     }
 
-    // 06:10 / 18:10시 실행 중기 데이터 병합 및 저장
-    @Scheduled(cron = "0 10 6,18 * * *", zone = "Asia/Seoul")
+    // 중기 예보(06시·18시 발표) 수집·병합·저장. 발표 직후(06:10·18:10)에 받으면 기상청에 아직 당일 발표분이 없어
+    // 항상 직전 발표분만 받았다 → 30분 여유를 두고 06:40·18:40 에 받고, 그래도 당일 발표분이 없으면 1시간 뒤(07:40·19:40) 한 번 더 받는다.
+    // 당일 발표분이 이미 있으면(07:40·19:40) 기상청을 부르지 않는다. 끝내 없으면 직전 발표분을 그대로 쓴다.
+    @Scheduled(cron = "0 40 6,7,18,19 * * *", zone = "Asia/Seoul")
+    fun collectMidCombinedScheduled() {
+        val expected = ForecastTimeUtil.getExpectedMidTmfc()
+        val already = try {
+            midCombinedForecastService.hasIssue(expected)
+        } catch (e: Exception) {
+            logger.warn("[중기예보] 당일 발표분(tmFc=$expected) 저장 여부 확인 실패, 수집은 그대로 진행: ${e.message}")
+            false
+        }
+        if (already) {
+            logger.info("[중기예보] 당일 발표분(tmFc=$expected)이 이미 있어 수집을 건너뜁니다")
+            return
+        }
+        collectMidCombinedDirect()
+    }
+
     fun collectMidCombinedDirect() {
         logger.info("중기 예보 수집·병합·저장 시작...")
         fetchWithRetry(
@@ -146,22 +163,23 @@ class GridForecastScheduler(
         )
     }
 
-    // 06:30 / 18:30마다 24시간 지난 중기 육상 예보 삭제
-    @Scheduled(cron = "0 30 6,18 * * *", zone = "Asia/Seoul")
+    // 정리는 수집(06:40·18:40, 재시도 최대 5분)이 끝난 뒤에 돈다. 수집보다 먼저 돌면 새 묶음이 없는 상태에서 정리하게 된다.
+    // 06:50 / 18:50 — 24시간 지난 중기 육상 예보 삭제
+    @Scheduled(cron = "0 50 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidForecasts() {
         logger.info("24시간 지난 중기 육상 데이터 삭제 시작")
         midForecastService.deleteOldForecasts()
     }
 
-    // 06:30 / 18:30마다 24시간 지난 중기 기온 예보 삭제
-    @Scheduled(cron = "0 31 6,18 * * *", zone = "Asia/Seoul")
+    // 06:51 / 18:51 — 24시간 지난 중기 기온 예보 삭제
+    @Scheduled(cron = "0 51 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidTempForecasts() {
         logger.info("24시간 지난 중기 기온 데이터 삭제 시작")
         midTempForecastService.deleteOldForecasts()
     }
 
-    // 06:35 / 18:35마다 24시간 지난 중기 통합 예보 삭제
-    @Scheduled(cron = "0 35 6,18 * * *", zone = "Asia/Seoul")
+    // 06:55 / 18:55 — 24시간 지난 중기 통합 예보 삭제(새 묶음이 없으면 지우지 않음, MidCombinedForecastService.deleteOldForecasts)
+    @Scheduled(cron = "0 55 6,18 * * *", zone = "Asia/Seoul")
     fun deleteOldMidCombinedForecasts() {
         logger.info("24시간 지난 중기 병합 예보 삭제 시작")
         midCombinedForecastService.deleteOldForecasts()

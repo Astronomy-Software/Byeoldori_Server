@@ -16,6 +16,19 @@ object ForecastTimeUtil {
         now.minusHours(24).format(shortFormatter) to now.format(shortFormatter)
 
     /**
+     * 지금 시각에 기대하는 가장 최근 중기 발표시각(tmFc, yyyyMMddHHmm). 중기 예보는 06시·18시에 발표된다.
+     * 06:00~17:59 → 오늘 0600, 18:00~ → 오늘 1800, 00:00~05:59 → 어제 1800.
+     */
+    fun getExpectedMidTmfc(now: LocalDateTime = LocalDateTime.now()): String {
+        val issue = when {
+            now.hour >= 18 -> now.withHour(18)
+            now.hour >= 6 -> now.withHour(6)
+            else -> now.minusDays(1).withHour(18)
+        }
+        return issue.withMinute(0).withSecond(0).withNano(0).format(formatter)
+    }
+
+    /**
      * 실황 데이터의 발표시각(tmfc) — 현재 시각 기준 1시간 전 정각
      */
     fun getStableLiveTmfc(now: LocalDateTime = LocalDateTime.now()): String {

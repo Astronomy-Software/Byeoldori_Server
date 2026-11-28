@@ -153,6 +153,28 @@ class GridForecastSchedulerTest {
     }
 
     @Test
+    fun `정기 중기 수집은 당일 발표분이 이미 있으면 기상청을 부르지 않고, 없으면 받는다`() {
+        `when`(mid.hasIssue(anyString())).thenReturn(true)
+        scheduler().collectMidCombinedScheduled()
+        verify(mid, never()).fetchAndSaveFromApi()
+
+        `when`(mid.hasIssue(anyString())).thenReturn(false)
+        scheduler().collectMidCombinedScheduled()
+        verify(mid).fetchAndSaveFromApi()
+    }
+
+    @Test
+    fun `중기 수집은 06·18시 발표 30분 뒤와 1시간 뒤 보충, 정리는 그 뒤에 돈다`() {
+        fun cron(name: String) = GridForecastScheduler::class.java.getMethod(name)
+            .getAnnotation(org.springframework.scheduling.annotation.Scheduled::class.java).cron
+        assertThat(cron("collectMidCombinedScheduled")).isEqualTo("0 40 6,7,18,19 * * *")
+        // 수집(재시도 최대 5분)이 끝난 뒤에 정리
+        assertThat(cron("deleteOldMidForecasts")).isEqualTo("0 50 6,18 * * *")
+        assertThat(cron("deleteOldMidTempForecasts")).isEqualTo("0 51 6,18 * * *")
+        assertThat(cron("deleteOldMidCombinedForecasts")).isEqualTo("0 55 6,18 * * *")
+    }
+
+    @Test
     fun `기동 때 중기 예보가 최신이면 기상청을 부르지 않는다`() {
         stubUpdates()
         `when`(live.restoreSnapshot(anyString())).thenReturn(SnapshotRestore.FRESH)
